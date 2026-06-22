@@ -1,0 +1,13 @@
+# Local Claude Code / agent state (not shared)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+
+# Note: component repos live as git submodules (see .gitmodules);
+# do NOT add their paths here.

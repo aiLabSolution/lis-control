@@ -1,0 +1,4 @@
+[submodule "core/openelis"]
+	path = core/openelis
+	url = https://github.com/aiLabSolution/OpenELIS-Global-2.git
+	branch = develop

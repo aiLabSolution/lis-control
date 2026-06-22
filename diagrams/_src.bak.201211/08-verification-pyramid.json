@@ -1,0 +1,23 @@
+[
+{"type":"cameraUpdate","width":600,"height":450,"x":120,"y":-10},
+{"type":"text","id":"t","x":150,"y":6,"text":"Verification Strategy — From Unit Parsers to IQ/OQ/PQ","fontSize":20,"strokeColor":"#1e1e1e"},
+{"type":"text","id":"sub","x":150,"y":34,"text":"The layered proof behind each roadmap gate (Diagram 2)","fontSize":13,"strokeColor":"#757575"},
+{"type":"rectangle","id":"t1","x":60,"y":460,"width":480,"height":90,"backgroundColor":"#b2f2bb","fillStyle":"solid","strokeColor":"#22c55e","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Unit parser tests\n(per-segment / per-record correctness; LOINC/UCUM mapping)","fontSize":14}},
+{"type":"rectangle","id":"t2","x":110,"y":360,"width":380,"height":90,"backgroundColor":"#d8f5a2","fillStyle":"solid","strokeColor":"#66a80f","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Per-analyzer bench conformance\n(each physical unit; raw-capture replay)","fontSize":14}},
+{"type":"rectangle","id":"t3","x":160,"y":260,"width":280,"height":90,"backgroundColor":"#ffd8a8","fillStyle":"solid","strokeColor":"#f59e0b","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Integration E2E\n(order -> result ->\nnormalize -> core -> FHIR)","fontSize":14}},
+{"type":"rectangle","id":"t4","x":210,"y":160,"width":180,"height":90,"backgroundColor":"#ffc9c9","fillStyle":"solid","strokeColor":"#ef4444","strokeWidth":2,"roundness":{"type":3},"label":{"text":"IQ / OQ / PQ\nvalidation","fontSize":14}},
+{"type":"arrow","id":"axis","x":34,"y":548,"width":0,"height":378,"points":[[0,0],[0,-378]],"strokeColor":"#868e96","strokeWidth":2,"endArrowhead":"arrow"},
+{"type":"text","id":"axb","x":12,"y":556,"text":"many, fast, automated","fontSize":12,"strokeColor":"#757575"},
+{"type":"text","id":"axt","x":12,"y":140,"text":"few, slow, formal/manual","fontSize":12,"strokeColor":"#757575"},
+{"type":"text","id":"bn","x":150,"y":562,"text":"Confirm direction + framing per unit; capture raw message for replay (esp. HORRON)","fontSize":12,"strokeColor":"#b45309"},
+{"type":"rectangle","id":"mb4","x":600,"y":175,"width":300,"height":60,"backgroundColor":"#fff3bf","fillStyle":"solid","strokeColor":"#ef4444","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Stage 5 — validation gate","fontSize":14}},
+{"type":"rectangle","id":"mb3","x":600,"y":275,"width":300,"height":60,"backgroundColor":"#fff3bf","fillStyle":"solid","strokeColor":"#f59e0b","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Stage 4 — integration gate","fontSize":14}},
+{"type":"rectangle","id":"mb2","x":600,"y":375,"width":300,"height":60,"backgroundColor":"#fff3bf","fillStyle":"solid","strokeColor":"#66a80f","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Stage 1-3 — per-unit bench gates","fontSize":13}},
+{"type":"rectangle","id":"mb1","x":600,"y":475,"width":300,"height":60,"backgroundColor":"#fff3bf","fillStyle":"solid","strokeColor":"#22c55e","strokeWidth":2,"roundness":{"type":3},"label":{"text":"Stage 1 parser + Stage 2 ASTM gates","fontSize":13}},
+{"type":"arrow","id":"p4","x":390,"y":205,"width":210,"height":0,"points":[[0,0],[210,0]],"strokeColor":"#ef4444","strokeWidth":2,"strokeStyle":"dashed","endArrowhead":"arrow","label":{"text":"proves","fontSize":12}},
+{"type":"arrow","id":"p3","x":440,"y":305,"width":160,"height":0,"points":[[0,0],[160,0]],"strokeColor":"#f59e0b","strokeWidth":2,"strokeStyle":"dashed","endArrowhead":"arrow","label":{"text":"proves","fontSize":12}},
+{"type":"arrow","id":"p2","x":490,"y":405,"width":110,"height":0,"points":[[0,0],[110,0]],"strokeColor":"#66a80f","strokeWidth":2,"strokeStyle":"dashed","endArrowhead":"arrow","label":{"text":"proves","fontSize":12}},
+{"type":"arrow","id":"p1","x":540,"y":505,"width":60,"height":0,"points":[[0,0],[60,0]],"strokeColor":"#22c55e","strokeWidth":2,"strokeStyle":"dashed","endArrowhead":"arrow","label":{"text":"proves","fontSize":12}},
+{"type":"rectangle","id":"xl","x":600,"y":120,"width":300,"height":40,"backgroundColor":"#e7f5ff","fillStyle":"solid","strokeColor":"#4a9eed","strokeWidth":1,"roundness":{"type":3},"label":{"text":"Validate base + deltas, not a black box","fontSize":12}},
+{"type":"text","id":"leg","x":150,"y":596,"text":"green -> red = automated/fast to formal/manual   |   dashed = proves the matching roadmap stage gate","fontSize":13,"strokeColor":"#757575"}
+]
