@@ -1,7 +1,7 @@
 # Context — OpenELIS core
 
-> Layered context for the `core/openelis` submodule. Hosted in the umbrella so the
-> fork's tracked branch stays a clean mirror of upstream (ADR-0001 §5).
+> Layered context for the `core/openelis` submodule. Hosted in the umbrella alongside the
+> pin. The core is now a **standalone line on `main`** (ADR-0003); upstream tracking removed.
 
 ## What this is
 
@@ -13,10 +13,12 @@ plan §0 Stage 0).
 ## Repo & versioning
 
 - **Mount:** `core/openelis/` (git submodule, pinned in `lis-control`).
-- **origin:** `https://github.com/aiLabSolution/OpenELIS-Global-2.git` — our mirror; tracked branch `develop`.
-- **upstream:** `https://github.com/DIGI-UW/OpenELIS-Global-2.git` — canonical OpenELIS Global 2.
-- **Sync:** `cd core/openelis && git fetch upstream && git merge upstream/develop`, then
+- **origin:** `https://github.com/aiLabSolution/OpenELIS-Global-2.git` — standalone; default & tracked branch `main` (ADR-0003).
+- **No `upstream` remote.** Upstream tracking was removed; the repo is a standalone export
+  (not a GitHub fork). Pulling a future DIGI-UW fix is a deliberate ad-hoc cherry-pick.
+- **Bump the pin:** develop on `core/openelis` `main`, push, then
   `git -C ../.. add core/openelis && git commit -m "core: bump openelis to <sha>"` to record the new pin.
+- **Local build env:** JDK 21 + Maven (Testcontainers-backed tests); see `docs/runbooks/core-build-env.md`.
 
 ## Open items
 
