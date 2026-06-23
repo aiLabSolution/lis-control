@@ -39,19 +39,29 @@ jobs:
         -f core/openelis/.github/ci/ci.memory-limits.yml
         -f deploy/ci/compose.bootstrap.yml
     steps:
-      - name: Checkout umbrella + pinned core submodule
+      # Checkout in two steps so the cross-repo token stays least-privilege:
+      # the umbrella uses the default GITHUB_TOKEN; the private core submodule uses a
+      # fine-grained PAT scoped read-only to aiLabSolution/OpenELIS-Global-2 ONLY.
+      # (A single checkout with token=PAT 403s on lis-control, which the PAT can't read.)
+      - name: Checkout umbrella (lis-control)
+        uses: actions/checkout@v4
+        # default token reads this repo; submodules fetched explicitly below
+
+      - name: Resolve pinned core SHA
+        id: pin
+        run: echo "sha=$(git rev-parse HEAD:core/openelis)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout pinned core (private cross-repo, PAT)
         uses: actions/checkout@v4
         with:
-          # First-level submodule only (core/openelis at the pinned SHA). NOT
-          # recursive — the bootstrap uses prebuilt images, so OpenELIS's nested
-          # submodules (incl. the SSH-only Consolidated-Server and the
-          # license-blocked tools/openelis-analyzer-bridge) are not needed.
-          submodules: true
-          # core/openelis lives in the PRIVATE aiLabSolution/OpenELIS-Global-2 repo,
-          # which the default GITHUB_TOKEN cannot read. Provide a token (fine-grained
-          # PAT or GitHub App installation token) with read access to that repo as the
-          # OPENELIS_SUBMODULE_TOKEN secret. See docs/adr/0002-stage0-bootstrap-and-ci.md.
-          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN || github.token }}
+          repository: aiLabSolution/OpenELIS-Global-2
+          ref: ${{ steps.pin.outputs.sha }}
+          path: core/openelis
+          # First-level only (no submodules): the prebuilt-image bootstrap doesn't need
+          # OpenELIS's nested submodules (SSH-only Consolidated-Server, license-blocked
+          # tools/openelis-analyzer-bridge). See docs/adr/0002-stage0-bootstrap-and-ci.md.
+          submodules: false
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
 
       - name: Resolve compose images (sanity)
         run: docker compose --project-directory "$PD" $COMPOSE config --images
