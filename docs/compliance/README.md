@@ -44,6 +44,14 @@ default (pending ratification — see DEC-25 in the register):
 - **NPC filing pack** (created later, mostly Stage 5) — under `docs/compliance/npc/`:
   `ropa.md`, `pia.md`, `breach-runbook.md`, `retention.md`, `lawful-basis.md`.
 
+## Published to Plane
+
+These docs are mirrored to **Plane project pages** (LIS project) for in-tracker reading —
+titled `LIS-10 · N · …`. **This repo is the source of truth.** When a doc here changes,
+update the matching Plane page; the file↔page-ID mapping and sync procedure (and the Plane
+API's create/read-only limitation for pages) are in
+[`../agents/compliance-pages.md`](../agents/compliance-pages.md). `README.md` is not mirrored.
+
 ## Provenance
 
 Drafted 2026-06-23 from `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` (§5, §10, §13) and
