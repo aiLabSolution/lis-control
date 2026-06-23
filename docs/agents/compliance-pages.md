@@ -38,12 +38,15 @@ through the API.
 ## Sync procedure — when a `docs/compliance/*.md` changes
 
 1. **Repo first.** Commit the change in `docs/compliance/` (source of truth).
-2. **Update the matching page.** Because the API cannot update a page, do **one** of:
-   - **Preferred — edit in the Plane UI:** open the page (table above), and paste the new
-     content so it matches the repo file. Manual but keeps the same page ID/links.
-   - **Re-publish via API:** `POST` a new page from the updated markdown (see snippet),
-     then **archive/delete the stale page in the Plane UI** and update its ID in the table
-     above. Use this only for large rewrites.
+2. **Update the matching page.** Because the API cannot update a page, do **one** of —
+   the helper `scripts/compliance_page_sync.py` automates both:
+   - **Preferred — edit in the Plane UI:** run
+     `python3 scripts/compliance_page_sync.py <file> --html` → open the printed `.html` in a
+     browser, select-all, copy, and paste into the existing page's editor. Keeps the same
+     page ID/links. Manual but exact.
+   - **Re-publish via API:** run `python3 scripts/compliance_page_sync.py <file> --publish`
+     (creates a NEW page, prints its URL), then **archive the stale page in the Plane UI**
+     and update its ID in the table above. Use this only for large rewrites.
 3. **Keep this table accurate** — if a page ID changes (re-publish) or a doc is added/removed,
    update the mapping here in the same commit.
 
