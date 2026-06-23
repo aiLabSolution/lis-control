@@ -1,0 +1,28 @@
+# LIS Stage 0 — reproducible-bootstrap compose overlay (umbrella-owned).
+#
+# Applied ON TOP OF core/openelis/docker-compose.yml. Pins every core image to a
+# content digest so `compose up` is byte-for-byte reproducible — the base compose
+# uses rolling `:develop` tags, which is NOT acceptable for the ISO 15189 / IQ-OQ-PQ
+# traceability story (see docs/adr/0002-stage0-bootstrap-and-ci.md).
+#
+# Service names must match the base compose. Digests captured 2026-06-22 from the
+# `itechuw/*:develop` tags that the base compose referenced at core pin 5318e61.
+# Refresh DELIBERATELY (record the bump in an ADR / commit), never silently.
+#
+# CAVEAT: these prebuilt images track upstream `:develop` and can lag/diverge from
+# the pinned *source* SHA in core/openelis. Full source-reproducibility (build from
+# the pinned SHA) is blocked on the nested-submodule + analyzer-bridge-license open
+# items (see contexts/core-openelis/CONTEXT.md, HOLD-001) and is deferred.
+services:
+  certs:
+    image: itechuw/certgen@sha256:e27a8194300ba73309e835a4070e9ce531687eb3ee604895de781f3061791635
+  db.openelis.org:
+    image: itechuw/openelis-global-2-database@sha256:04709cdce89d82c4165256c024588a487ba0703f0570e10db66677125e09c3ed
+  oe.openelis.org:
+    image: itechuw/openelis-global-2@sha256:0aeea22c54e37c753d7c1924ab607c46a170019daa514c03be01aef76665d630
+  fhir.openelis.org:
+    image: itechuw/openelis-global-2-fhir@sha256:7744ea7cb72e611757bb5a500948e41e094c5649955d91df408ce899a9fa0d55
+  frontend.openelis.org:
+    image: itechuw/openelis-global-2-frontend@sha256:3fc0be125f3d8e7b1ebc868b2e18ff1e81e8af6c386450ed73188f3a46236b8e
+  proxy:
+    image: itechuw/openelis-global-2-proxy@sha256:2fe669c935524ddbc2dab9da2dc37440b26acad34eceaf4d861ad4e1e310481e
