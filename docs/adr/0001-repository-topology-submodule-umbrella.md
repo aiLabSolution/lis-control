@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-22
 - **Deciders:** Marloe Uy (aiLabSolution)
-- **Supersedes / Superseded by:** —
+- **Supersedes / Superseded by:** §4–§5 (upstream-tracking remote + clean-mirror branch) **superseded by ADR-0003** for the `core/openelis` component. The submodule-umbrella topology (§1–§3) still stands.
 
 ## Context
 
