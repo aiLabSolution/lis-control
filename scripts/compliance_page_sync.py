@@ -35,6 +35,8 @@ TITLES = {
     "traceability-matrix.md": "LIS-10 · 4 · Traceability Matrix (Seed)",
     "decisions-register.md": "LIS-10 · 5 · Decisions Register (HITL)",
     "reading-list.md": "LIS-10 · 6 · Reading List",
+    "responsibility-and-deployment.md": "LIS-10 · 7 · Responsibility & Deployment-Model Compliance",
+    "m3-sync-compliance-gate.md": "LIS-10 · 8 · Compliance Extra Work — M3 Sync Gate",
 }
 
 
