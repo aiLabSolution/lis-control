@@ -9,6 +9,14 @@ is system-wide (ADR-0001), not specific to any one submodule.
 **Start here:** [`LIS-10-preparation-brief.md`](LIS-10-preparation-brief.md) — plain-language
 explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0002](../adr/0002-deployment-topology.md).** The
+> deployment topology is **decided**: the **pilot is M1 (fully onsite, no sync)**; a **central
+> sync at LabSolution's own on-prem server (M3)** is a **post-pilot spoke** gated by the
+> **"compliance extra work"** in [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md);
+> **public cloud (M2) is not selected.** The pilot is **decoupled** from all sync/PIP-status
+> compliance. Every artifact below was revised on 2026-06-24 to scope the pilot to M1 and tag the
+> M3-spoke deltas.
+
 ## Contents
 
 | File | What it is | Status |
@@ -18,9 +26,10 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 | [`npc-registration-checklist.md`](npc-registration-checklist.md) | **NPC checklist** — RA 10173 / NPC Circular 2022-04 registration & data-privacy checklist | Drafted, pending review |
 | [`threat-model.md`](threat-model.md) | **Threat model** — STRIDE over the LIS reference architecture | Drafted, pending review |
 | [`traceability-matrix.md`](traceability-matrix.md) | **Traceability matrix (seed)** — requirement → verification → evidence; the authoritative `REQ-*` registry | Drafted, pending review |
-| [`decisions-register.md`](decisions-register.md) | **26 deferred decisions** (HITL), ranked by what they block | Open — for the human |
+| [`decisions-register.md`](decisions-register.md) | **26 decisions** (HITL), ranked by what they block — **DEC-03 (topology) now resolved (ADR-0002); 25 open** | Open — for the human |
 | [`reading-list.md`](reading-list.md) | Primary sources to read before deciding | Reference |
-| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. | Drafted, pending review + counsel |
+| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. **Topology now decided (ADR-0002): M1 pilot ✅, M3 spoke 🔜, M2 parked ⛔.** | Drafted, pending review + counsel |
+| [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) | **Compliance extra work** — the PIP-status obligations (own NPC DPS registration, head DPA + flow-down, breach apparatus, physical custody, central key custody) that must complete **before** the post-pilot M3 on-prem central-sync spoke. **Not on the pilot critical path.** | Drafted, pending review + counsel |
 
 The four core artifacts (VMP, NPC, threat model, matrix) are the literal deliverables named
 in the LIS-10 title; the brief, registers, and this index are the preparation wrapper.
@@ -53,6 +62,12 @@ update the matching Plane page; the file↔page-ID mapping and sync procedure (a
 API's create/read-only limitation for pages) are in
 [`../agents/compliance-pages.md`](../agents/compliance-pages.md). `README.md` is not mirrored.
 
+> **Sync pending (2026-06-24):** the topology-decision revision touched every mirrored page —
+> they need re-syncing per the procedure in `compliance-pages.md`. Two newer docs,
+> `responsibility-and-deployment.md` and `m3-sync-compliance-gate.md`, are **not yet published**
+> as Plane pages; publish them and add their page IDs to the mapping table (see that doc's
+> "New compliance docs added later" note).
+
 ## Provenance
 
 Drafted 2026-06-23 from `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` (§5, §10, §13) and
@@ -61,3 +76,8 @@ review (regulatory accuracy · cross-document consistency · completeness/HITL) 
 workflow. Grounded only in the fact-checked research, so regulatory citations are not
 invented; unverified specifics are marked *"(confirm exact clause)"*. **Pending human
 review** — not approved, not filed, not signed.
+
+**Revised 2026-06-24** to incorporate the deployment-topology decision ([ADR-0002](../adr/0002-deployment-topology.md)):
+pilot scoped to **M1 (fully onsite)**; sync/PIP-status compliance decoupled from the pilot and
+consolidated into the **M3 compliance extra-work gate**; **M2 (public cloud) parked**. New
+artifacts: `m3-sync-compliance-gate.md` and ADR-0002.

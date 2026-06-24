@@ -1,6 +1,14 @@
 # Validation Master Plan (VMP) — Outline
 
-> **Stage-0 SCAFFOLD / OUTLINE.** This document is a Stage-0 Validation Master Plan *outline*, drafted by an agent for issue **LIS-10 / S0.8** ("Compliance scaffold"). It is **pending human review** and is not an executed validation dossier — the signed IQ/OQ/PQ dossier is a Stage-5 deliverable (REQ-VAL-01). Drafted **2026-06-23**. It establishes the validation skeleton so that every later stage validates *deltas on a known base*. Do not treat any item marked `[NEEDS-HUMAN]` as approved.
+> **Stage-0 SCAFFOLD / OUTLINE.** This document is a Stage-0 Validation Master Plan *outline*, drafted by an agent for issue **LIS-10 / S0.8** ("Compliance scaffold"). It is **pending human review** and is not an executed validation dossier — the signed IQ/OQ/PQ dossier is a Stage-5 deliverable (REQ-VAL-01). Drafted **2026-06-23**; **revised 2026-06-24** for the deployment-topology decision. It establishes the validation skeleton so that every later stage validates *deltas on a known base*. Do not treat any item marked `[NEEDS-HUMAN]` as approved.
+
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0002](../adr/0002-deployment-topology.md).** The pilot validation in
+> this VMP is scoped to **M1 — fully onsite, per site, no sync**. The **site↔central sync** capability is the
+> post-pilot **M3** spoke (LabSolution's own on-prem datacenter, in PH); it is **out of pilot scope** and is
+> validated later as a **change-control delta on the validated M1 base** (REQ-QMS-03), behind the
+> [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) "compliance extra work." **Public-cloud sync (M2) is
+> not selected.** Wherever this VMP previously treated site↔central sync as in-pilot (Stage 4), it now belongs to
+> the M3 spoke; single-site / edge store-and-forward resilience remains in pilot scope.
 
 ## Status legend
 
@@ -25,10 +33,10 @@ This VMP defines **how the LabSolution LIS will be validated** as a regulated me
 - the **LabSolution-owned driver / interface engine** (`edge/drivers`, planned) speaking MLLP/HL7 and ASTM over serial/TCP at the analyzer edge;
 - **ingest normalization** to LOINC/UCUM (LIS-8 / S0.6);
 - the **FHIR R4** interoperability surface (Stage 4) to downstream EMR/HIS;
-- **offline-first deployment** with store-and-forward and site↔central sync (Stage 4);
+- **single-site offline-first deployment** — edge store-and-forward + durable queue so an analyzer/edge restart loses no result *within a site* (M1 pilot scope);
 - the **analyzer simulator harness and conformance fixtures** (LIS-9 / S0.7) used as validation instruments.
 
-**Out of scope (this document)** — privacy/data-protection controls (covered by the **NPC checklist** under RA 10173, cross-referenced where they are *validated controls*: REQ-PRIV-\*); the executed dossier itself; and per-customer lab-specific operational SOPs, which each licensed laboratory must author against its own RA 4688 license.
+**Out of scope (this document / this pilot)** — privacy/data-protection controls (covered by the **NPC checklist** under RA 10173, cross-referenced where they are *validated controls*: REQ-PRIV-\*); the executed dossier itself; per-customer lab-specific operational SOPs, which each licensed laboratory must author against its own RA 4688 license; **and the site↔central sync / central-aggregation layer, which is the post-pilot M3 spoke** ([ADR-0002](../adr/0002-deployment-topology.md)) — validated separately as a delta on the M1 base behind the [compliance extra-work gate](m3-sync-compliance-gate.md), and tracked under REQ-RES-01/02, REQ-PRIV-08/09.
 
 Because the LIS holds patient identifiers and results, the data it processes is **RA 10173 "sensitive personal information"**; this elevates the rigor of validation (record integrity, audit, access control) but the privacy *filing* obligations are tracked in the NPC checklist, not here. One privacy control is also a **validated engineering deliverable, not documentation-only**: **REQ-PRIV-04** (data-subject rights — access, correction, erasure, objection) carries an **L4 E2E verification** in the traceability matrix (a data-subject request resolves to access/correction expressed as an append-only Result `corrected` version per LIS-7). It is therefore tested through this VMP's qualification frame (OQ→PQ), with the matrix level (L4) authoritative; its policy/filing aspects remain in the NPC checklist.
 
@@ -56,9 +64,9 @@ This VMP does **not** invent clause numbers, thresholds, or dates beyond the abo
 The LabSolution LIS is **not** validated as an opaque whole. It is decomposed into:
 
 1. a **KNOWN BASE** — the **pinned OpenELIS Global 2 fork** at a specific upstream tag/SHA (established by LIS-3 / S0.1), and
-2. **LabSolution DELTAS** — the driver/interface engine, LOINC/UCUM normalization, FHIR R4 surface, offline sync, and any core modifications.
+2. **LabSolution DELTAS** — the driver/interface engine, LOINC/UCUM normalization, FHIR R4 surface, single-site edge store-and-forward, and any core modifications. **The site↔central sync / central-aggregation layer is a later delta** — the post-pilot **M3** spoke (ADR-0002), validated on top of the *validated pilot snapshot* rather than as part of it.
 
-Validation effort concentrates on the **deltas** and on the **seams** between base and deltas (ingest normalization, channel isolation, result versioning). The known base carries forward its inherited behavior, re-confirmed by regression rather than re-validated from zero on every change. This is what makes the validation tractable and what every later stage relies on: **each stage validates the delta it introduces on top of an already-known base.**
+Validation effort concentrates on the **deltas** and on the **seams** between base and deltas (ingest normalization, channel isolation, result versioning). The known base carries forward its inherited behavior, re-confirmed by regression rather than re-validated from zero on every change. This is what makes the validation tractable and what every later stage relies on: **each stage validates the delta it introduces on top of an already-known base.** The M3 sync spoke is the clearest example: the M1 pilot is the known base, and sync is validated as a change-control delta (REQ-QMS-03) on it — never a black-box re-validation.
 
 ### 3.2 Reproducibility = the pinned-submodule snapshot (REQ-VAL-02)
 Per **ADR-0001**, one `lis-control` umbrella commit pins every component (the OpenELIS core and, later, `edge/drivers`, `plugins`, `deploy/kit`, `infra`) at exact SHAs. Therefore **one umbrella commit = one reproducible, pinned snapshot of the entire system**. That snapshot *is* the IQ/OQ/PQ spine: the IQ "what was installed" is answerable precisely (component SHAs), and any validated state can be reconstructed from a clean recursive checkout. Reproducible CI bootstrap to a 200 health check (LIS-4 / S0.2) is the executable evidence for REQ-VAL-02.
@@ -66,7 +74,7 @@ Per **ADR-0001**, one `lis-control` umbrella commit pins every component (the Op
 ### 3.3 Risk-based approach `[DRAFTED]`
 Validation depth scales with patient-safety and data-integrity risk. Indicative risk tiers (to be ratified by the QA/regulatory owner):
 
-- **High** — anything that can corrupt, lose, or misattribute a result: ingest normalization (LIS-8), result store + versioning (LIS-7), append-only audit (LIS-6), RBAC + result release (LIS-5, RA 4688), offline sync reconciliation (Stage 4, **no last-writer-wins**), QC/autoverification gating (Stage 5, REQ-QMS-04).
+- **High** — anything that can corrupt, lose, or misattribute a result: ingest normalization (LIS-8), result store + versioning (LIS-7), append-only audit (LIS-6), RBAC + result release (LIS-5, RA 4688), QC/autoverification gating (Stage 5, REQ-QMS-04); **and — in the post-pilot M3 spoke — site↔central sync reconciliation (no last-writer-wins).**
 - **Medium** — channel isolation (a bad driver must not corrupt the core, REQ-SEC-03), FHIR R4 export fidelity, encryption in transit/at rest (REQ-SEC-01/02).
 - **Lower** — UI cosmetics, non-PHI reporting layout.
 
@@ -83,9 +91,14 @@ Analyzer (physical) → [edge driver: MLLP/HL7, ASTM serial/TCP]
         → Ingest normalization (raw_value/raw_unit/raw_code → LOINC + UCUM)
         → OpenELIS core (Patient → Order → Specimen → Result; RBAC + append-only audit cross-cutting)
         → FHIR R4 surface → downstream EMR/HIS
-        ⇅ Offline sync (store-and-forward; append-only result versions + explicit reconciliation)
+        ⇄ Edge store-and-forward within the site (M1 pilot — no result lost on edge/analyzer restart)
+        ⇅ [POST-PILOT M3 SPOKE] Site↔central sync to LabSolution's own in-PH datacenter
+              (store-and-forward; append-only result versions + explicit reconciliation; NOT in the pilot)
 ```
-See `diagrams/01-reference-architecture.png` and the controls overlay `diagrams/06-regulatory-controls-map.png`.
+The pilot validates everything **above** the M3 line (the fully-onsite M1 dataflow). The `⇅` site↔central sync
+crossing is the post-pilot M3 spoke (ADR-0002), validated later as a delta. See
+`diagrams/01-reference-architecture.png`, the offline-sync view `diagrams/05-offline-sync-topology.png` (the M3
+spoke), and the controls overlay `diagrams/06-regulatory-controls-map.png`.
 
 ### 4.2 Validated data objects (PHI-bearing)
 `Patient → Order/Requisition → Specimen/Sample → Result` (entity-relationship view: `diagrams/07-er-data-model.png`, the same ER basis used by the NPC checklist §D and the traceability matrix). **Result** is the highest-risk object: it stores `raw_value`, `raw_unit`, `raw_code`, `loinc`, `ucum_value`, `status` (preliminary/final/corrected), `verified_by`, `instrument_id`, `flags`, with **append-only versions** (LIS-7). `Instrument → InterfaceChannel`, `QCResult → Westgard/Levey-Jennings`, `User → Role`, and **every mutation writes an append-only `AuditEvent`** (LIS-6).
@@ -99,9 +112,9 @@ The LIS is a **configurable, customized application** in CSV terms: a configurab
 
 | Role | Responsibility in validation | Status |
 |---|---|---|
-| **System owner** | Owns the LIS as a product; accountable that a validated system is deployed. | `[NEEDS-HUMAN]` — name to be assigned. |
+| **System owner** | Owns the LIS as a product; accountable that a validated system is deployed. | Marloe Uy |
 | **Validation lead** | Authors/executes URS→FRS→DQ→IQ→OQ→PQ; maintains the traceability matrix as the spine. | `[NEEDS-HUMAN]` — assign. |
-| **QA / regulatory owner** | Owns ISO 15189 conformance, risk classification, deviation disposition, change-control approval, and the link to DOH/HFSRB licensing and NPC registration. | `[NEEDS-HUMAN]` — **this is the blocking gap.** |
+| **QA / regulatory owner** | Owns ISO 15189 conformance, risk classification, deviation disposition, change-control approval, and the link to DOH/HFSRB licensing and NPC registration. | Artis Lindy Pinote |
 | **Pathologist approver** | Approves the result-release workflow (RA 4688) and signs PQ for clinical use. | `[NEEDS-HUMAN]` — named pathologist required. |
 | **Lab director / medtech reviewers (per site)** | Per RA 4688 / RA 5527, validate workflows under the site's own license. | `[NEEDS-HUMAN]` — per customer. |
 
@@ -118,7 +131,7 @@ The LIS is a **configurable, customized application** in CSV terms: a configurab
 | **DQ** — Design Qualification | Confirmation that the reference architecture (§4.1), channel isolation (REQ-SEC-03), append-only result versioning (REQ-DATA-01), and no-LWW reconciliation (REQ-RES-02) are designed to meet the FRS. | Design review signed; ADRs referenced. |
 | **IQ** — Installation Qualification | Evidence the system is installed as specified: **the pinned umbrella SHA + component SHAs** (REQ-VAL-02), environment, TLS/at-rest config, seeded LOINC/UCUM tables (LIS-8). | Recursive checkout reproduces the snapshot; CI green to a 200 health check (LIS-4). |
 | **OQ** — Operational Qualification | Evidence each function operates per FRS: RBAC denials (403, LIS-5), audit append-only + DB-layer mutation failure (LIS-6), driver vs simulated analyzer (LIS-9), end-to-end vendor-code → Result normalization (LIS-8), data-subject-rights request → access/correction via append-only `corrected` Result version (REQ-PRIV-04, L4). | All in-scope `REQ-*` functional tests pass with recorded evidence. |
-| **PQ** — Performance Qualification | Evidence the system performs in the real workflow: pathologist result release (RA 4688), **QC engine + autoverification gating (Westgard multirules, Levey-Jennings, delta checks — REQ-QMS-04)**, resilience under WAN outage / edge restart / sync conflict with **zero data loss** (REQ-RES-01). | Acceptance per documented PQ protocol; pathologist sign-off `[NEEDS-HUMAN]`. |
+| **PQ** — Performance Qualification | Evidence the system performs in the real workflow: pathologist result release (RA 4688), **QC engine + autoverification gating (Westgard multirules, Levey-Jennings, delta checks — REQ-QMS-04)**, and **single-site resilience under edge/analyzer restart with zero loss**. *(WAN-outage + site↔central sync-conflict resilience with no LWW — REQ-RES-01/02 — is the post-pilot **M3 spoke's** PQ, not the pilot's.)* | Acceptance per documented PQ protocol; pathologist sign-off `[NEEDS-HUMAN]`. |
 
 Each phase's protocol, executed record, and sign-off are themselves controlled records (§11). In Stage 0 only the **templates/outlines** of these deliverables are produced; execution is staged (§12).
 
@@ -190,8 +203,9 @@ Each stage closes on its **verifiable output (exit gate)** and contributes evide
 |---|---|---|
 | **Stage 0 — Foundations & compliance scaffold** | This VMP outline + NPC checklist + threat model + seeded matrix (LIS-10); fork/MPL-2.0 inventory = REQ-LIC-01, analyzer-bridge license HOLD = REQ-LIC-02 (LIS-3 / HOLD-001); reproducible bootstrap = IQ seed (LIS-4); RBAC/audit/result/normalization controls proven (LIS-5/6/7/8); simulator harness (LIS-9). | Compliance artifacts exist in-repo and are **reviewed**; matrix maintained. |
 | **Stage 1–3 — Drivers & conformance** | L1/L2 unit+component per channel; **L3 signed bench-conformance** before "supported" (REQ-CONF-01). | Per-analyzer conformance reports signed. |
-| **Stage 4 — API & offline** | L4 E2E (instrument → normalized Result → **FHIR R4**); store-and-forward + **no-LWW reconciliation** designed for L5 (REQ-RES-01/02). | FHIR + offline sync demonstrable. |
-| **Stage 5 — Validation + pilot** | **Execute IQ/OQ/PQ** and produce the **signed dossier** (REQ-VAL-01); **QC engine — Westgard multirules, Levey-Jennings, delta checks, autoverification gating (REQ-QMS-04)**; **file NPC registration** (REQ-PRIV-01); pen-test + remediation (REQ-SEC-04); TLS + at-rest verified (REQ-SEC-01/02); breach-runbook tabletop (REQ-PRIV-02); **pathologist result-release** workflow (RA 4688); go/no-go. | Signed IQ/OQ/PQ dossier + NPC registration filed; pilot go-live decision. |
+| **Stage 4 — API & edge resilience** | L4 E2E (instrument → normalized Result → **FHIR R4**); **single-site edge store-and-forward** (no result lost on edge/analyzer restart). *(Site↔central sync + no-LWW reconciliation, REQ-RES-01/02, is descoped from the pilot to the M3 spoke row below.)* | FHIR demonstrable; single-site edge resilience demonstrable. |
+| **Stage 5 — Validation + pilot (M1, fully onsite)** | **Execute IQ/OQ/PQ on the M1 topology** and produce the **signed dossier** (REQ-VAL-01); **QC engine — Westgard multirules, Levey-Jennings, delta checks, autoverification gating (REQ-QMS-04)**; pen-test of the on-prem deployment + remediation (REQ-SEC-04); TLS + at-rest verified (REQ-SEC-01/02); breach-runbook tabletop (REQ-PRIV-02, the **lab's** as PIC); **pathologist result-release** workflow (RA 4688); go/no-go. **NPC registration at the pilot is the customer lab's PIC filing** of the LIS (REQ-PRIV-01) plus LabSolution's own corporate filing/sworn declaration if triggered — **not** a LabSolution sync-service DPS (that is M3). | Signed IQ/OQ/PQ dossier (M1); lab PIC NPC registration filed; pilot go-live decision. |
+| **Post-pilot — M3 on-prem central-sync spoke** | **Gated by the [compliance extra-work checklist](m3-sync-compliance-gate.md).** Validate the sync spoke as a **change-control delta** on the validated M1 snapshot (REQ-QMS-03): store-and-forward zero-loss across WAN outage (REQ-RES-01); append-only result versions + explicit reconciliation, **no last-writer-wins** (REQ-RES-02) at L5; central-store at-rest encryption + key custody (REQ-SEC-02/05); per-site channel isolation (REQ-SEC-03); LabSolution **PIP** duties (own DPS registration REQ-PRIV-01, breach apparatus REQ-PRIV-02, RoPA/PIA REQ-PRIV-07, head DPA + flow-down REQ-PRIV-09); re-run threat model + PIA. | M3 compliance gate satisfied; sync-spoke IQ/OQ/PQ delta signed; LabSolution PIP NPC registration filed; spoke go-live decision. |
 
 > The **draft DOH AO 2021-0037 amendment** must be re-confirmed before the Stage-5 go/no-go (`[NEEDS-HUMAN]`); if signed, acceptance criteria are re-baselined.
 
@@ -203,9 +217,9 @@ This VMP is **not approved** until the following are named and have signed. No s
 
 | Approval | Name | Signature | Date |
 |---|---|---|---|
-| System owner | `[NEEDS-HUMAN]` | — | — |
+| System owner | Marloe Uy | marloeuyjr | June 23, 2026 |
 | Validation lead | `[NEEDS-HUMAN]` | — | — |
-| QA / regulatory owner (Decision #5) | `[NEEDS-HUMAN]` | — | — |
+| QA / regulatory owner (Decision #5) | Artis Lindy Pinote | — | — |
 | Pathologist approver (RA 4688) | `[NEEDS-HUMAN]` | — | — |
 
 ---
@@ -215,7 +229,7 @@ This VMP is **not approved** until the following are named and have signed. No s
 - **Regulatory ownership (Open Decision #5)** — who owns NPC registration, the ISO 15189 validation dossier, and per-customer lab-licensing alignment. **Blocks LIS-10 execution** and every signature line here.
 - **Build vs buy the interface engine (Open Decision #6)** — bespoke LabSolution drivers vs adopting an Open Integration Engine. This **determines which interface-engine codebase is a validated object**, drives the L1/L2 unit/component test surface (§7, §9), sets the per-analyzer conformance scope (REQ-CONF-01), and directly drives the license question (REQ-LIC-01 MPL-2.0 obligations / REQ-LIC-02 analyzer-bridge confirmation, HOLD-001). **The validated boundary of the system cannot be finalized until this is fixed.**
 - **Stack language (Open Decision #2)** — Java end-to-end vs polyglot edge. Changes the L1/L2 unit/component test surface for the drivers (tooling, codecs, conformance harness language) and therefore part of the OQ test plan.
-- **Deployment topology (Open Decision #3)** — central-cloud + thin sites vs full on-prem per site + central sync. Materially changes IQ scope (what is installed where), the resilience/PQ test matrix, and the validated boundary.
+- **Deployment topology (Open Decision #3)** — ✅ **RESOLVED by [ADR-0002](../adr/0002-deployment-topology.md):** pilot validates **M1 (fully onsite)**; the site↔central sync is the post-pilot **M3** spoke (LabSolution's own in-PH datacenter) behind the [compliance extra-work gate](m3-sync-compliance-gate.md); **M2 (public cloud) not selected.** This fixes the pilot IQ scope (single-site, no sync), the pilot PQ matrix (edge resilience, not WAN/sync-conflict), and the validated boundary. The M3 spoke reopens the resilience/PQ matrix as a delta.
 - **DOH AO 2021-0037 draft amendment** — track HFSRB consultation; re-confirm before Stage-5 go/no-go; re-baseline acceptance criteria if signed.
 - **CSV classification + formal risk method (FMEA or equivalent)** and **revalidation trigger thresholds** — require the appointed QA/regulatory owner.
 - **Retention durations + electronic-signature mechanism** for validation records (legal/regulatory input; confirm exact ISO 15189 clause and DOH submission format).

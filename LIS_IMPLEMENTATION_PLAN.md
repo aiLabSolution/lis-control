@@ -7,6 +7,15 @@
 > organizing rule: **no stage is "done" on code-complete — each closes on a
 > verifiable output** (an automated test, a reproducible demo on staging, or a
 > signed compliance artifact). The verification column is the contract.
+>
+> **⮕ DEPLOYMENT-TOPOLOGY DECISION (2026-06-24) — [docs/adr/0002-deployment-topology.md](docs/adr/0002-deployment-topology.md);
+> resolves Open Decision #3 below.** The **pilot deploys fully on-site at each lab, with no sync (M1)**. A **central
+> sync at LabSolution's own on-prem server (M3)** is a **separate post-pilot "spoke"**, decoupled from the pilot
+> critical path and gated by a **compliance extra-work checklist**
+> ([docs/compliance/m3-sync-compliance-gate.md](docs/compliance/m3-sync-compliance-gate.md)). **Public-cloud sync
+> (M2) is not selected.** Effect on this plan: **Stage 4's site↔central sync moves out of the pilot to the M3
+> spoke** (single-site edge store-and-forward + the deploy kit stay in the pilot); the **Stage-5 pilot runs on M1**;
+> the M3 sync spoke is validated later as a **change-control delta on the validated M1 base.**
 
 ---
 
@@ -27,7 +36,7 @@
 |---|---|---|
 | **A — Core** | OpenELIS fork, orders/results/QC/reporting, RBAC, audit, data model | Stages 0→5 |
 | **B — Edge/Integration** | Drivers, MLLP/ASTM/serial, normalization, per-analyzer conformance | Stages 1→3 |
-| **C — API & Offline** | FHIR R4, outbound HL7 to HIS, store-and-forward, site↔central sync | Stage 4 (designed from Stage 0) |
+| **C — API & Offline** | FHIR R4, outbound HL7 to HIS, single-site store-and-forward (pilot); **site↔central sync = post-pilot M3 spoke** | Stage 4 (pilot parts); M3 spoke (sync) |
 | **D — Compliance/QA** | ISO 15189 validation, RA 10173/NPC, audit/RBAC evidence, pen-test | Stages 0→5 (continuous) |
 
 - **Team assumption (from research):** ~2 engineers + 1 QA/regulatory, scaling
@@ -65,8 +74,9 @@ and becomes the spine of the validation dossier in Stage 5.
 | **1 — HL7 v2 edge** | *First result through the pipe* — **EDAN H60S** (+ HETO AU120); RAC-050 / labXpert deferred | 1,2,3,4 | 4–6 wks |
 | **2 — ASTM/serial edge** | Chemistry/electrolyte — **ERBA EC90** (sole available ASTM unit); DiaSys + serial fleet deferred | 1,2,3,4 | 6–8 wks |
 | **3 — Proprietary tails** | **MAGLUMI X3** (SnibeLis) + RT-7600 candidate; Mindray BC deferred | 2,3,4 | 4–6 wks |
-| **4 — FHIR API + offline** | EMR-ready + outage-proof + on-prem deploy kit | 1,4,5 | 4–6 wks |
-| **5 — Validation + pilot** | IQ/OQ/PQ signed; pilot go-live; NPC registered | 3,4,5,6 | 4–6 wks |
+| **4 — FHIR API + offline** | EMR-ready + outage-proof + on-prem deploy kit *(site↔central sync descoped to the M3 spoke)* | 1,4,5 | 4–6 wks |
+| **5 — Validation + pilot (M1, fully onsite)** | IQ/OQ/PQ signed on M1; pilot go-live; **lab files PIC NPC registration** | 3,4,5,6 | 4–6 wks |
+| **M3 — On-prem central-sync spoke (post-pilot)** | site↔central sync to LabSolution's own in-PH server; **gated by the [compliance extra-work checklist](docs/compliance/m3-sync-compliance-gate.md)** + a change-control validation delta on the M1 base | 4,5,6 | after pilot |
 | **6 — Scale-out (optional)** | 2nd site from kit; upstream generic plugins | 3,4,6 | ongoing |
 
 > **⚠️ Availability re-scope (2026-06-26).** The physically-available test fleet
@@ -203,44 +213,79 @@ pending a wire-format capture (LIS-76). See the
 
 ---
 
-### Stage 4 — FHIR R4 API + offline/sync
-**Goal:** EMR-ready API and rural-ready resilience; the part that makes outages survivable.
+### Stage 4 — FHIR R4 API + single-site edge resilience
+**Goal:** EMR-ready API and single-site resilience; the deploy kit that makes an on-prem
+install repeatable. *(Site↔central sync is descoped from the pilot to the post-pilot M3 spoke,
+ADR-0002 — see the M3 spoke detail below.)*
 
 **Key tasks**
 - **HAPI FHIR R4:** ServiceRequest, Specimen, DiagnosticReport, Observation, Patient, Device; outbound HL7 v2 to HIS.
-- **Store-and-forward** durable queue at the edge; **site↔central** replication with
-  **append-only result versions + explicit reconciliation** (no last-writer-wins).
-- Offline-durable audit; **on-prem deploy kit**.
+- **Store-and-forward** durable queue **at the edge, within a site** — an analyzer/edge restart loses no result.
+  *(The append-only result-version model is built now so the M3 spoke's cross-site reconciliation has a base; the
+  site↔central replication itself is M3.)*
+- Offline-durable audit; **on-prem deploy kit** (single-site, M1).
 
-**Deliverables:** FHIR API; sync service; deploy kit; chaos tests.
+**Deliverables:** FHIR API; single-site edge queue; deploy kit; edge-resilience tests.
 
 **✅ Verifiable output (exit gate)**
 - **FHIR conformance:** a result returns as a valid R4 **DiagnosticReport + Observation**
   (passes `$validate`); an order posts as **ServiceRequest**.
-- 🔌 **Outage test (key):** sever WAN → ingest N results at edge → restore link →
-  **all N forwarded, zero loss**, audit merges with **no gaps**; queue survives an edge restart.
-- **Sync-conflict test:** concurrent edits produce **versioned results + a reconciliation entry** (never silent LWW).
+- 🔌 **Edge-restart test:** ingest N results at the edge → restart the edge service →
+  **all N persisted, zero loss**, audit with **no gaps**.
 - **Deploy kit:** a single-site on-prem install completes on a clean box; smoke test green.
 
 ---
 
-### Stage 5 — Validation + pilot (production at one site)
-**Goal:** make it auditable and put it live at one lab under supervision.
+### Stage 5 — Validation + pilot (M1, fully onsite, production at one site)
+**Goal:** make it auditable and put it live at one lab under supervision — **fully on-site, no
+sync** (M1, ADR-0002).
 
 **Key tasks**
-- Execute **IQ/OQ/PQ** against the traceability matrix; resolve deviations.
+- Execute **IQ/OQ/PQ** against the traceability matrix on the **M1 topology**; resolve deviations.
 - **QC engine:** Westgard multirules, Levey-Jennings, delta checks; autoverification gating.
-- File **NPC registration**; **pen-test** + remediation; user training; cutover runbook.
+- **NPC registration:** the **customer lab files as PIC** for the LIS it operates; LabSolution files only its **own
+  corporate** registration/sworn declaration if triggered — **no sync-service DPS** (that is the M3 spoke).
+- **Pen-test** the on-prem deployment + remediation; user training; cutover runbook.
+- **FDA SaMD check (REQ-REG-01):** if autoverification/CDS qualifies the product as a medical device, confirm the
+  manufacturer registration path — **topology-invariant, may apply at the pilot.**
 
-**Deliverables:** validation dossier; QC config; pilot deployment; pen-test report; NPC confirmation.
+**Deliverables:** validation dossier (M1); QC config; pilot deployment; pen-test report; lab NPC confirmation.
 
 **✅ Verifiable output (exit gate)**
-- **Signed IQ/OQ/PQ dossier:** every requirement traced to a test case with evidence; deviations closed.
+- **Signed IQ/OQ/PQ dossier (M1):** every requirement traced to a test case with evidence; deviations closed.
 - **QC behavior:** a Westgard violation (e.g., 1₃s / 2₂s) **blocks autorelease**;
   Levey-Jennings renders; a delta-check flags an implausible change (test vectors).
-- **Security:** pen-test criticals remediated; **TLS on MLLP/sync** + **encryption at rest** verified by test.
-- **NPC registration** reference recorded; **breach runbook** tabletop-rehearsed.
+- **Security:** pen-test criticals remediated; **TLS on MLLP** + **encryption at rest (per-site DB)** verified by test.
+- **NPC registration** reference recorded (lab PIC); **breach runbook** (the lab's, as PIC) tabletop-rehearsed.
 - **Pilot UAT:** agreed parallel-run window with discrepancy rate ≤ threshold; **pathologist result-release** workflow exercised; go/no-go signed.
+
+---
+
+### M3 — On-prem central-sync spoke (post-pilot)
+**Goal:** add cross-site aggregation by syncing PHI to **LabSolution's own on-prem server in PH** — **after** the
+pilot, as a change-control **delta on the validated M1 base** (not a re-validation). **Public cloud (M2) is not
+used.**
+
+**Gate (must precede the spoke):** the **compliance extra work** in
+[`docs/compliance/m3-sync-compliance-gate.md`](docs/compliance/m3-sync-compliance-gate.md) — LabSolution becomes a
+**PIP with physical custody** and must register its **own aggregation DPS** (NPC), execute the **head DPA +
+middleware flow-down**, stand up its **own breach apparatus**, design **central key custody** + datacenter
+**physical-security/BCP**, and **re-run the threat model + PIA**.
+
+**Key tasks**
+- **Site↔central** store-and-forward replication with **append-only result versions + explicit reconciliation** (no
+  last-writer-wins); central node on LabSolution's in-PH infrastructure with per-lab tenant isolation.
+- At-rest encryption + key custody for the **aggregated** store; TLS + mutual peer auth on the sync channel.
+
+**Deliverables:** sync service; central node; updated compliance artifacts (matrix/NPC/VMP/PIA at M3 scope); sync-spoke validation delta.
+
+**✅ Verifiable output (exit gate)**
+- **M3 compliance gate satisfied** (the checklist above signed off).
+- 🔌 **Outage test:** sever WAN → ingest N results at a site → restore link → **all N forwarded to central, zero
+  loss**, audit merges with **no gaps**.
+- **Sync-conflict test:** concurrent cross-site edits produce **versioned results + a reconciliation entry** (never
+  silent LWW).
+- **Signed validation delta** on the M1 base (REQ-QMS-03); **LabSolution PIP NPC registration** filed; spoke go/no-go signed.
 
 ---
 
@@ -256,14 +301,17 @@ pending a wire-format capture (LIS-76). See the
 
 ## 4. Milestones
 
+> *Milestone IDs use an `MS` prefix to avoid collision with the deployment models M1/M2/M3 (ADR-0002).*
+
 | ID | Milestone | Closes |
 |---|---|---|
-| **M1** | Core boots reproducibly in CI; audit/RBAC proven | Stage 0 |
-| **M2** | 🎯 *First result through the pipe* | Stage 1 |
-| **M3** | Chemistry/electrolyte fleet live | Stage 2 |
-| **M4** | Proprietary tails integrated | Stage 3 |
-| **M5** | EMR-ready + outage-proof | Stage 4 |
-| **M6** | Validated pilot go-live | Stage 5 |
+| **MS1** | Core boots reproducibly in CI; audit/RBAC proven | Stage 0 |
+| **MS2** | 🎯 *First result through the pipe* | Stage 1 |
+| **MS3** | Chemistry/electrolyte fleet live | Stage 2 |
+| **MS4** | Proprietary tails integrated | Stage 3 |
+| **MS5** | EMR-ready + single-site resilient | Stage 4 |
+| **MS6** | Validated pilot go-live (M1, fully onsite) | Stage 5 |
+| **MS7** | On-prem central-sync spoke live (post-pilot, after the compliance gate) | M3 spoke |
 
 ---
 
@@ -291,7 +339,7 @@ pending a wire-format capture (LIS-76). See the
 
 1. **Core strategy** — confirm "fork OpenELIS" vs greenfield.
 2. **Stack language** — Java end-to-end vs polyglot edge (Python drivers + Java core).
-3. **Deployment topology** — central-cloud + thin sites vs full on-prem per site + central sync.
+3. ~~**Deployment topology**~~ — ✅ **RESOLVED ([ADR-0002](docs/adr/0002-deployment-topology.md), 2026-06-24):** pilot = **M1 fully onsite, no sync**; chosen sync model = **M3 own on-prem central sync** as a post-pilot spoke behind the [compliance extra-work gate](docs/compliance/m3-sync-compliance-gate.md); **M2 public cloud not selected.**
 4. **v1 fleet scope** — HL7 group only first, or commit to full ASTM + proprietary before pilot.
 5. **Regulatory ownership** — who owns NPC registration + the ISO 15189 dossier.
 6. **Build vs buy the interface engine** — adopt OIE vs minimal bespoke drivers on HAPI/python-hl7.

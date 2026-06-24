@@ -1,11 +1,23 @@
 # LIS-10 — Preparation Brief (plain language)
 
-> Prepared 2026-06-23 for **LIS-10 / [S0.8] "Compliance scaffold"**. This is the
-> human-facing wrapper for the four compliance artifacts in this folder. It explains —
-> in plain language — **what LIS-10 actually asks for, what has already been drafted,
-> what still needs a human decision, and how to close the issue.** Nothing here needs to
-> be read in order; jump to [§4 Decisions](#4-what-needs-you-the-decisions) if you only
-> have five minutes.
+> Prepared 2026-06-23 for **LIS-10 / [S0.8] "Compliance scaffold"**; **revised 2026-06-24**
+> for the deployment-topology decision. This is the human-facing wrapper for the compliance
+> artifacts in this folder. It explains — in plain language — **what LIS-10 actually asks for,
+> what has already been drafted, what still needs a human decision, and how to close the
+> issue.** Nothing here needs to be read in order; jump to
+> [§4 Decisions](#4-what-needs-you-the-decisions) if you only have five minutes.
+
+> **⮕ TOPOLOGY DECISION (2026-06-24).** One of the four 🔴 blockers below — **DEC-03 (deployment
+> topology)** — is now **decided** (recorded in [ADR-0002](../adr/0002-deployment-topology.md)):
+> the **pilot runs fully on-site at each lab, with no sync (M1)**; a **central sync at our own
+> on-prem server (M3)** is a **separate, later "spoke" built after the pilot**, behind a
+> **compliance extra-work gate** ([`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md));
+> **public cloud (M2) is not the path.** In plain terms: **the pilot no longer waits on any of
+> the sync/central-server privacy paperwork** — for the pilot, each customer lab is the
+> data-controller and registers its own system, and LabSolution (holding no patient data) carries
+> almost no privacy duty. Two newer artifacts now sit alongside the original four:
+> [`responsibility-and-deployment.md`](responsibility-and-deployment.md) (who's the regulated
+> party, per model) and the M3 gate above.
 
 ---
 
@@ -41,7 +53,7 @@ Plus two registers and this brief, also produced as part of the prep:
 
 | File | What it is |
 |---|---|
-| [`decisions-register.md`](decisions-register.md) | **26 decisions parked for you** — deduplicated across all four artifacts, each with why it matters, the options, a recommendation, the owner, and what it blocks. Ranked 🔴 blocks-LIS-10 → 🟠 blocks-a-later-stage → 🟡 tidy-up-before-signing. |
+| [`decisions-register.md`](decisions-register.md) | **26 decisions** — deduplicated across all artifacts, each with why it matters, the options, a recommendation, the owner, and what it blocks. **DEC-03 (topology) is now decided (ADR-0002); 25 remain parked.** Ranked 🔴 blocks-LIS-10 → 🟠 blocks-a-later-stage → 🟡 tidy-up-before-signing. |
 | [`reading-list.md`](reading-list.md) | The **primary sources to read before deciding** (laws, the ISO standard, the NPC circular, the licence questions), grouped must-read vs reference, each mapped to the decision it informs. |
 | `LIS-10-preparation-brief.md` | This document. |
 
@@ -82,7 +94,7 @@ actually block LIS-10 from being closed** are:
 |---|---|---|---|
 | **DEC-01** | **Who owns regulatory** — name the accountable owner for NPC registration + the ISO 15189 validation dossier (and how per-customer lab licensing is split). | This is *the* gate. Until there's a named owner, **no document can be signed**, no "Owner" cell can be filled, and the DPO can't report to anyone. | Research §13 **#5** |
 | **DEC-02** | **Appoint a Data Protection Officer (DPO).** | A named person is legally required and the NPC filing needs their contact. Reports into DEC-01. | RA 10173 |
-| **DEC-03** | **Deployment topology** — cloud-central + thin sites, vs full on-prem per site + central sync. | Changes the privacy/data-residency posture, the at-rest attack surface, and which vendor agreements you need. The privacy impact assessment can't be finished without it. | Research §13 **#3** |
+| ~~**DEC-03**~~ ✅ **DECIDED** | **Deployment topology** — ~~cloud-central vs on-prem~~. **Resolved ([ADR-0002](../adr/0002-deployment-topology.md)): M1 fully-onsite pilot → M3 own on-prem central-sync as a post-pilot spoke; M2 public cloud not selected.** | *No longer blocks LIS-10.* It also **decoupled the sync/PIP privacy paperwork from the pilot** (now the M3 extra-work gate). | Research §13 **#3** |
 | **DEC-04** | **Build vs buy the instrument interface engine.** | Decides which codebase becomes a "validated object" and reopens the licence question (the `openelis-analyzer-bridge` has **no declared licence** — tracked as HOLD-001). | Research §13 **#6** |
 
 There are also four **🟡 internal-consistency decisions** (DEC-22 → DEC-26) that the review
@@ -92,8 +104,9 @@ treated as the signed dossier's spine. I've already fixed the one purely-mechani
 (file paths — see [§6](#6-housekeeping-already-handled)); the rest are genuine judgment
 calls left for you.
 
-> **Bottom line:** the hard blocker is **DEC-01 (regulatory ownership)**. Take that one and
-> DEC-02/03/04, and almost everything else unlocks.
+> **Bottom line:** **DEC-03 (topology) is now decided** — the remaining hard blocker is
+> **DEC-01 (regulatory ownership)**. Take that one plus DEC-02 (DPO) and DEC-04 (interface
+> engine), and almost everything else unlocks.
 
 ## 5. How to actually close LIS-10
 

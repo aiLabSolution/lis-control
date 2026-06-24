@@ -1,13 +1,20 @@
 # LabSolution LIS — Reading List (Stage-0 Compliance Scaffold)
 
 > This is a Stage-0 SCAFFOLD reading list prepared for **LIS-10** ([S0.8] Compliance scaffold),
-> drafted by an agent and **pending human review** (2026-06-23). It consolidates and
-> **deduplicates** the sources cited across the four Stage-0 compliance artifacts (VMP outline,
-> NPC checklist, threat model, traceability matrix), and adds the must-reads implied by the
-> grounding facts. Grouped **Must-read before deciding** (read before taking the related
-> Decisions-Register items) and **Reference**. Where a clause/window/process is asserted but not
-> in the grounding facts, the human must **confirm against the primary text** rather than the
-> drafted artifact.
+> drafted by an agent and **pending human review** (2026-06-23; revised 2026-06-24). It
+> consolidates and **deduplicates** the sources cited across the Stage-0 compliance artifacts
+> (VMP outline, NPC checklist, threat model, traceability matrix, responsibility-and-deployment
+> note), and adds the must-reads implied by the grounding facts. Grouped **Must-read before
+> deciding** (read before taking the related Decisions-Register items) and **Reference**. Where a
+> clause/window/process is asserted but not in the grounding facts, the human must **confirm
+> against the primary text** rather than the drafted artifact.
+
+> **⮕ TOPOLOGY DECISION (2026-06-24).** **DEC-03 is resolved** ([ADR-0002](../adr/0002-deployment-topology.md)):
+> M1 fully-onsite pilot → M3 own on-prem central-sync as a post-pilot spoke; M2 public cloud not
+> selected. The **cross-border / data-residency** and **PIP-status** reading below is now mainly
+> relevant to the **M3 spoke** (the [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md)
+> "compliance extra work"), **not** the pilot. The full citation set for the PIC/PIP split lives
+> in [`responsibility-and-deployment.md`](responsibility-and-deployment.md) §8.
 
 ## Must-read before deciding
 

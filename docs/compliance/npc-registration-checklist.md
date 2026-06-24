@@ -1,6 +1,17 @@
 # NPC Registration & Data-Privacy Compliance Checklist — LabSolution LIS
 
-> **Stage-0 SCAFFOLD / OUTLINE prepared for LIS-10 (S0.8).** Drafted by an agent on **2026-06-23**, pending human review. This is the data-privacy spine for RA 10173 (Data Privacy Act of 2012) compliance and the National Privacy Commission (NPC) registration filing that must complete **before go-live**. Items below are seeded against the canonical requirement-ID registry maintained in the traceability matrix. Many items depend on legal-entity facts, appointments, signatures, and the actual NPCRS filing — these are honestly marked **[NEEDS-HUMAN]** and several are blocked on open leadership decision **#5 (regulatory ownership)** and **#3 (deployment topology / data residency)**.
+> **Stage-0 SCAFFOLD / OUTLINE prepared for LIS-10 (S0.8).** Drafted by an agent on **2026-06-23**, **revised 2026-06-24** for the deployment-topology decision; pending human review. This is the data-privacy spine for RA 10173 (Data Privacy Act of 2012) compliance and the National Privacy Commission (NPC) registration filing that must complete **before go-live**. Items below are seeded against the canonical requirement-ID registry maintained in the traceability matrix. Many items depend on legal-entity facts, appointments, signatures, and the actual NPCRS filing — these are honestly marked **[NEEDS-HUMAN]** and several are blocked on open leadership decision **#5 (regulatory ownership)**.
+
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0002](../adr/0002-deployment-topology.md); resolves decision #3.** The
+> pilot deploys on **M1 — fully onsite**. For the pilot: **the customer lab/hospital is the PIC and registers the
+> operational LIS; LabSolution is NEITHER PIC nor PIP** (a software supplier holding no PHI — subject to the
+> zero-PHI-access premise, §A4) and registers only its **own corporate** systems if triggered. The cross-border
+> question is **inert** (PHI never leaves the lab). Therefore **this checklist's pilot scope excludes**:
+> LabSolution's own sync-service DPS registration, the cloud-host DPA, and cross-border flow-down. Those are
+> **M3 "compliance extra work"** — when LabSolution becomes a **PIP with physical custody** for the post-pilot
+> on-prem central-sync spoke — and live in [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md). Items below
+> tagged **[M3 EXTRA WORK]** do **not** apply to the pilot. **Public-cloud sync (M2) is not selected**, so the
+> cloud-host items are parked.
 
 ## Status legend
 
@@ -15,15 +26,21 @@
 
 ## A. Applicability & threshold assessment
 
-> **Conclusion: NPC registration is MANDATORY for the LabSolution LIS.** A clinical-laboratory LIS stores patient identifiers plus diagnostic results — this is **sensitive personal information** under RA 10173. Any production LIS clears the NPC Circular 2022-04 registration thresholds.
+> **Conclusion: NPC registration of the operational LIS is MANDATORY — and at the M1 pilot it is the customer
+> lab's filing as PIC, not LabSolution's.** A clinical-laboratory LIS stores patient identifiers plus diagnostic
+> results — **sensitive personal information** under RA 10173 — so any production LIS clears the NPC Circular 2022-04
+> thresholds. **At the M1 pilot the DOH-licensed lab is the PIC and registers the LIS it operates;** LabSolution is
+> a software supplier (neither PIC nor PIP) and files only its **own corporate** registration/sworn declaration if
+> triggered (e.g. ≥250 employees). LabSolution's own **sync-service DPS registration** arises only with the M3
+> spoke (when it becomes a PIP) — see [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md), item M3-2.
 
 | Item | What / why | Status | Owner | Evidence/Artifact | Req ID |
 | --- | --- | --- | --- | --- | --- |
 | A1 | Classify LIS data as **sensitive personal information** under RA 10173 — health/medical records (Patient identifiers + Result.raw_value/loinc/status) are explicitly sensitive PII. | `[DRAFTED]` | Regulatory owner (per decision #5) | This checklist §A; data-flow inventory in §D | REQ-PRIV-05 |
 | A2 | Threshold test — **sensitive PII of ≥1,000 individuals** OR **≥250 employees** OR **high-risk processing**. A real lab fleet processes far more than 1,000 patients; processing health data at scale is high-risk by nature. Any one trigger suffices. (NPC Circular 2022-04.) | `[DRAFTED]` | Regulatory owner | Threshold determination memo (to be signed) | REQ-PRIV-01 |
 | A3 | Record that NPC Circular **17-01 is OBSOLETE**; registration is governed by **NPC Circular 2022-04**, filed via the online **NPCRS**. Do not follow 17-01 process or forms. | `[DRAFTED]` | Regulatory owner | This checklist §C, §J | REQ-PRIV-01 |
-| A4 | Confirm registrant legal entity and PIC/PIP status — is LabSolution a **Personal Information Controller (PIC)**, a **Personal Information Processor (PIP)** for customer labs, or both (depends on deployment topology, decision #3). Each customer lab is itself a PIC under RA 4688. | `[NEEDS-HUMAN]` | Legal entity / counsel | Legal-entity determination | REQ-PRIV-01, REQ-PRIV-05 |
-| A5 | Document scope boundary — what LabSolution registers vs. what each licensed lab (RA 4688 DOH-registered clinical lab) registers separately. SaaS-central vs. full on-prem materially changes who controls which copy of PHI and the cross-border / data-residency posture for the offline-sync topology. | `[NEEDS-HUMAN]` | Regulatory owner + counsel | Scope-of-registration note (blocked on decision #3) | REQ-PRIV-01, REQ-PRIV-08 |
+| A4 | Confirm PIC/PIP status. **Resolved for the pilot by ADR-0002:** at **M1** the customer lab is the **PIC**; **LabSolution is NEITHER PIC nor PIP** (software supplier holding no PHI). **Load-bearing premise to confirm:** this holds only if no remote-support/telemetry/crash-dump/log/backup/update-channel/offshore-staff access actually touches live PHI — confirm the M1 data-flow with engineering and the characterization with counsel (NPC advisory-opinion route), and lock residual access with a scoped support DPA + break-glass (DEC-17). **[M3 EXTRA WORK]** at the M3 spoke LabSolution becomes a **PIP with physical custody** (gate doc M3-1). | `[NEEDS-HUMAN]` (premise confirmation) | Legal entity / counsel | Data-flow audit + PIC/PIP determination memo | REQ-PRIV-01, REQ-PRIV-05, REQ-PRIV-09 |
+| A5 | Document the scope boundary — **at M1 the lab registers the LIS it operates as PIC; LabSolution registers only its own corporate systems** (no DPS of the lab's). Cross-border/residency is **inert** at M1 (PHI never leaves the lab). **[M3 EXTRA WORK]** at the M3 spoke LabSolution must register its **own aggregation DPS** ("PIP using its own system as a service", NPC Circular 2022-04 Sec. 5(B)); the M3 transfer is **domestic** (in-PH datacenter), no cross-border. **(M2 public-cloud, with its offshore/cross-border disclosure, is not selected.)** | `[DRAFTED]` (M1 boundary) / `[NEEDS-HUMAN]` (M3, gate doc M3-2) | Regulatory owner + counsel | Scope-of-registration note (M1 resolved per ADR-0002) | REQ-PRIV-01, REQ-PRIV-08 |
 
 ---
 
@@ -33,7 +50,7 @@
 | --- | --- | --- | --- | --- | --- |
 | B1 | **Appoint a Data Protection Officer (DPO)** — RA 10173 requires a designated DPO; the NPCRS filing requires the DPO's name and contact. This is a named-person appointment, not a draftable artifact. | `[NEEDS-HUMAN]` | Executive / decision #5 owner | DPO appointment letter; DPO contact for NPCRS | REQ-PRIV-06 |
 | B2 | Define DPO mandate, independence, and reporting line (confirm exact clause in RA 10173 and its implementing issuances). | `[NEEDS-HUMAN]` | Executive | DPO charter | REQ-PRIV-06 |
-| B3 | Optionally appoint **Compliance Officer(s) for Privacy (COP)** per processing site if deployment is multi-site on-prem (decision #3). | `[NEEDS-HUMAN]` | Regulatory owner | COP designation(s) | REQ-PRIV-06 |
+| B3 | **Compliance Officer(s) for Privacy (COP)** — at **M1** each customer lab (as PIC) handles its own per-site COP/DPO; not a LabSolution duty. **[M3 EXTRA WORK]** LabSolution designates a COP/DPO for the PIP processing at its central node (gate doc M3-16). | `[NEEDS-HUMAN]` | Customer lab / (M3) regulatory owner | COP designation(s) | REQ-PRIV-06 |
 | B4 | Stand up a data-privacy accountability structure — who signs the PIA, who owns breach response, who interfaces with NPC. Cross-reference open decision **#5 (regulatory ownership)** which currently blocks ownership assignment for the whole of LIS-10. | `[NEEDS-HUMAN]` | Executive / decision #5 owner | RACI for privacy program | REQ-PRIV-06 |
 | B5 | Adopt a written data-privacy management program / privacy manual referencing the LIS controls (RBAC, audit, encryption). Scaffold can be drafted; sign-off is human. | `[DRAFTED]` | Regulatory owner | Privacy manual outline (to be drafted under VMP) | REQ-PRIV-06, REQ-QMS-01 |
 
@@ -47,7 +64,7 @@
 | --- | --- | --- | --- | --- | --- |
 | C1 | Create the **NPCRS account** for the registrant legal entity. | `[NEEDS-HUMAN]` | DPO / regulatory owner | NPCRS account credentials (held by DPO) | REQ-PRIV-01 |
 | C2 | Register the organization and the appointed DPO (legal name, address, DOH-license context, DPO contact) in the NPCRS step that handles organization/DPO details. Requires confirmed legal-entity facts (§A4) and a real DPO (§B1). *(Whether this is a discrete "Phase 1" is an assumption — see preamble and §J2.)* | `[NEEDS-HUMAN]` | DPO | NPCRS organization/DPO acknowledgement | REQ-PRIV-01, REQ-PRIV-06 |
-| C3 | Register the **data processing systems**: the LabSolution LIS (OpenELIS fork), the driver/interface engine (MLLP/ASTM edge), the offline sync store-and-forward layer, and the FHIR R4 / EMR interface. Each is a processing system handling PHI. *(Whether this is a discrete "Phase 2" is an assumption — see preamble and §J2.)* | `[NEEDS-HUMAN]` | DPO + engineering | NPCRS processing-system entries (informed by §D inventory) | REQ-PRIV-01, REQ-PRIV-07 |
+| C3 | Register the **data processing system** — at **M1** this is the **customer lab's** filing (as PIC) of the operational LIS it runs on-prem: the OpenELIS fork, the driver/interface engine (MLLP/ASTM edge), and the FHIR R4 / EMR interface. **No central-sync DPS exists at the pilot.** *(Whether this is a discrete "Phase 2" is an assumption — see preamble and §J2.)* **[M3 EXTRA WORK]** the site↔central sync / aggregation layer is registered later as **LabSolution's own DPS** when it becomes a PIP (gate doc M3-2). | `[NEEDS-HUMAN]` | Customer lab DPO + engineering | NPCRS processing-system entries (informed by §D inventory) | REQ-PRIV-01, REQ-PRIV-07 |
 | C4 | Assemble the supporting filing pack the NPCRS requires — security measures summary (§F), data-flow/processing description (§D), breach procedure (§G), data-sharing/outsourcing list (§H). Agent can draft the pack; submission is human. | `[DRAFTED]` (pack) / `[NEEDS-HUMAN]` (submission) | DPO | Filing pack folder under `docs/compliance/npc/` | REQ-PRIV-01, REQ-PRIV-07 |
 | C5 | **Execute the actual NPCRS filing** and obtain the Certificate of Registration / registration reference. Pay any fees. This is the irreducibly human, legally accountable act. | `[NEEDS-HUMAN]` | DPO / legal entity | NPC Certificate of Registration (go-live gate evidence) | REQ-PRIV-01 |
 | C6 | Calendar the **renewal / update** obligation (confirm whether and at what cadence NPCRS registrations expire at filing). | `[NEEDS-HUMAN]` | DPO | Renewal reminder in QMS calendar | REQ-PRIV-01, REQ-QMS-03 |
@@ -63,7 +80,7 @@
 | D1 | Draft the **RoPA** enumerating each processing activity: registration/order capture, specimen tracking, instrument result ingest, normalization, verification/release, EMR transmit, QC/PT reporting, sync. | `[DRAFTED]` | DPO + engineering | RoPA table under `docs/compliance/npc/ropa.md` | REQ-PRIV-07 |
 | D2 | Map data categories per entity — Patient (direct identifiers, sensitive health), Result (raw_value/raw_unit/raw_code/loinc/ucum_value/status/verified_by/flags), QCResult, Instrument/InterfaceChannel config. | `[DRAFTED]` | Engineering | Data-element catalog (derived from research §5.1) | REQ-PRIV-07, REQ-DATA-01 |
 | D3 | Draft the **PIA** for LIS data flows — identify privacy risks (unauthorized access, mis-routed result, sync conflict exposing wrong patient, edge-device theft) and map mitigations to §F controls. | `[DRAFTED]` (draft) / `[NEEDS-HUMAN]` (sign-off) | DPO + regulatory owner | PIA document under `docs/compliance/npc/pia.md` | REQ-PRIV-07, REQ-SEC-03 |
-| D4 | Document **data residency / cross-border** posture per flow — central-cloud vs. full on-prem changes whether PHI leaves the lab site or the country. **Blocked on deployment-topology decision #3.** | `[NEEDS-HUMAN]` | Architecture + DPO | Data-residency annex to PIA | REQ-PRIV-08, REQ-PRIV-07, REQ-RES-01 |
+| D4 | Document **data residency / cross-border** posture per flow. **Resolved for the pilot by ADR-0002:** at **M1** PHI never leaves the lab — cross-border is **inert**, no residency annex needed for the pilot. **[M3 EXTRA WORK]** the M3 spoke aggregates PHI to LabSolution's **in-PH** datacenter — a **domestic** transfer, still no cross-border (watch offshore DR/backup, gate doc M3-10). **(M2 public-cloud offshore is not selected.)** | `[DRAFTED]` (M1 inert) / `[NEEDS-HUMAN]` (M3) | Architecture + DPO | Data-residency annex to PIA (M3 only) | REQ-PRIV-08, REQ-PRIV-07, REQ-RES-01 |
 | D5 | PIA sign-off by DPO/regulatory owner — analysis is draftable; the accountable sign-off is human. | `[NEEDS-HUMAN]` | DPO | Signed PIA cover sheet | REQ-PRIV-07 |
 
 ---
@@ -111,11 +128,23 @@
 
 ## H. Data sharing & outsourcing agreements
 
-> Every party that touches PHI on LabSolution's behalf needs a **data-processing agreement (DPA)** or **data-sharing agreement (DSA)** under RA 10173. These are contracts requiring legal review and signatures — all **[NEEDS-HUMAN]**. The set of parties depends on deployment topology (decision #3). The sub-processor / DPA / DSA obligation across this section is anchored to **REQ-PRIV-09** in the traceability matrix so the contractual register is traceable in the spine.
+> Every party that touches PHI on LabSolution's behalf needs a **data-processing agreement (DPA)** under RA 10173
+> (the Rule X PIC→PIP / flow-down instrument — **not** a DSA, which is a PIC↔PIC tool and now optional per NPC
+> Advisory 2025-01). These are contracts requiring legal review and signatures — all **[NEEDS-HUMAN]**. The
+> obligation is anchored to **REQ-PRIV-09** so the contractual register is traceable in the spine.
+>
+> **Topology framing (ADR-0002).** At the **M1 pilot**, LabSolution holds no PHI, so the only DPA LabSolution needs
+> is a **narrow, scoped support DPA** for any remote-support / break-glass access that *could* touch live PHI
+> (prudent, not for ongoing processing). Any DPA with on-site analyzer middleware (SnibeLis / Mindray DMS, H2/H3)
+> that processes PHI within a site is the **customer lab's** call as PIC. The **head DPA (lab→LabSolution) and
+> back-to-back middleware flow-down are [M3 EXTRA WORK]** (gate doc M3-4/M3-5), arising only when LabSolution
+> becomes a PIP for the sync spoke. The **cloud-host DPA (H1) is parked — M2 is not selected.**
 
 | Item | What / why | Status | Owner | Evidence/Artifact | Req ID |
 | --- | --- | --- | --- | --- | --- |
-| H1 | **Cloud host** (if central-cloud topology, decision #3) — DPA covering PHI hosting, residency, sub-processors, breach cooperation. Residency posture routes to §D4. | `[NEEDS-HUMAN]` | Counsel + DPO | Signed cloud-host DPA | REQ-PRIV-09, REQ-PRIV-08 |
+| H0 | **Scoped support / break-glass DPA** (M1 pilot) — covers any remote-support access that could touch live PHI; bounds LabSolution to that scope/duration so it does not silently become a PIP (DEC-17). | `[NEEDS-HUMAN]` | Counsel + DPO | Signed support DPA + break-glass controls | REQ-PRIV-09 |
+| H1 | **Cloud host** — ⛔ **PARKED: M2 (public cloud) not selected (ADR-0002).** Not applicable to the M1 pilot or the M3 own-datacenter spoke. Revisit only if a future customer requires cloud residency. | `[PARKED]` | Counsel + DPO | (n/a unless M2 revived) | REQ-PRIV-09, REQ-PRIV-08 |
+| H1b | **Head DPA (lab → LabSolution)** — ✦ **[M3 EXTRA WORK]** the Rule X PIC→PIP contract binding LabSolution for the aggregation processing; mandatory before the M3 spoke (gate doc M3-4). Not needed for the M1 pilot. | `[NEEDS-HUMAN]` (M3) | Counsel + DPO | Signed head DPA | REQ-PRIV-09 |
 | H2 | **SnibeLis / SnibeLinker** instrument middleware — confirm whether PHI flows through vendor middleware; if so, DPA/DSA. (Also named in threat model §3 TB-1 / supply-chain context.) | `[NEEDS-HUMAN]` | Counsel + DPO | Signed vendor DPA | REQ-PRIV-09, REQ-PRIV-07 |
 | H3 | **Mindray DMS** data-management software — same determination and agreement. (Also named in threat model §3 supply-chain context.) | `[NEEDS-HUMAN]` | Counsel + DPO | Signed vendor DPA | REQ-PRIV-09, REQ-PRIV-07 |
 | H4 | **EMR / HIS** receiving FHIR R4 results — data-sharing agreement covering the outbound result feed (controller-to-controller vs. processor). | `[NEEDS-HUMAN]` | Counsel + DPO | Signed EMR/HIS DSA | REQ-PRIV-09, REQ-PRIV-07 |
@@ -153,12 +182,12 @@
 
 - The **actual NPCRS filing (C5)**, the **DPO appointment (B1)**, **PIA sign-off (D5)**, **lawful-basis register (E1)**, **minors/incapacity lawful basis (E6)**, the **breach-notification window confirmation (G1/J4)**, all **data-sharing/processing agreements (§H)**, and **retention periods (I1)** are irreducibly `[NEEDS-HUMAN]` — they need legal-entity facts, appointed persons, counsel review, signatures, or a regulator submission.
 - The whole NPC workstream is **gated on open leadership decision #5 (regulatory ownership)** — until ownership of NPC registration and the validation dossier is assigned, the Owner column cannot be populated with a real accountable person.
-- The **data-residency and PIC/PIP scope** questions (A4, A5, D4, §H1) are **gated on decision #3 (deployment topology)** — central-cloud vs. full on-prem changes which entity controls which PHI copy (REQ-PRIV-08) and which agreements are needed (REQ-PRIV-09).
+- The **data-residency and PIC/PIP scope** questions (A4, A5, D4, §H) are **✅ resolved for the pilot by ADR-0002**: at **M1** the lab is the PIC and registers the LIS, LabSolution is neither PIC nor PIP (zero-PHI premise to confirm, A4), and cross-border is inert. The PIP-status obligations — LabSolution's own DPS registration, head DPA + middleware flow-down, breach apparatus, physical custody, central key custody — are **[M3 EXTRA WORK]** consolidated in [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) and gate the post-pilot sync spoke, **not** the pilot.
 
 ## Deferred decisions (HITL)
 
 - **#5 — Regulatory ownership:** who owns NPC registration (DPO + accountable executive)? Blocks every Owner assignment in this checklist.
-- **#3 — Deployment topology / data residency:** central-cloud + thin sites vs. full on-prem per site + central sync. Determines PIC/PIP classification, cross-border posture (REQ-PRIV-08), and the set of DPAs/DSAs (REQ-PRIV-09).
+- **#3 — Deployment topology / data residency:** ✅ **RESOLVED by [ADR-0002](../adr/0002-deployment-topology.md)** — M1 (fully onsite) pilot; M3 (own in-PH datacenter) post-pilot sync spoke; M2 (public cloud) not selected. PIC/PIP classification, cross-border posture (REQ-PRIV-08), and the DPA set (REQ-PRIV-09) follow from this: pilot = lab-PIC/LabSolution-neither; spoke = LabSolution-PIP (the [M3 extra-work gate](m3-sync-compliance-gate.md)).
 - **DPO appointment** (B1): a named person must be designated before NPCRS organization/DPO registration.
 - **Erasure vs. medical-record retention** (E4/I3): policy decision reconciling RA 10173 data-subject erasure with ISO 15189 / RA 4688 retention duties.
 - **Minors / incapacitated lawful basis** (E6): counsel decision on RA 10173 grounds and guardian/parental authority for pediatric and incapacitated-patient PHI.
