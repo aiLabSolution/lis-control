@@ -1,0 +1,84 @@
+# LIS Stage 0 (LIS-4 / S0.2) — Reproducible bootstrap → 200 health check, in CI.
+#
+# Per ADR-0001 the umbrella `lis-control` is the reproducibility spine: a single
+# umbrella commit pins core/openelis at a known SHA. This job proves that pinned
+# snapshot boots reproducibly via `compose up` to a healthy core, with no manual
+# database or migration steps. (The fork's own e2e workflow is hard-gated to
+# `DIGI-UW/OpenELIS-Global-2` and does NOT run on our fork; unit/component tests
+# run on the fork via its inherited `backend.yml`.)
+name: Stage 0 — Core bootstrap health
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/openelis            # submodule pin bump
+      - deploy/ci/**
+      - .github/workflows/core-bootstrap-health.yml
+  pull_request:
+    paths:
+      - core/openelis
+      - deploy/ci/**
+      - .github/workflows/core-bootstrap-health.yml
+  workflow_dispatch:
+
+concurrency:
+  group: core-bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap-health:
+    name: compose up → 200 health check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # core/openelis volume paths are relative to the compose file's dir.
+      PD: core/openelis
+      COMPOSE: >-
+        -f core/openelis/docker-compose.yml
+        -f core/openelis/.github/ci/ci.memory-limits.yml
+        -f deploy/ci/compose.bootstrap.yml
+    steps:
+      # Checkout in two steps so the cross-repo token stays least-privilege:
+      # the umbrella uses the default GITHUB_TOKEN; the private core submodule uses a
+      # fine-grained PAT scoped read-only to aiLabSolution/OpenELIS-Global-2 ONLY.
+      # (A single checkout with token=PAT 403s on lis-control, which the PAT can't read.)
+      - name: Checkout umbrella (lis-control)
+        uses: actions/checkout@v4
+        # default token reads this repo; submodules fetched explicitly below
+
+      - name: Resolve pinned core SHA
+        id: pin
+        run: echo "sha=$(git rev-parse HEAD:core/openelis)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout pinned core (private cross-repo, PAT)
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/OpenELIS-Global-2
+          ref: ${{ steps.pin.outputs.sha }}
+          path: core/openelis
+          # First-level only (no submodules): the prebuilt-image bootstrap doesn't need
+          # OpenELIS's nested submodules (SSH-only Consolidated-Server, license-blocked
+          # tools/openelis-analyzer-bridge). See docs/adr/0002-stage0-bootstrap-and-ci.md.
+          submodules: false
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Resolve compose images (sanity)
+        run: docker compose --project-directory "$PD" $COMPOSE config --images
+
+      - name: compose up (prebuilt, digest-pinned — no source build, no manual steps)
+        run: docker compose --project-directory "$PD" $COMPOSE up -d
+
+      - name: Health check (DB ready + webapp deployed + UI 200)
+        run: bash deploy/ci/healthcheck.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --project-directory "$PD" $COMPOSE ps || true
+          echo "::group::webapp log"; docker logs openelisglobal-webapp 2>&1 | tail -150 || true; echo "::endgroup::"
+          echo "::group::database log"; docker logs openelisglobal-database 2>&1 | tail -50 || true; echo "::endgroup::"
+
+      - name: Teardown
+        if: always()
+        run: docker compose --project-directory "$PD" $COMPOSE down -v || true
