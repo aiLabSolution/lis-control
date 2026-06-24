@@ -20,6 +20,7 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 | [`traceability-matrix.md`](traceability-matrix.md) | **Traceability matrix (seed)** — requirement → verification → evidence; the authoritative `REQ-*` registry | Drafted, pending review |
 | [`decisions-register.md`](decisions-register.md) | **26 deferred decisions** (HITL), ranked by what they block | Open — for the human |
 | [`reading-list.md`](reading-list.md) | Primary sources to read before deciding | Reference |
+| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. | Drafted, pending review + counsel |
 
 The four core artifacts (VMP, NPC, threat model, matrix) are the literal deliverables named
 in the LIS-10 title; the brief, registers, and this index are the preparation wrapper.
