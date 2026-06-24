@@ -27,11 +27,11 @@ pattern: `https://app.plane.so/labsolution/projects/d7f3bcf7-0953-478f-a510-4599
 | `m3-sync-compliance-gate.md` | LIS-10 · 8 · Compliance Extra Work — M3 Sync Gate | `d3d78f8e-48ff-4600-a285-7b455bc12791` |
 
 `README.md` is the repo folder index and is intentionally **not** mirrored. ADRs (e.g.
-`docs/adr/0002-deployment-topology.md`) live outside `docs/compliance/` and are **not** mirrored
+`docs/adr/0004-deployment-topology.md`) live outside `docs/compliance/` and are **not** mirrored
 here. New compliance docs added later should be published as a new page and added to this table.
 
 > **⚠️ Sync status (2026-06-24 — topology decision).** The deployment-topology decision
-> ([ADR-0002](../adr/0002-deployment-topology.md)) revised **every** mirrored compliance doc and
+> ([ADR-0004](../adr/0004-deployment-topology.md)) revised **every** mirrored compliance doc and
 > added two new docs.
 > - ✅ **Rows 7–8 published** (new pages — IDs recorded above).
 > - ✅ **Pages 0–6 re-published** via API (the public API can't update a page in place); the

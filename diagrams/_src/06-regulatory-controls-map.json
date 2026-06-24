@@ -38,8 +38,8 @@
 {"type":"arrow","id":"e15","x":280,"y":491,"width":340,"height":65,"points":[[0,0],[340,65]],"strokeColor":"#c2255c","strokeWidth":2,"opacity":70,"endArrowhead":"arrow"},
 {"type":"arrow","id":"e16","x":280,"y":491,"width":340,"height":97,"points":[[0,0],[340,-97]],"strokeColor":"#c2255c","strokeWidth":2,"opacity":70,"endArrowhead":"arrow"},
 {"type":"arrow","id":"e18","x":280,"y":577,"width":340,"height":33,"points":[[0,0],[340,33]],"strokeColor":"#f06595","strokeWidth":2,"opacity":70,"endArrowhead":"arrow"},
-{"type":"text","id":"panelhdr","x":910,"y":276,"text":"RA 10173 accountability by deployment topology (ADR-0002)","fontSize":12,"strokeColor":"#e8590c"},
+{"type":"text","id":"panelhdr","x":910,"y":276,"text":"RA 10173 accountability by deployment topology (ADR-0004)","fontSize":12,"strokeColor":"#e8590c"},
 {"type":"rectangle","id":"panelbox","x":910,"y":298,"width":336,"height":244,"backgroundColor":"#ffe8d6","fillStyle":"solid","strokeColor":"#e8590c","strokeWidth":2,"roundness":{"type":3}},
 {"type":"text","id":"paneltext","x":924,"y":308,"width":312,"height":224,"text":"M1 — pilot (fully onsite):\n  • Lab = PIC (operates the LIS)\n  • LabSolution = NEITHER PIC nor PIP*\n  • NPC: LabSolution corporate filing only\n  • Breach: lab notifies NPC; vendor enables\n\nM3 — post-pilot central-sync spoke:\n  • Lab = still PIC\n  • LabSolution = PIP (physical custody)\n  • NPC: own aggregation DPS (NPCRS)\n  • Breach: own SIM policy + team + report\n\n* M1 'neither' is fact-dependent — confirm w/ counsel","fontSize":11,"strokeColor":"#7a3a08","textAlign":"left","verticalAlign":"top"},
-{"type":"text","id":"leg","x":40,"y":760,"text":"amber = regulation   |   green = LIS control   |   red outline = binding from sprint 1   |   colored edge = 'forces' (grouped by regime)   |   right panel = PIC/PIP split (ADR-0002)","fontSize":13,"strokeColor":"#757575"}
+{"type":"text","id":"leg","x":40,"y":760,"text":"amber = regulation   |   green = LIS control   |   red outline = binding from sprint 1   |   colored edge = 'forces' (grouped by regime)   |   right panel = PIC/PIP split (ADR-0004)","fontSize":13,"strokeColor":"#757575"}
 ]

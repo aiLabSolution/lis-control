@@ -2,7 +2,7 @@
 
 > **Stage-0 SCAFFOLD / OUTLINE.** This document is a Stage-0 Validation Master Plan *outline*, drafted by an agent for issue **LIS-10 / S0.8** ("Compliance scaffold"). It is **pending human review** and is not an executed validation dossier — the signed IQ/OQ/PQ dossier is a Stage-5 deliverable (REQ-VAL-01). Drafted **2026-06-23**; **revised 2026-06-24** for the deployment-topology decision. It establishes the validation skeleton so that every later stage validates *deltas on a known base*. Do not treat any item marked `[NEEDS-HUMAN]` as approved.
 
-> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0002](../adr/0002-deployment-topology.md).** The pilot validation in
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0004](../adr/0004-deployment-topology.md).** The pilot validation in
 > this VMP is scoped to **M1 — fully onsite, per site, no sync**. The **site↔central sync** capability is the
 > post-pilot **M3** spoke (LabSolution's own on-prem datacenter, in PH); it is **out of pilot scope** and is
 > validated later as a **change-control delta on the validated M1 base** (REQ-QMS-03), behind the
@@ -36,7 +36,7 @@ This VMP defines **how the LabSolution LIS will be validated** as a regulated me
 - **single-site offline-first deployment** — edge store-and-forward + durable queue so an analyzer/edge restart loses no result *within a site* (M1 pilot scope);
 - the **analyzer simulator harness and conformance fixtures** (LIS-9 / S0.7) used as validation instruments.
 
-**Out of scope (this document / this pilot)** — privacy/data-protection controls (covered by the **NPC checklist** under RA 10173, cross-referenced where they are *validated controls*: REQ-PRIV-\*); the executed dossier itself; per-customer lab-specific operational SOPs, which each licensed laboratory must author against its own RA 4688 license; **and the site↔central sync / central-aggregation layer, which is the post-pilot M3 spoke** ([ADR-0002](../adr/0002-deployment-topology.md)) — validated separately as a delta on the M1 base behind the [compliance extra-work gate](m3-sync-compliance-gate.md), and tracked under REQ-RES-01/02, REQ-PRIV-08/09.
+**Out of scope (this document / this pilot)** — privacy/data-protection controls (covered by the **NPC checklist** under RA 10173, cross-referenced where they are *validated controls*: REQ-PRIV-\*); the executed dossier itself; per-customer lab-specific operational SOPs, which each licensed laboratory must author against its own RA 4688 license; **and the site↔central sync / central-aggregation layer, which is the post-pilot M3 spoke** ([ADR-0004](../adr/0004-deployment-topology.md)) — validated separately as a delta on the M1 base behind the [compliance extra-work gate](m3-sync-compliance-gate.md), and tracked under REQ-RES-01/02, REQ-PRIV-08/09.
 
 Because the LIS holds patient identifiers and results, the data it processes is **RA 10173 "sensitive personal information"**; this elevates the rigor of validation (record integrity, audit, access control) but the privacy *filing* obligations are tracked in the NPC checklist, not here. One privacy control is also a **validated engineering deliverable, not documentation-only**: **REQ-PRIV-04** (data-subject rights — access, correction, erasure, objection) carries an **L4 E2E verification** in the traceability matrix (a data-subject request resolves to access/correction expressed as an append-only Result `corrected` version per LIS-7). It is therefore tested through this VMP's qualification frame (OQ→PQ), with the matrix level (L4) authoritative; its policy/filing aspects remain in the NPC checklist.
 
@@ -64,7 +64,7 @@ This VMP does **not** invent clause numbers, thresholds, or dates beyond the abo
 The LabSolution LIS is **not** validated as an opaque whole. It is decomposed into:
 
 1. a **KNOWN BASE** — the **pinned OpenELIS Global 2 fork** at a specific upstream tag/SHA (established by LIS-3 / S0.1), and
-2. **LabSolution DELTAS** — the driver/interface engine, LOINC/UCUM normalization, FHIR R4 surface, single-site edge store-and-forward, and any core modifications. **The site↔central sync / central-aggregation layer is a later delta** — the post-pilot **M3** spoke (ADR-0002), validated on top of the *validated pilot snapshot* rather than as part of it.
+2. **LabSolution DELTAS** — the driver/interface engine, LOINC/UCUM normalization, FHIR R4 surface, single-site edge store-and-forward, and any core modifications. **The site↔central sync / central-aggregation layer is a later delta** — the post-pilot **M3** spoke (ADR-0004), validated on top of the *validated pilot snapshot* rather than as part of it.
 
 Validation effort concentrates on the **deltas** and on the **seams** between base and deltas (ingest normalization, channel isolation, result versioning). The known base carries forward its inherited behavior, re-confirmed by regression rather than re-validated from zero on every change. This is what makes the validation tractable and what every later stage relies on: **each stage validates the delta it introduces on top of an already-known base.** The M3 sync spoke is the clearest example: the M1 pilot is the known base, and sync is validated as a change-control delta (REQ-QMS-03) on it — never a black-box re-validation.
 
@@ -96,7 +96,7 @@ Analyzer (physical) → [edge driver: MLLP/HL7, ASTM serial/TCP]
               (store-and-forward; append-only result versions + explicit reconciliation; NOT in the pilot)
 ```
 The pilot validates everything **above** the M3 line (the fully-onsite M1 dataflow). The `⇅` site↔central sync
-crossing is the post-pilot M3 spoke (ADR-0002), validated later as a delta. See
+crossing is the post-pilot M3 spoke (ADR-0004), validated later as a delta. See
 `diagrams/01-reference-architecture.png`, the offline-sync view `diagrams/05-offline-sync-topology.png` (the M3
 spoke), and the controls overlay `diagrams/06-regulatory-controls-map.png`.
 
@@ -229,7 +229,7 @@ This VMP is **not approved** until the following are named and have signed. No s
 - **Regulatory ownership (Open Decision #5)** — who owns NPC registration, the ISO 15189 validation dossier, and per-customer lab-licensing alignment. **Blocks LIS-10 execution** and every signature line here.
 - **Build vs buy the interface engine (Open Decision #6)** — bespoke LabSolution drivers vs adopting an Open Integration Engine. This **determines which interface-engine codebase is a validated object**, drives the L1/L2 unit/component test surface (§7, §9), sets the per-analyzer conformance scope (REQ-CONF-01), and directly drives the license question (REQ-LIC-01 MPL-2.0 obligations / REQ-LIC-02 analyzer-bridge confirmation, HOLD-001). **The validated boundary of the system cannot be finalized until this is fixed.**
 - **Stack language (Open Decision #2)** — Java end-to-end vs polyglot edge. Changes the L1/L2 unit/component test surface for the drivers (tooling, codecs, conformance harness language) and therefore part of the OQ test plan.
-- **Deployment topology (Open Decision #3)** — ✅ **RESOLVED by [ADR-0002](../adr/0002-deployment-topology.md):** pilot validates **M1 (fully onsite)**; the site↔central sync is the post-pilot **M3** spoke (LabSolution's own in-PH datacenter) behind the [compliance extra-work gate](m3-sync-compliance-gate.md); **M2 (public cloud) not selected.** This fixes the pilot IQ scope (single-site, no sync), the pilot PQ matrix (edge resilience, not WAN/sync-conflict), and the validated boundary. The M3 spoke reopens the resilience/PQ matrix as a delta.
+- **Deployment topology (Open Decision #3)** — ✅ **RESOLVED by [ADR-0004](../adr/0004-deployment-topology.md):** pilot validates **M1 (fully onsite)**; the site↔central sync is the post-pilot **M3** spoke (LabSolution's own in-PH datacenter) behind the [compliance extra-work gate](m3-sync-compliance-gate.md); **M2 (public cloud) not selected.** This fixes the pilot IQ scope (single-site, no sync), the pilot PQ matrix (edge resilience, not WAN/sync-conflict), and the validated boundary. The M3 spoke reopens the resilience/PQ matrix as a delta.
 - **DOH AO 2021-0037 draft amendment** — track HFSRB consultation; re-confirm before Stage-5 go/no-go; re-baseline acceptance criteria if signed.
 - **CSV classification + formal risk method (FMEA or equivalent)** and **revalidation trigger thresholds** — require the appointed QA/regulatory owner.
 - **Retention durations + electronic-signature mechanism** for validation records (legal/regulatory input; confirm exact ISO 15189 clause and DOH submission format).

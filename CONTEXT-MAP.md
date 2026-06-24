@@ -14,7 +14,7 @@ These files are created lazily — some may not exist yet (see `docs/agents/doma
 | **OpenELIS core** — clinical core: orders/results/QC/reporting, RBAC, audit, data model | `core/openelis/` | `aiLabSolution/OpenELIS-Global-2` (`upstream`: `DIGI-UW/OpenELIS-Global-2`) | [`contexts/core-openelis/CONTEXT.md`](contexts/core-openelis/CONTEXT.md) |
 | **Edge / drivers** — instrument driver/interface layer (HL7/ASTM/serial), normalization | `edge/drivers/` _(planned)_ | _aiLabSolution (TBD)_ | _(lazy)_ |
 | **Plugins** — analyzer plugins; generic ones contributed upstream | `plugins/` _(planned)_ | _aiLabSolution fork of `DIGI-UW/openelisglobal-plugins` (TBD)_ | _(lazy)_ |
-| **Deploy kit** — on-prem/offline deploy kit, single-site store-and-forward (pilot); **site↔central sync = post-pilot M3 spoke** (ADR-0002) | `deploy/kit/` _(planned)_ | _aiLabSolution (TBD)_ | _(lazy)_ |
+| **Deploy kit** — on-prem/offline deploy kit, single-site store-and-forward (pilot); **site↔central sync = post-pilot M3 spoke** (ADR-0004) | `deploy/kit/` _(planned)_ | _aiLabSolution (TBD)_ | _(lazy)_ |
 | **Infra** — IaC, CI/CD, environments | `infra/` _(planned)_ | _aiLabSolution (TBD)_ | _(lazy)_ |
 
 ## Layered context

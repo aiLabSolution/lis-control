@@ -9,7 +9,7 @@
 > engineering and counsel must verify before any conclusion is relied on. Items flagged `(confirm with counsel)`
 > are unsettled or jurisdiction-specific.
 
-> **⮕ TOPOLOGY DECISION (2026-06-24) — see [ADR-0002](../adr/0002-deployment-topology.md).** The old
+> **⮕ TOPOLOGY DECISION (2026-06-24) — see [ADR-0004](../adr/0004-deployment-topology.md).** The old
 > open question "which of M1/M2/M3?" (DEC-03) is **resolved**:
 > - **The pilot ships on M1 — fully onsite, per site, no sync.** This is the committed pilot topology.
 > - **M3 — central sync at LabSolution's own on-prem datacenter (in PH) — is a POST-PILOT additional spoke**,
@@ -179,7 +179,7 @@ M2/M3 shifts are called out in the row and detailed in §4–§5.
 > (REQ-VAL-02, REQ-QMS-03, REQ-DATA, REQ-CONF, REQ-LIC) and the **PH FDA SaMD manufacturer obligation if
 > triggered** do **not** vary with topology.
 
-### 4.1 M1 — FULLY ONSITE  ✅ **COMMITTED — this is the pilot topology (ADR-0002)**
+### 4.1 M1 — FULLY ONSITE  ✅ **COMMITTED — this is the pilot topology (ADR-0004)**
 
 The LIS runs entirely on-premises at each lab/hospital; no sync; LabSolution ships software and, **by default,
 never accesses or stores PHI**. **This is the topology the pilot deploys on**; the pilot's IQ/OQ/PQ dossier,
@@ -224,7 +224,7 @@ threat model, and NPC posture are scoped to this model alone.
 > advisory-opinion request is the authoritative route). Lock any residual access down with a scoped support DPA +
 > break-glass controls.**
 
-### 4.2 M2 — ONSITE + PUBLIC-CLOUD SYNC / SERVICE  ⛔ **CONSIDERED, NOT SELECTED (parked — ADR-0002)**
+### 4.2 M2 — ONSITE + PUBLIC-CLOUD SYNC / SERVICE  ⛔ **CONSIDERED, NOT SELECTED (parked — ADR-0004)**
 
 > **Off the active roadmap.** Public cloud is **not** the chosen sync path; LabSolution's own on-prem datacenter
 > (§4.3, M3) is. This analysis is retained for the record and in case a future customer specifically requires
@@ -267,7 +267,7 @@ operated by or for LabSolution; the cloud provider is a third party; the cloud r
   support. (For **public-hospital/government customers**, an offshore M2 may be foreclosed if the **DICT
   government data-residency draft** is finalized — see §7.)
 
-### 4.3 M3 — ONSITE + CENTRALIZED SYNC AT LABSOLUTION'S OWN ON-PREM DATACENTER (in PH)  🔜 **CHOSEN SYNC MODEL — POST-PILOT SPOKE (ADR-0002)**
+### 4.3 M3 — ONSITE + CENTRALIZED SYNC AT LABSOLUTION'S OWN ON-PREM DATACENTER (in PH)  🔜 **CHOSEN SYNC MODEL — POST-PILOT SPOKE (ADR-0004)**
 
 > **This is the chosen sync path, built AFTER the pilot.** It is gated by the **compliance extra work** in
 > [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md): LabSolution becomes a **PIP with physical custody**
@@ -313,7 +313,7 @@ premises/infrastructure, located in the Philippines** (not public cloud).
 
 | Compliance dimension | M1 — Fully onsite | M2 — Onsite + public-cloud sync | M3 — Onsite + LabSolution's own in-PH datacenter |
 |---|---|---|---|
-| **Roadmap status (ADR-0002)** | ✅ **COMMITTED — pilot** | ⛔ Considered, **NOT selected** (parked) | 🔜 **Chosen sync model — post-pilot spoke** (after the compliance extra-work gate) |
+| **Roadmap status (ADR-0004)** | ✅ **COMMITTED — pilot** | ⛔ Considered, **NOT selected** (parked) | 🔜 **Chosen sync model — post-pilot spoke** (after the compliance extra-work gate) |
 | **LabSolution RA 10173 role** | **Neither** PIC nor PIP *(fact-dependent — confirm)* | **PIP** | **PIP (physical custody)** |
 | **PHI leaves the lab?** | No | Yes → public cloud (possibly offshore) | Yes → LabSolution's in-PH datacenter |
 | **Cross-border risk (REQ-PRIV-08)** | None | **High** if offshore region (Sec. 21 accountability; Sec. 6 reach) | None (domestic) — unless offshore DR/backup |
@@ -343,7 +343,7 @@ obligations. **Takeaway:** on vendor compliance burden, **M1 < M3 < M2** — M1 
 cloud/cross-border exposure for physical-custody duty. The PH FDA SaMD manufacturer obligation, if triggered, is the
 **one** direct LabSolution duty that does **not** move with the topology.
 
-**Decision applied (ADR-0002):** the pilot takes the **lowest-burden** end of this scale (M1) and ships with
+**Decision applied (ADR-0004):** the pilot takes the **lowest-burden** end of this scale (M1) and ships with
 **none** of LabSolution's PIP-status obligations; the programme then climbs **one** step to **M3** (not M2) as a
 post-pilot spoke, paying the physical-custody/key-custody/own-registration cost **deliberately and once**, behind
 the [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) gate. M2's cloud/cross-border maximum is avoided
@@ -360,7 +360,7 @@ entirely. The SaMD obligation, being topology-invariant, is the one duty that ma
   primary, non-delegable accountability; LabSolution is **neither (M1) / PIP (M2,M3)**; and the SaMD manufacturer
   duty (if triggered) sits on LabSolution regardless of model. Drives the head-DPA template and the customer
   contract's privacy allocation.
-- **DEC-03 — Topology. ✅ RESOLVED by [ADR-0002](../adr/0002-deployment-topology.md) (2026-06-24).** The M1/M2/M3
+- **DEC-03 — Topology. ✅ RESOLVED by [ADR-0004](../adr/0004-deployment-topology.md) (2026-06-24).** The M1/M2/M3
   choice **is** a compliance decision, not just an architecture one: it sets LabSolution's PIP status, registration,
   breach, cross-border, and physical-custody duties. **Decision: the pilot is M1 (fully onsite); the chosen sync
   model is M3 (LabSolution's own in-PH on-prem datacenter) as a post-pilot spoke behind the

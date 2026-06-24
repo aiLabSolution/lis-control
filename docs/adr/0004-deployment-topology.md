@@ -1,4 +1,4 @@
-# ADR-0002 — Deployment topology: fully-onsite pilot, on-prem central-sync as a post-pilot spoke
+# ADR-0004 — Deployment topology: fully-onsite pilot, on-prem central-sync as a post-pilot spoke
 
 - **Status:** Accepted
 - **Date:** 2026-06-24
