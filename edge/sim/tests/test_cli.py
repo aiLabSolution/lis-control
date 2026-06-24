@@ -1,0 +1,47 @@
+"""CLI smoke tests: list / validate / replay against the shipped fixtures."""
+
+from edge_sim.cli import _replay_and_report, main
+from edge_sim.fixtures import DEFAULT_FIXTURES_ROOT, load_fixture
+from edge_sim.transport import Transport
+
+
+class _CorruptingTransport(Transport):
+    """Mutates the payload so the replay round-trip fails (exit-1 path)."""
+
+    name = "corrupting"
+
+    def send(self, payload: bytes) -> None:
+        self._buf = payload + b"X"
+
+    def receive(self) -> bytes:
+        return self._buf
+
+
+def test_validate_exit_zero(capsys):
+    assert main(["validate"]) == 0
+    assert "validated" in capsys.readouterr().out
+
+
+def test_list_shows_example(capsys):
+    assert main(["list"]) == 0
+    assert "example-hl7v2-oru-r01" in capsys.readouterr().out
+
+
+def test_replay_exit_zero(capsys):
+    assert main(["replay", "example-hl7v2-oru-r01"]) == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_replay_unknown_fixture_exit_two(capsys):
+    assert main(["replay", "does-not-exist"]) == 2
+
+
+def test_replay_mismatch_exit_one(capsys):
+    fx = load_fixture(DEFAULT_FIXTURES_ROOT / "_example")
+    assert _replay_and_report(fx, _CorruptingTransport()) == 1
+    assert "MISMATCH" in capsys.readouterr().out
+
+
+def test_bad_root_exit_two(capsys):
+    assert main(["--root", "/no/such/dir", "list"]) == 2
+    assert "error:" in capsys.readouterr().err

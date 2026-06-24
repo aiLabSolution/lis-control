@@ -1,0 +1,7 @@
+# Conformance-fixture payloads are RAW captured bytes — git must never apply EOL
+# translation to them (the harness asserts a byte-faithful round-trip, and analyzer
+# messages are CR-delimited / binary). Default everything under fixtures/ to binary,
+# then re-include the known text assets (manifests, schema, docs).
+fixtures/** -text
+fixtures/**/*.json text
+fixtures/**/*.md   text
