@@ -21,7 +21,7 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 > The LIS-10 leadership-decision gate is **cleared**: regulatory ownership (**DEC-01** — Pinote = accountable
 > QA/regulatory owner, Uy = system owner + validation lead, Kirsten Pinote = DPO), DPO (**DEC-02**), signatories
 > (**DEC-07**); interface engine = **reuse `openelis-analyzer-bridge`** (**DEC-04**), license = **MPL-2.0** (**DEC-08**,
-> HOLD-001 lifted), **Java end-to-end** (**DEC-05**), minimal **HL7-v2.x/MLLP-first** v1 fleet (**DEC-06**). What
+> HOLD-001 lifted), **polyglot stack** — Java *production* runtime + Python for the simulator/tooling (**DEC-05**), minimal **HL7-v2.x/MLLP-first** v1 fleet (**DEC-06**). What
 > remains for the human is **review + acceptance of the four core artifacts** plus the counsel/clause `[NEEDS-HUMAN]`
 > items — see [`decisions-register.md`](decisions-register.md).
 

@@ -62,13 +62,24 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    write bespoke drivers from scratch and do **not** adopt a separate Open Integration Engine
    (Mirth/OIE) for the pilot.
 
-3. **DEC-05 — Java end-to-end for the validated runtime stack.** The adopted bridge is a
-   **Java / Spring Boot / Maven** application (`org.itech.ahb`, `pom.xml`, Actuator health +
-   Micrometer/Prometheus) and the OpenELIS core is Java; a single Java toolchain gives the
-   smallest L1/L2 validation surface, one regression harness, and one edge supply-chain/license
-   posture (the protocol libs, e.g. `astm-http-lib`, are already Java). "Java end-to-end" governs
-   the **validated runtime stack** — it does not ban incidental non-Java dev tooling (CI scripts,
-   the bridge's existing Node spec tooling).
+3. **DEC-05 — Polyglot: Java for the validated production runtime, Python for the simulator &
+   tooling.** The **production PHI data-path is Java** — the OpenELIS core plus the reused
+   **Java / Spring Boot / Maven** analyzer-bridge (`org.itech.ahb`, `pom.xml`, Actuator +
+   Micrometer/Prometheus; protocol libs such as `astm-http-lib` already Java). Keeping the live
+   data-path single-toolchain gives the smallest **production** L1/L2 validation surface and one
+   regression harness for the dossier. **Python is a sanctioned second language** for the
+   **analyzer / edge simulator + conformance harness** (LIS-9 / REQ-CONF-02 — currently in
+   development) and **supporting tooling / scripts** (e.g. the sign-off PDF builder, seed/data
+   tooling), where Python's HL7/ASTM libraries (python-hl7 / hl7apy, MIT/BSD) and fast iteration
+   are the best fit.
+   - **Boundary (pilot):** Python stays **out of the production PHI data-path**. The simulator is a
+     **test instrument** used to validate drivers, so it carries a **test-tool-qualification** duty
+     — its own correctness must be evidenced (the conformance-fixture replay self-test, REQ-CONF-02,
+     seeds this) — but it is **not** a validated *production* object.
+   - **Extension:** introducing a Python **production** component later (e.g. a driver/normalizer for
+     an analyzer the Java bridge does not cover) is a **change-control delta (REQ-QMS-03)** that
+     explicitly extends the validated runtime, its L1/L2 surface, and the production license
+     inventory (adding the Python edge supply chain — typically MIT/BSD).
 
 4. **DEC-06 — minimal v1 fleet, HL7 v2.x / MLLP first** (decided in principle; exact analyzers
    pinned at pilot-fleet confirmation). v1 is scoped to the **HL7 v2.x-over-MLLP/TCP analyzers the
@@ -95,7 +106,7 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
 
 **Positive**
 - **The validated boundary is now fixed:** OpenELIS core (MPL-2.0) + `openelis-analyzer-bridge`
-  edge (MPL-2.0), single Java toolchain — the VMP's "bespoke vs configured" boundary and the
+  edge (MPL-2.0), single Java toolchain **on the production data-path** — the VMP's "bespoke vs configured" boundary and the
   L1/L2 surface (VMP §7/§9) can be finalized.
 - **License risk closed at zero cost** — no upstream negotiation needed; REQ-LIC-02 collapses into
   the REQ-LIC-01 MPL-2.0 obligation set the venture already plans to honor for the core.
@@ -120,9 +131,11 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
 - **Adopt an Open Integration Engine (Mirth/OIE fork) (DEC-04 b):** rejected for the pilot —
   heavier to operate and validate than reusing the OpenELIS-family bridge; revisitable later under
   change control if the fleet outgrows the bridge.
-- **Polyglot edge — Python drivers + Java core (DEC-05 b):** rejected — a second language/toolchain
-  adds a parallel validation and supply-chain surface; only justified if writing bespoke
-  per-protocol drivers, which DEC-04 declined.
+- **Python production drivers on the live data-path (DEC-05 b — full polyglot *edge*):** *deferred,
+  not adopted for the pilot* — bespoke per-protocol Python drivers would add a parallel **production**
+  validation + supply-chain surface; with the Java bridge reused (DEC-04) it is unnecessary for the
+  pilot. (Python **is** adopted for the simulator + tooling per Decision 3; a Python production driver
+  remains available later as a change-control delta.)
 - **Broad mixed HL7 + ASTM-family + proprietary v1 fleet (DEC-06 b):** rejected — multiplies TB-1
   trust boundaries, the REQ-CONF-01 bench-conformance workload, and the Stage-5 pen-test surface
   for capability the pilot does not need; deferred to post-pilot change-control expansion.

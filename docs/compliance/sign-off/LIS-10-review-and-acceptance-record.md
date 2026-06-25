@@ -57,7 +57,7 @@ By signing, the reviewers confirm these decisions are taken and correctly record
 | **DEC-07** Signatories | Uy (system owner + validation lead); Pinote (independent QA approver); pathologist per-customer | ADR-0005 |
 | **DEC-08** analyzer-bridge license | **MPL-2.0** (+ Healthcare Disclaimer); HOLD-001 lifted; folds into REQ-LIC-01 | ADR-0006 |
 | **DEC-04** Interface engine | Reuse `openelis-analyzer-bridge` | ADR-0006 |
-| **DEC-05** Stack | Java end-to-end (validated runtime) | ADR-0006 |
+| **DEC-05** Stack | Polyglot — Java validated *production* runtime (core + bridge); Python for the edge simulator + conformance harness (LIS-9) + tooling | ADR-0006 |
 | **DEC-06** v1 fleet | Minimal HL7-v2.x/MLLP-first (anchor RAYTO RAC-050); ASTM-serial + proprietary middleware + bidirectional deferred under change control. *Exact machines pending pilot-fleet confirmation.* | ADR-0006 |
 | **DEC-03** Topology | M1 pilot / M3 post-pilot spoke / M2 parked | ADR-0004 |
 
