@@ -1,0 +1,139 @@
+# ADR-0006 — Interface engine (reuse analyzer-bridge), edge stack (Java) & v1 fleet scope
+
+- **Status:** Accepted
+- **Date:** 2026-06-25
+- **Deciders:** Marloe Uy (System / technical owner), Artis Lindy Pinote (Functional + QA/regulatory owner)
+- **Supersedes / Superseded by:** —
+- **Resolves:** **DEC-04** (interface engine build-vs-buy), **DEC-05** (stack language),
+  **DEC-06** (v1 fleet scope), **DEC-08** (`openelis-analyzer-bridge` license / HOLD-001) in
+  `docs/compliance/decisions-register.md`; Open Decisions #6 (interface engine), #2 (stack),
+  #4 (fleet) in `LIS_IMPLEMENTATION_PLAN.md` §6 / `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` §13.
+- **Relates to:** ADR-0005 (regulatory ownership — names the owner who accepts the validated
+  boundary), ADR-0001 (pinned-submodule snapshot = IQ baseline), ADR-0004 (M1 pilot scope).
+
+## Context
+
+The interface engine — the edge layer that ingests analyzer messages (HL7 v2.x / ASTM / serial /
+file) and forwards normalized results to the OpenELIS core — was the last open architecture
+decision bounding the **validated boundary**. "Build bespoke drivers vs. buy/adopt an integration
+engine vs. reuse `openelis-analyzer-bridge`" (DEC-04) drives the L1/L2 test surface, the
+per-analyzer conformance scope (REQ-CONF-01/02), the channel-isolation guarantee (REQ-SEC-03), the
+threat surface (TB-1/TB-2), and the license inventory (REQ-LIC-01/02). DEC-04 was **blocked on
+HOLD-001** — the `openelis-analyzer-bridge` was believed to carry an **undeclared license**
+(REQ-LIC-02 = "TBD"), so it could not be safely reused.
+
+**HOLD-001 was resolved by reading the actual license (DEC-08).** The `LICENSE.md` in
+`aiLabSolution/openelis-analyzer-bridge` (`develop`) is the **Mozilla Public License 2.0** (full
+standard text) **plus OpenELIS's Healthcare Disclaimer** addendum — byte-for-byte the same license
+OpenELIS Global 2 itself uses. GitHub's license detector reported `NOASSERTION` / "Other" only
+because the appended healthcare disclaimer stops the file matching canonical MPL-2.0; the license
+is **not** undeclared. Provenance corroborates it: the repo is a rename of the **"ASTM-HTTP
+Bridge"**, the code namespace is `org.itech.ahb.*`, and the legacy Docker image is
+`itechuw/astm-http-bridge` — i.e. an **I-TECH UW (DIGI-UW)** project from the same organization
+that maintains OpenELIS Global 2 under MPL-2.0. It is a genuine OpenELIS-family, MPL-2.0 component,
+not unlicensed code with a license file dropped on top.
+
+The remaining decisions (stack, fleet) follow once the engine is fixed.
+
+## Decision
+
+1. **DEC-08 — license confirmed: MPL-2.0; HOLD-001 lifted.** `openelis-analyzer-bridge` is
+   licensed **MPL-2.0 (+ OpenELIS Healthcare Disclaimer)**. MPL-2.0 §2.1 grants a worldwide,
+   royalty-free, non-exclusive right to **use, modify, distribute, and exploit commercially**,
+   including as part of a Larger Work under our own terms; there is no field-of-use restriction
+   and the healthcare disclaimer only removes warranties. **Reuse/fork is permitted.** The
+   obligations are the same **file-level (weak) copyleft** already carried for the core, so
+   **REQ-LIC-02 is no longer `[NEEDS-HUMAN]`-blocked and folds into the REQ-LIC-01 MPL-2.0
+   inventory**:
+   - §3.1/§3.2 — when the LIS is distributed to a customer lab, the **source of the MPL-covered
+     files** must be offered to that lab under MPL-2.0 (a private repo is fine; the duty runs to
+     *recipients*).
+   - §3.4 — preserve `LICENSE.md` and do not strip license/copyright notices from covered files.
+   - §3.3 — bespoke code in *separate files* may be under our own terms; only bridge-origin
+     (covered) files stay MPL-2.0.
+   - **Residual hygiene (REQ-LIC-01 inventory, not a blocker):** the sampled source files carry
+     **no per-file MPL Exhibit A header** and the repo has **no `NOTICE`** attributing original
+     I-TECH UW authorship. MPL allows the directory-`LICENSE`-file fallback, so reuse is valid;
+     the clean fix (add `NOTICE` + Exhibit A headers on files we modify) is part of the REQ-LIC-01
+     inventory and warrants a final glance by counsel.
+
+2. **DEC-04 — reuse `openelis-analyzer-bridge` as the interface engine** (build-vs-buy option (d),
+   now unblocked). It becomes a **validated object** alongside the OpenELIS core. We do **not**
+   write bespoke drivers from scratch and do **not** adopt a separate Open Integration Engine
+   (Mirth/OIE) for the pilot.
+
+3. **DEC-05 — Java end-to-end for the validated runtime stack.** The adopted bridge is a
+   **Java / Spring Boot / Maven** application (`org.itech.ahb`, `pom.xml`, Actuator health +
+   Micrometer/Prometheus) and the OpenELIS core is Java; a single Java toolchain gives the
+   smallest L1/L2 validation surface, one regression harness, and one edge supply-chain/license
+   posture (the protocol libs, e.g. `astm-http-lib`, are already Java). "Java end-to-end" governs
+   the **validated runtime stack** — it does not ban incidental non-Java dev tooling (CI scripts,
+   the bridge's existing Node spec tooling).
+
+4. **DEC-06 — minimal v1 fleet, HL7 v2.x / MLLP first** (decided in principle; exact analyzers
+   pinned at pilot-fleet confirmation). v1 is scoped to the **HL7 v2.x-over-MLLP/TCP analyzers the
+   pilot lab actually runs**, proven first against the **RAYTO RAC-050** (the research's reference
+   HL7 v2.3 implementation — MSH/PID/OBR/OBX/ORU^R01/ACK + MLLP framing), with the **result-ingestion
+   path first** (ORU^R01 → bridge → OpenELIS). The other HL7 siblings (RAYTO Chemray-120, DIATRON
+   Aquila, SNIBE Biossays 240, EDAN H60S, Mindray labXpert urine) are added as same-stack L3
+   conformance deltas as the pilot menu requires.
+
+   **Explicitly deferred from v1 → post-pilot, under change control (REQ-QMS-03):** the
+   **ASTM/serial group** (DiaSys Respons 920/940/240C/420C, ERBA EC90 — RS232 physical layer + ASTM
+   line contention = a separate validation surface), the **proprietary middleware families** (Snibe
+   MAGLUMI via SnibeLis/SnibeLinker, Mindray BC hematology via labXpert/DMS — no clean socket,
+   highest integration risk, and they pull in the REQ-PRIV-09 DPA flow-down because middleware
+   touches PHI), and **bidirectional host-query / order-download** (do result-ingestion first; add
+   query in v1.1). Each deferred analyzer is one TB-1 trust boundary + one REQ-CONF-01 signed bench
+   report kept out of the pilot.
+
+   > **`[NEEDS-HUMAN]` — pin the v1 analyzer list.** The exact pilot machines/protocols are pending
+   > confirmation of LabSolution's available test units; the anchor (RAC-050) is a recommended
+   > default to be confirmed or substituted with a different HL7 unit per the pilot site's real menu.
+
+## Consequences
+
+**Positive**
+- **The validated boundary is now fixed:** OpenELIS core (MPL-2.0) + `openelis-analyzer-bridge`
+  edge (MPL-2.0), single Java toolchain — the VMP's "bespoke vs configured" boundary and the
+  L1/L2 surface (VMP §7/§9) can be finalized.
+- **License risk closed at zero cost** — no upstream negotiation needed; REQ-LIC-02 collapses into
+  the REQ-LIC-01 MPL-2.0 obligation set the venture already plans to honor for the core.
+- **Smallest pilot surface** — HL7-v2/MLLP-first, result-ingestion-only, one anchor analyzer keeps
+  TB-1 trust boundaries and REQ-CONF-01 conformance reports minimal, consistent with the M1
+  "smallest validated base" story (ADR-0004).
+
+**Negative / costs / residual `[NEEDS-HUMAN]`**
+- **Reusing the bridge means inheriting its code** as a validated object — its channel-isolation
+  model (REQ-SEC-03) and conformance fixtures must be validated as ours, and the **NOTICE / per-file
+  MPL header hygiene** must be completed in the REQ-LIC-01 inventory.
+- **The v1 analyzer list is not yet pinned** — DEC-06 is settled as a *policy*; the concrete fleet
+  is a deployment detail to confirm with the pilot site.
+- Adopting the bridge constrains future engine swaps to a **change-control / revalidation delta**
+  (REQ-QMS-03) — deliberate, but it is a commitment.
+
+## Alternatives considered
+
+- **Bespoke LabSolution-owned drivers (DEC-04 a):** rejected for the pilot — reinvents a
+  field-proven, same-license (MPL-2.0), same-org component and enlarges the L1/L2 validation
+  surface for no benefit.
+- **Adopt an Open Integration Engine (Mirth/OIE fork) (DEC-04 b):** rejected for the pilot —
+  heavier to operate and validate than reusing the OpenELIS-family bridge; revisitable later under
+  change control if the fleet outgrows the bridge.
+- **Polyglot edge — Python drivers + Java core (DEC-05 b):** rejected — a second language/toolchain
+  adds a parallel validation and supply-chain surface; only justified if writing bespoke
+  per-protocol drivers, which DEC-04 declined.
+- **Broad mixed HL7 + ASTM-family + proprietary v1 fleet (DEC-06 b):** rejected — multiplies TB-1
+  trust boundaries, the REQ-CONF-01 bench-conformance workload, and the Stage-5 pen-test surface
+  for capability the pilot does not need; deferred to post-pilot change-control expansion.
+
+## References
+
+- `aiLabSolution/openelis-analyzer-bridge` — `LICENSE.md` (MPL-2.0 + Healthcare Disclaimer),
+  `README.md` (provenance: rename of "ASTM-HTTP Bridge", `org.itech.ahb`, `itechuw` Docker).
+- `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` §3 (analyzer fleet inventory by protocol), §4 (HL7 v2 /
+  ASTM standards), §5 (reference architecture, channel isolation), §13 (open decisions #2/#4/#6).
+- `docs/compliance/decisions-register.md` — DEC-04/05/06/08 (now resolved by this ADR).
+- `docs/compliance/traceability-matrix.md` — REQ-LIC-01/02, REQ-SEC-03, REQ-CONF-01/02.
+- `docs/compliance/threat-model.md` — TB-1/TB-2 edge boundaries, supply-chain row.
+- ADR-0005 — regulatory ownership (the owner who accepts this validated boundary).

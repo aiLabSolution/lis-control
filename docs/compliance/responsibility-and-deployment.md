@@ -167,7 +167,7 @@ M2/M3 shifts are called out in the row and detailed in §4–§5.
 | **REQ-DATA-01/02 — result store + normalization** | LabSolution (vendor) | **Direct (product).** Store raw_code/raw_unit alongside normalized LOINC/UCUM + status; correct, lossless normalization. *(high; all)* |
 | **REQ-CONF-01/02 — bench / component conformance** | LabSolution (vendor) | **Direct (product).** Conformance fixtures + bench tests for analyzer drivers, HL7/ASTM parsing, FHIR R4 resources. *(high; all)* |
 | **REQ-LIC-01 — MPL-2.0 compliance** | LabSolution (vendor) | **Direct.** File-level copyleft: preserve license headers, publish modified MPL-covered files, NOTICE hygiene across the fork and contributed plugins. *(high; all)* |
-| **REQ-LIC-02 — analyzer-bridge license (HOLD-001)** | LabSolution (vendor) | **Direct + BLOCKER.** The `openelis-analyzer-bridge` has **no declared license** (HOLD-001). Resolve before embedding/distributing. **Overlap flag:** this is the very module most likely to host the autoverification/CDS logic that could make the product **SaMD** (see below) — an undeclared license on the FDA-manufacturer-triggering component is a combined IP + device-reg risk. *(high; all)* |
+| **REQ-LIC-02 — analyzer-bridge license (HOLD-001 lifted)** | LabSolution (vendor) | **Direct.** The `openelis-analyzer-bridge` license is **MPL-2.0 (+ Healthcare Disclaimer)** (ADR-0006; the earlier "no declared license" was a GitHub `NOASSERTION` false-negative) — reuse is permitted and the obligations fold into REQ-LIC-01's MPL-2.0 inventory. **Overlap flag:** this is the very module most likely to host the autoverification/CDS logic that could make the product **SaMD**; with the license resolved, the residual on this component is the **SaMD device-reg** question (REQ-REG-01), not IP. *(high; all)* |
 | **PH FDA SaMD / MDSW manufacturer registration** *(not in REQ registry — flag for addition)* | **LabSolution (legal manufacturer)** | **Direct, topology-invariant.** If the LIS's **autoverification / QC-gating / clinical-decision-support** functions qualify the product as Medical Device Software, the **legal manufacturer** (LabSolution — software placed on the PH market under its own name) owes a **License to Operate** + **CMDN/CMDR** registration — **separate** from the lab's RA 4688/ISO duties and **the same in M1/M2/M3** (classification follows function, not deployment). The plain results-store/display core is most likely out of scope; the autoverification layer is the risk. The dedicated MDSW circular is **DRAFT/unsigned as of 2026-06-24**, but "software" is already inside the device definition under RA 9711 / AO 2018-0002. There is an unresolved **IVD carve-out** (software-as-IVD / software-in-IVD) that may route an autoverification LIS to the CIVDR/CIVDN pathway or a gap. *(medium; all — needs an FDA pre-submission classification; confirm with counsel)* ([FDA draft MDSW circular](https://www.fda.gov.ph/wp-content/uploads/2025/05/Draft-FDA-Circular-FDA-Medical-Device-Software.pdf)) |
 
 ---
@@ -354,12 +354,17 @@ entirely. The SaMD obligation, being topology-invariant, is the one duty that ma
 
 ## 7. Decisions this informs & open items
 
-**Decisions (forward-referenced; these ADR/decision records are to be created):**
+**Decisions (forward-referenced; ADR records — ADR-0005 created 2026-06-25; DEC-17 still open):**
 
-- **DEC-01 — Regulatory ownership.** Codify that the customer lab/hospital is the **PIC** in all models and bears
-  primary, non-delegable accountability; LabSolution is **neither (M1) / PIP (M2,M3)**; and the SaMD manufacturer
-  duty (if triggered) sits on LabSolution regardless of model. Drives the head-DPA template and the customer
-  contract's privacy allocation.
+- **DEC-01 — Regulatory ownership. ✅ RESOLVED by [ADR-0005](../adr/0005-regulatory-ownership-and-responsibility-allocation.md) (2026-06-25).**
+  Codifies that the customer lab/hospital is the **PIC** in all models and bears primary, non-delegable
+  accountability; LabSolution is **neither (M1) / PIP (M2,M3)**; and the SaMD manufacturer duty (if triggered) sits
+  on LabSolution regardless of model. **Named owners:** Artis Lindy Pinote = accountable QA/regulatory owner,
+  Marloe Uy = system owner + validation lead, Kirsten Pinote = DPO (charter to document independence).
+  **Legal-entity note (decided):** for this scaffold, LabSolution and the planned LIS child company are treated as
+  **one legal entity** — the single software-vendor / FDA-SaMD-manufacturer of record — so the analysis above stands
+  as written, with **no** two-hop NewCo→LabSolution→lab processing chain to model. Drives the head-DPA template and
+  the customer contract's privacy allocation.
 - **DEC-03 — Topology. ✅ RESOLVED by [ADR-0004](../adr/0004-deployment-topology.md) (2026-06-24).** The M1/M2/M3
   choice **is** a compliance decision, not just an architecture one: it sets LabSolution's PIP status, registration,
   breach, cross-border, and physical-custody duties. **Decision: the pilot is M1 (fully onsite); the chosen sync

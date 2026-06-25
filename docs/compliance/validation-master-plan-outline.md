@@ -52,7 +52,7 @@ Because the LIS holds patient identifiers and results, the data it processes is 
 | **RA 5527** (Medical Technology Act) | — | Defines medtech personnel scope ⇒ **named-user RBAC** mapped to medtech/pathologist roles (REQ-RBAC-01) is a validated control. |
 | **RA 10173** (Data Privacy Act) + **NPC** | NPC Circular 2022-04 / NPCRS | Handled in the **NPC checklist**. Referenced here only where privacy controls are *validated* (e.g., access logging, retention/disposal, audit integrity, and data-subject rights as an L4 E2E test): REQ-PRIV-02/03/04. |
 | **PNPAQC / EQAS** | — | External quality assessment ⇒ the QC engine (Westgard/Levey-Jennings, delta checks, autoverification gating — REQ-QMS-04) and proficiency-testing result handling are validated objects (Stage 5). |
-| **OpenELIS (MPL-2.0) + analyzer-bridge license** | MPL-2.0 (file-level copyleft); analyzer-bridge license **"TBD"** | Two distinct, separately-tracked obligations: **REQ-LIC-01** = MPL-2.0 file-level obligations honored across the fork (LIS-3 inventory); **REQ-LIC-02** = the **openelis-analyzer-bridge** license confirmed before any reuse (**HOLD-001**, `[NEEDS-HUMAN]`). Which codebase ultimately *is* the validated interface engine depends on Open Decision #6 (build vs buy). |
+| **OpenELIS (MPL-2.0) + analyzer-bridge license** | MPL-2.0 (file-level copyleft); analyzer-bridge license **= MPL-2.0** (+ Healthcare Disclaimer; ADR-0006) | **REQ-LIC-01** = MPL-2.0 file-level obligations honored across the fork **and the reused analyzer-bridge** (LIS-3 inventory); **REQ-LIC-02** = analyzer-bridge license **confirmed MPL-2.0** — HOLD-001 lifted (GitHub `NOASSERTION` was a false-negative on the appended healthcare disclaimer); it folds into REQ-LIC-01. The validated interface engine is the reused **openelis-analyzer-bridge** (Open Decision #6 resolved — ADR-0006). |
 
 This VMP does **not** invent clause numbers, thresholds, or dates beyond the above; any needed specific clause is flagged `(confirm exact clause)` and any missing fact is surfaced as a deferred decision.
 
@@ -104,7 +104,7 @@ spoke), and the controls overlay `diagrams/06-regulatory-controls-map.png`.
 `Patient → Order/Requisition → Specimen/Sample → Result` (entity-relationship view: `diagrams/07-er-data-model.png`, the same ER basis used by the NPC checklist §D and the traceability matrix). **Result** is the highest-risk object: it stores `raw_value`, `raw_unit`, `raw_code`, `loinc`, `ucum_value`, `status` (preliminary/final/corrected), `verified_by`, `instrument_id`, `flags`, with **append-only versions** (LIS-7). `Instrument → InterfaceChannel`, `QCResult → Westgard/Levey-Jennings`, `User → Role`, and **every mutation writes an append-only `AuditEvent`** (LIS-6).
 
 ### 4.3 Classification approach `[DRAFTED]`
-The LIS is a **configurable, customized application** in CSV terms: a configurable open-source base (OpenELIS) plus **bespoke development** (drivers, normalization, sync). It is therefore treated at the higher-rigor end — bespoke components get full lifecycle qualification; configured-only behavior of the base gets configuration verification plus regression. The formal category label and its mapping to validation depth is `[NEEDS-HUMAN]` (QA/regulatory owner to ratify). Note: the bespoke-vs-configured boundary for the **interface engine** is not yet fixed — it depends on Open Decision #6 (build bespoke drivers vs adopt an Open Integration Engine), which changes which codebase is a validated object (see §13).
+The LIS is a **configurable, customized application** in CSV terms: a configurable open-source base (OpenELIS) plus **bespoke development** (drivers, normalization, sync). It is therefore treated at the higher-rigor end — bespoke components get full lifecycle qualification; configured-only behavior of the base gets configuration verification plus regression. The formal category label and its mapping to validation depth is `[NEEDS-HUMAN]` (QA/regulatory owner to ratify). Note: the **interface engine** is the reused **openelis-analyzer-bridge** (Open Decision #6 resolved — ADR-0006) — a configured/customized MPL-2.0 OSS component validated as a delta on the pinned base (see §13).
 
 ---
 
@@ -159,7 +159,7 @@ So: **L1–L2 and L4 form the bulk of OQ; L3 and L4 also feed PQ; L5 is PQ; L6 *
 The **traceability matrix** (companion LIS-10 artifact, `docs/compliance/traceability-matrix.*`) is the authoritative `REQ-*` registry and the spine of the entire validation effort. It maps, for each requirement: **requirement → design (DQ) → test (pyramid level / OQ-PQ protocol) → evidence (CI run, signed report, dossier section)**.
 
 - It is **maintained from Stage 0** (seeded now with the Stage-0 sibling issues as evidence rows) and grows through Stage 5, where it becomes the index of the signed dossier.
-- Stage-0 evidence rows link to the verifiable outputs of: LIS-3 (**MPL-2.0 file-level inventory → REQ-LIC-01**; analyzer-bridge license confirmation is tracked separately as **HOLD-001 → REQ-LIC-02**, `[NEEDS-HUMAN]`), LIS-4 (reproducible bootstrap → REQ-VAL-02), LIS-5 (RBAC 403 → REQ-RBAC-01), LIS-6 (append-only audit → REQ-AUD-01), LIS-7 (raw+normalized result store → REQ-DATA-01), LIS-8 (LOINC/UCUM end-to-end → REQ-DATA-02/REQ-QMS-02), LIS-9 (simulator harness → L2/L3 instrument).
+- Stage-0 evidence rows link to the verifiable outputs of: LIS-3 (**MPL-2.0 file-level inventory → REQ-LIC-01**, now covering the reused analyzer-bridge whose license is confirmed **MPL-2.0 → REQ-LIC-02** (ADR-0006; HOLD-001 lifted)), LIS-4 (reproducible bootstrap → REQ-VAL-02), LIS-5 (RBAC 403 → REQ-RBAC-01), LIS-6 (append-only audit → REQ-AUD-01), LIS-7 (raw+normalized result store → REQ-DATA-01), LIS-8 (LOINC/UCUM end-to-end → REQ-DATA-02/REQ-QMS-02), LIS-9 (simulator harness → L2/L3 instrument).
 - Any new requirement uses the **same prefixes** (`REQ-PRIV/RBAC/AUD/SEC/VAL/QMS/DATA/RES/CONF/LIC-*`) and is registered in the matrix, not invented ad hoc in prose.
 
 This VMP defers the authoritative requirement list to the matrix to avoid drift between artifacts.
@@ -171,7 +171,7 @@ This VMP defers the authoritative requirement list to the matrix to avoid drift 
 Because the LIS is "known base + deltas," change control is the mechanism that keeps the *known base* known (REQ-QMS-03).
 
 - **Upstream OpenELIS merges** — pulling `upstream/develop` into the fork changes the base. Each merge: re-pin the submodule SHA in `lis-control` (new validated snapshot), run the full regression suite (L1–L4), and assess impact on high-risk seams (normalization, audit, result versioning). Only a passing snapshot is promoted.
-- **Per-analyzer channels** — adding/altering a driver channel is a *delta* requiring its own L2 component tests and an L3 **signed bench-conformance report** before the analyzer is marked "supported" (REQ-CONF-01). Channel isolation (REQ-SEC-03) bounds blast radius so one driver change does not force whole-system revalidation. **The shape of this delta depends on Open Decision #6 (build bespoke vs adopt an integration engine):** a bought engine changes the L1/L2 surface and reopens the license question (REQ-LIC-01/02, HOLD-001) — see §13.
+- **Per-analyzer channels** — adding/altering a driver channel is a *delta* requiring its own L2 component tests and an L3 **signed bench-conformance report** before the analyzer is marked "supported" (REQ-CONF-01). Channel isolation (REQ-SEC-03) bounds blast radius so one driver change does not force whole-system revalidation. **The interface engine is the reused openelis-analyzer-bridge (Open Decision #6 resolved — ADR-0006);** it fixes the L1/L2 surface and the license question is settled (MPL-2.0, REQ-LIC-01/02) — see §13.
 - **Configuration changes** — RBAC role maps, LOINC/UCUM table seeds, reference ranges, QC rules (REQ-QMS-04): versioned, reviewed, and regression-tested; high-risk configs (mappings, QC gating) get targeted OQ re-execution.
 - **Revalidation triggers** — to be enumerated by the QA/regulatory owner; at minimum: base version change, new analyzer channel, data-model change to PHI objects, sync/reconciliation logic change, security control change, or a signed DOH AO 2021-0037 amendment. Trigger thresholds are `[NEEDS-HUMAN]`.
 
@@ -201,7 +201,7 @@ Each stage closes on its **verifiable output (exit gate)** and contributes evide
 
 | Stage | Validation contribution | Closes on (exit gate) |
 |---|---|---|
-| **Stage 0 — Foundations & compliance scaffold** | This VMP outline + NPC checklist + threat model + seeded matrix (LIS-10); fork/MPL-2.0 inventory = REQ-LIC-01, analyzer-bridge license HOLD = REQ-LIC-02 (LIS-3 / HOLD-001); reproducible bootstrap = IQ seed (LIS-4); RBAC/audit/result/normalization controls proven (LIS-5/6/7/8); simulator harness (LIS-9). | Compliance artifacts exist in-repo and are **reviewed**; matrix maintained. |
+| **Stage 0 — Foundations & compliance scaffold** | This VMP outline + NPC checklist + threat model + seeded matrix (LIS-10); fork/MPL-2.0 inventory = REQ-LIC-01, analyzer-bridge license = REQ-LIC-02 confirmed MPL-2.0 (ADR-0006); reproducible bootstrap = IQ seed (LIS-4); RBAC/audit/result/normalization controls proven (LIS-5/6/7/8); simulator harness (LIS-9). | Compliance artifacts exist in-repo and are **reviewed**; matrix maintained. |
 | **Stage 1–3 — Drivers & conformance** | L1/L2 unit+component per channel; **L3 signed bench-conformance** before "supported" (REQ-CONF-01). | Per-analyzer conformance reports signed. |
 | **Stage 4 — API & edge resilience** | L4 E2E (instrument → normalized Result → **FHIR R4**); **single-site edge store-and-forward** (no result lost on edge/analyzer restart). *(Site↔central sync + no-LWW reconciliation, REQ-RES-01/02, is descoped from the pilot to the M3 spoke row below.)* | FHIR demonstrable; single-site edge resilience demonstrable. |
 | **Stage 5 — Validation + pilot (M1, fully onsite)** | **Execute IQ/OQ/PQ on the M1 topology** and produce the **signed dossier** (REQ-VAL-01); **QC engine — Westgard multirules, Levey-Jennings, delta checks, autoverification gating (REQ-QMS-04)**; pen-test of the on-prem deployment + remediation (REQ-SEC-04); TLS + at-rest verified (REQ-SEC-01/02); breach-runbook tabletop (REQ-PRIV-02, the **lab's** as PIC); **pathologist result-release** workflow (RA 4688); go/no-go. **NPC registration at the pilot is the customer lab's PIC filing** of the LIS (REQ-PRIV-01) plus LabSolution's own corporate filing/sworn declaration if triggered — **not** a LabSolution sync-service DPS (that is M3). | Signed IQ/OQ/PQ dossier (M1); lab PIC NPC registration filed; pilot go-live decision. |
@@ -218,22 +218,22 @@ This VMP is **not approved** until the following are named and have signed. No s
 | Approval | Name | Signature | Date |
 |---|---|---|---|
 | System owner | Marloe Uy | marloeuyjr | June 23, 2026 |
-| Validation lead | `[NEEDS-HUMAN]` | — | — |
-| QA / regulatory owner (Decision #5) | Artis Lindy Pinote | — | — |
-| Pathologist approver (RA 4688) | `[NEEDS-HUMAN]` | — | — |
+| Validation lead | Marloe Uy | — | — |
+| QA / regulatory owner (ADR-0005) | Artis Lindy Pinote | — | — |
+| Pathologist approver (RA 4688) | `[NEEDS-HUMAN]` — per-customer, named at on-site PQ | — | — |
 
 ---
 
 ## Deferred decisions (HITL)
 
-- **Regulatory ownership (Open Decision #5)** — who owns NPC registration, the ISO 15189 validation dossier, and per-customer lab-licensing alignment. **Blocks LIS-10 execution** and every signature line here.
-- **Build vs buy the interface engine (Open Decision #6)** — bespoke LabSolution drivers vs adopting an Open Integration Engine. This **determines which interface-engine codebase is a validated object**, drives the L1/L2 unit/component test surface (§7, §9), sets the per-analyzer conformance scope (REQ-CONF-01), and directly drives the license question (REQ-LIC-01 MPL-2.0 obligations / REQ-LIC-02 analyzer-bridge confirmation, HOLD-001). **The validated boundary of the system cannot be finalized until this is fixed.**
-- **Stack language (Open Decision #2)** — Java end-to-end vs polyglot edge. Changes the L1/L2 unit/component test surface for the drivers (tooling, codecs, conformance harness language) and therefore part of the OQ test plan.
+- **Regulatory ownership (Open Decision #5)** — ✅ **RESOLVED by [ADR-0005](../adr/0005-regulatory-ownership-and-responsibility-allocation.md):** Pinote = accountable QA/regulatory owner, Uy = system owner + validation lead, Kirsten Pinote = DPO; lab = PIC / LabSolution = neither-M1/PIP-M3 / SaMD-if-triggered; labs own RA 4688. Unblocks the signature lines above (signatures themselves remain `[NEEDS-HUMAN]`).
+- **Build vs buy the interface engine (Open Decision #6)** — ✅ **RESOLVED by [ADR-0006](../adr/0006-interface-engine-stack-and-fleet-scope.md):** reuse the **openelis-analyzer-bridge** (license confirmed **MPL-2.0**, HOLD-001 lifted). The **validated boundary is therefore OpenELIS core + analyzer-bridge edge (both MPL-2.0)**; this fixes the L1/L2 surface (§7, §9), the per-analyzer conformance scope (REQ-CONF-01), and the license inventory (REQ-LIC-01/02).
+- **Stack language (Open Decision #2)** — ✅ **RESOLVED by [ADR-0006](../adr/0006-interface-engine-stack-and-fleet-scope.md): Java end-to-end** for the validated runtime stack (the reused bridge is Java/Spring Boot/Maven; the core is Java) — a single L1/L2 test surface and OQ toolchain.
 - **Deployment topology (Open Decision #3)** — ✅ **RESOLVED by [ADR-0004](../adr/0004-deployment-topology.md):** pilot validates **M1 (fully onsite)**; the site↔central sync is the post-pilot **M3** spoke (LabSolution's own in-PH datacenter) behind the [compliance extra-work gate](m3-sync-compliance-gate.md); **M2 (public cloud) not selected.** This fixes the pilot IQ scope (single-site, no sync), the pilot PQ matrix (edge resilience, not WAN/sync-conflict), and the validated boundary. The M3 spoke reopens the resilience/PQ matrix as a delta.
 - **DOH AO 2021-0037 draft amendment** — track HFSRB consultation; re-confirm before Stage-5 go/no-go; re-baseline acceptance criteria if signed.
 - **CSV classification + formal risk method (FMEA or equivalent)** and **revalidation trigger thresholds** — require the appointed QA/regulatory owner.
 - **Retention durations + electronic-signature mechanism** for validation records (legal/regulatory input; confirm exact ISO 15189 clause and DOH submission format).
-- **Named signatories** (system owner, validation lead, QA/regulatory owner, pathologist approver).
+- **Named signatories** — ✅ **RESOLVED (DEC-07 / [ADR-0005](../adr/0005-regulatory-ownership-and-responsibility-allocation.md)):** system owner + validation lead = Uy, QA/regulatory owner = Pinote, pathologist approver = per-customer (named at on-site PQ). Signatures themselves remain `[NEEDS-HUMAN]`.
 
 ## Reading
 

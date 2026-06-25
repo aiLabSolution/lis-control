@@ -75,7 +75,7 @@ Boundaries (TB-n) where data crosses a change in trust level, following the refe
 | **External EMR / HIS / PhilHealth** | Semi-trusted partner across TB-4 | Spoofed endpoint, over-pull of PHI, weak partner auth, replay. |
 | **Network attacker (LAN/WAN)** | Untrusted | Sniff/tamper plaintext MLLP/ASTM on the lab LAN (TB-1); MITM sync (TB-5). |
 | **Malicious / negligent insider** | Authorized but hostile/careless | Bulk PHI exfiltration (A1/A2), audit tampering (A3), credential sharing. |
-| **Compromised or buggy analyzer driver** | Edge code, partly third-party (incl. analyzer-bridge, license TBD — HOLD-001) | Malformed/hostile messages attempting to corrupt the core or inject bad results across TB-2 (→ REQ-SEC-03 channel isolation). |
+| **Compromised or buggy analyzer driver** | Edge code, partly third-party (incl. analyzer-bridge, **MPL-2.0** per ADR-0006) | Malformed/hostile messages attempting to corrupt the core or inject bad results across TB-2 (→ REQ-SEC-03 channel isolation). |
 
 ---
 
@@ -99,7 +99,7 @@ Likelihood/Impact: H/M/L. Verification level maps to the pyramid (L1 unit · L2 
 | TB-5 sync **[M3]** | **I**nfo disclosure / S | MITM or spoofed peer on the WAN sync link reads/forges PHI between site and central | A1, A5 | TLS on sync transport; mutual peer authentication; encrypted store-and-forward payloads; sync credential custody (REQ-SEC-05) | REQ-SEC-01, REQ-SEC-02, REQ-SEC-05 | L4, L6 |
 | TB-4 egress | **S**poofing / I | Spoofed EMR/PhilHealth endpoint or over-broad FHIR pull exfiltrates PHI to a wrong party | A1, A5 | TLS + authenticated FHIR R4 API; scoped authorization per partner; egress audited; documented lawful basis | REQ-SEC-01, REQ-PRIV-05, REQ-AUD-02 | L4, L6 |
 | TB-4 egress | **R**epudiation | No record of which PHI left to which partner when (RA 10173 accountability) | A3, A1 | Egress logged to append-only audit; Records of Processing Activities | REQ-AUD-02, REQ-PRIV-07 | L4, L6 |
-| Supply chain | (non-security caveat) | **analyzer-bridge has no declared license (TBD)**; OpenELIS is MPL-2.0 file-level copyleft — reuse/redistribution risk, not a runtime exploit | A6, build | License confirmation gate (HOLD-001) before any reuse; MPL-2.0 obligations honored; analyzer-bridge license confirmed; pinned submodule snapshot (ADR-0001) | **REQ-LIC-01**, **REQ-LIC-02**, REQ-VAL-02 | L6 |
+| Supply chain | (non-security caveat) | analyzer-bridge license **confirmed MPL-2.0** (ADR-0006; earlier "TBD" was a GitHub `NOASSERTION` false-negative); OpenELIS is MPL-2.0 file-level copyleft — both honored under one inventory, not a runtime exploit | A6, build | MPL-2.0 file-level obligations honored across core + bridge (REQ-LIC-01); `NOTICE` + per-file headers on modified files; pinned submodule snapshot (ADR-0001) | **REQ-LIC-01**, **REQ-LIC-02**, REQ-VAL-02 | L6 |
 
 **[M3] rows — post-pilot.** Every row whose boundary is **TB-5 sync [M3]** belongs to the post-pilot **M3 spoke**, not the pilot. They are kept here so the spoke is pre-thought, but they are **excluded from the pilot pen-test scope** and are (re)validated at the spoke's change-control threat-model re-run (REQ-QMS-03 / gate doc M3-18). The pilot's resilience testing covers **single-site** edge/analyzer restart only — not WAN-outage or sync-conflict.
 
@@ -117,7 +117,7 @@ Likelihood/Impact: H/M/L. Verification level maps to the pyramid (L1 unit · L2 
 | LOINC/UCUM normalization proven end-to-end | REQ-DATA-02 / REQ-QMS-02 | **Stage 0 — LIS-8 / S0.6** | Stage-0 gated |
 | Channel isolation — bad driver cannot corrupt core | REQ-SEC-03 | Design baseline Stage 0; **isolation proven at L5 (chaos), gated/verified Stage 5** | Design baseline now; verified Stage 5 |
 | Reproducible pinned-submodule snapshot | REQ-VAL-02 | **Stage 0 — LIS-4 / S0.2** (ADR-0001) | Stage-0 gated |
-| MPL-2.0 honored; analyzer-bridge license confirmed | REQ-LIC-01, REQ-LIC-02 | Stage 0 — LIS-3 + **HOLD-001** | Blocked on HOLD-001 |
+| MPL-2.0 honored across core + bridge | REQ-LIC-01, REQ-LIC-02 | Stage 0 — LIS-3 | **Resolved:** bridge = MPL-2.0 (ADR-0006); HOLD-001 lifted |
 | Secrets / credential management (key & service-cred custody, rotation) | REQ-SEC-05 | Designed pre-Stage-5; verified **Stage 5** | Undesigned — [NEEDS-HUMAN] (§8) |
 | Per-analyzer bench conformance before "supported" | REQ-CONF-01 | Stages 1–3 | Later |
 | Store-and-forward; zero loss on WAN outage | REQ-RES-01 | **[M3 spoke — post-pilot]** (pilot covers single-site edge restart only) | Deferred to M3 gate |
@@ -139,7 +139,7 @@ Likelihood/Impact: H/M/L. Verification level maps to the pyramid (L1 unit · L2 
 - **R1 — Plaintext edge links remain until REQ-SEC-01 lands (Stage 5).** Many analyzers (serial ASTM-family units; older HL7 v2.x units that may not support TLS natively) may never support TLS → permanent reliance on compensating controls (segregated VLAN, physical isolation). The pen-test must validate the segmentation, not assume TLS everywhere. **[NEEDS-HUMAN]** to accept the compensating-control posture.
 - **R2 — Key/secret custody undesigned (A7, REQ-SEC-05).** Encryption-at-rest and TLS are only as strong as key/secret management, which does not yet exist (§8). Until decided, REQ-SEC-02 is "checkbox-present, root-of-trust-unproven."
 - **R3 — Insider with lab-admin rights** can still edit mapping tables and user roles. Mitigated by audit + change control, but not prevented; needs separation-of-duties policy (post-Stage-0 RBAC refinement).
-- **R4 — HOLD-001 (analyzer-bridge license)** blocks safe reuse of a candidate edge component; a non-security legal risk (REQ-LIC-01 / REQ-LIC-02) that still gates the driver layer.
+- **R4 — analyzer-bridge license RESOLVED (was HOLD-001).** The bridge is **MPL-2.0** (ADR-0006); reuse is permitted and the obligation folds into the REQ-LIC-01 MPL-2.0 inventory. Residual: add `NOTICE` + per-file MPL headers on modified files (hygiene, not a blocker).
 - **R5 — Topology (#3) ✅ RESOLVED (ADR-0004).** The **pilot** surface is final at **M1** (no TB-5; per-site TB-7). The TB-5 sync boundary and the central TB-7 are introduced **only** by the post-pilot **M3 spoke** and carry their own residual-risk pass at the spoke's change-control threat-model re-run (gate doc M3-18) — they are **not** open risks for the pilot.
 
 **Assumptions** are listed in the structured `assumptions` field.
@@ -161,10 +161,10 @@ Likelihood/Impact: H/M/L. Verification level maps to the pyramid (L1 unit · L2 
 - **Key & secrets management (REQ-SEC-05)** — where TLS private keys, at-rest encryption keys, and service/DB credentials live (HSM? KMS? OS keystore?), rotation, and custody. At **M1** this is **per-site** (the lab holds its own keys); **[M3 SPOKE]** the central node adds LabSolution's custody of keys to **aggregated multi-lab PHI** on its own premises (gate doc M3-11). Blocks the root-of-trust for REQ-SEC-01/02 (A7, R2). **[NEEDS-HUMAN]**
 - **TLS / PKI approach** — CA model (internal CA vs per-site self-signed vs managed), mutual-TLS for analyzers/sync, and the fallback for analyzers that cannot do TLS. Shapes REQ-SEC-01 + R1. **[NEEDS-HUMAN]**
 - **Deployment topology (open decision #3)** — ✅ **RESOLVED by [ADR-0004](../adr/0004-deployment-topology.md):** pilot = M1 (fully onsite, no TB-5); post-pilot spoke = M3 (own in-PH central sync, adds TB-5 + central TB-7); M2 (public cloud) not selected. The **pilot** model is final; the **M3** additions are finalized at the spoke's change-control re-run ([gate doc](m3-sync-compliance-gate.md) M3-18). No longer blocking.
-- **v1 fleet scope (open decision #4)** — bounds the number of TB-1 edge boundaries (how many analyzer channels) and the protocol mix in the attack surface (HL7-v2-only vs full ASTM-family + proprietary middleware), which in turn sizes the REQ-CONF-01 bench-conformance scope. A larger v1 fleet expands TB-1/TB-2 surface and the conformance burden. **[NEEDS-HUMAN]**
+- **v1 fleet scope (open decision #4)** — ✅ **RESOLVED by [ADR-0006](../adr/0006-interface-engine-stack-and-fleet-scope.md):** minimal **HL7-v2.x/MLLP-first** v1 fleet (anchor RAYTO RAC-050, result-ingestion first; exact machines pinned at pilot-fleet confirmation). The **ASTM-serial group, proprietary middleware (Snibe/Mindray DMS), and bidirectional host-query are deferred post-pilot under change control (REQ-QMS-03)** — keeping the pilot TB-1/TB-2 surface and REQ-CONF-01 burden minimal.
 - **MFA / strong-auth policy** for high-privilege roles (pathologist release authority A4, lab admin). **[NEEDS-HUMAN]**
 - **Threat-model tooling & cadence** — adopt a tool/format (e.g. a STRIDE/data-flow tool — confirm choice) and the re-run cadence (per stage gate vs per quarter), anchored to **REQ-QMS-03 (change control & revalidation)**; ownership of the living model defers to the regulatory/QA owner (decision #5). **[NEEDS-HUMAN]**
-- **Regulatory ownership (open decision #5)** — who owns the security posture sign-off, the living-model ownership, and the pen-test engagement scope (REQ-SEC-04). Directly blocks closing LIS-10. **[NEEDS-HUMAN]**
+- **Regulatory ownership (open decision #5)** — ✅ **RESOLVED by [ADR-0005](../adr/0005-regulatory-ownership-and-responsibility-allocation.md):** **Artis Lindy Pinote** (accountable QA/regulatory owner) owns the security-posture sign-off, the living-threat-model ownership, and the pen-test engagement scope (REQ-SEC-04). No longer blocks closing LIS-10.
 
 ## Reading
 
@@ -176,4 +176,4 @@ Likelihood/Impact: H/M/L. Verification level maps to the pyramid (L1 unit · L2 
 - LabSolution reference architecture (`diagrams/01-reference-architecture.png`) and regulatory-controls map (`diagrams/06-regulatory-controls-map.png`); verification pyramid (`diagrams/08-verification-pyramid.png`).
 - ADR-0001 (`docs/adr/0001-repository-topology-submodule-umbrella.md`) — pinned-snapshot basis for REQ-VAL-02.
 - Research report §5.2 (channel isolation/layering) and §10 (design obligations) — `LIS_BUILD_AND_INTEGRATION_RESEARCH.md`.
-- HOLD-001 — openelis-analyzer-bridge undeclared license (supply-chain caveat, REQ-LIC-01 / REQ-LIC-02).
+- HOLD-001 **lifted (2026-06-25)** — openelis-analyzer-bridge license confirmed **MPL-2.0** (ADR-0006); folds into REQ-LIC-01.
