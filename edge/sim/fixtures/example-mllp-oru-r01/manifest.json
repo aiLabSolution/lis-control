@@ -1,0 +1,15 @@
+{
+  "id": "example-mllp-oru-r01",
+  "description": "Synthetic HL7 v2.3 ORU^R01 result message carried over MLLP — exercises the MLLP frame/de-frame round-trip (LIS-13 / S1.1). NOT a real instrument capture.",
+  "analyzer": { "vendor": "RAYTO", "model": "RAC-050" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-13 / S1.1)",
+    "note": "Application payload only — the MllpTransport applies the 0x0B…0x1C 0x0D envelope at replay time. Real RAYTO RAC-050 captures replace this synthetic seed in LIS-20 (bench conformance), set synthetic:false with a capture reference."
+  },
+  "synthetic": true,
+  "expected": {}
+}

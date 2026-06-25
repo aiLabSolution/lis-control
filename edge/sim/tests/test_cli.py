@@ -45,3 +45,23 @@ def test_replay_mismatch_exit_one(capsys):
 def test_bad_root_exit_two(capsys):
     assert main(["--root", "/no/such/dir", "list"]) == 2
     assert "error:" in capsys.readouterr().err
+
+
+def test_replay_via_mllp_transport_exit_zero(capsys):
+    assert main(["replay", "example-mllp-oru-r01", "--transport", "mllp"]) == 0
+    out = capsys.readouterr().out
+    assert "via mllp" in out
+    assert "OK" in out
+
+
+def test_list_shows_mllp_fixture(capsys):
+    assert main(["list"]) == 0
+    assert "example-mllp-oru-r01" in capsys.readouterr().out
+
+
+def test_ack_prints_accept_ack(capsys):
+    assert main(["ack", "example-mllp-oru-r01"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("MSH|")
+    assert "ACK^R01" in out
+    assert "MSA|AA|MSG00050" in out
