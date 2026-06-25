@@ -8,7 +8,7 @@
 > verifiable output** (an automated test, a reproducible demo on staging, or a
 > signed compliance artifact). The verification column is the contract.
 >
-> **⮕ DEPLOYMENT-TOPOLOGY DECISION (2026-06-24) — [docs/adr/0004-deployment-topology.md](docs/adr/0004-deployment-topology.md);
+> **⮕ DEPLOYMENT-TOPOLOGY DECISION (2026-06-24) — [docs/adr/0006-deployment-topology.md](docs/adr/0006-deployment-topology.md);
 > resolves Open Decision #3 below.** The **pilot deploys fully on-site at each lab, with no sync (M1)**. A **central
 > sync at LabSolution's own on-prem server (M3)** is a **separate post-pilot "spoke"**, decoupled from the pilot
 > critical path and gated by a **compliance extra-work checklist**
@@ -216,7 +216,7 @@ pending a wire-format capture (LIS-76). See the
 ### Stage 4 — FHIR R4 API + single-site edge resilience
 **Goal:** EMR-ready API and single-site resilience; the deploy kit that makes an on-prem
 install repeatable. *(Site↔central sync is descoped from the pilot to the post-pilot M3 spoke,
-ADR-0004 — see the M3 spoke detail below.)*
+ADR-0006 — see the M3 spoke detail below.)*
 
 **Key tasks**
 - **HAPI FHIR R4:** ServiceRequest, Specimen, DiagnosticReport, Observation, Patient, Device; outbound HL7 v2 to HIS.
@@ -238,7 +238,7 @@ ADR-0004 — see the M3 spoke detail below.)*
 
 ### Stage 5 — Validation + pilot (M1, fully onsite, production at one site)
 **Goal:** make it auditable and put it live at one lab under supervision — **fully on-site, no
-sync** (M1, ADR-0004).
+sync** (M1, ADR-0006).
 
 **Key tasks**
 - Execute **IQ/OQ/PQ** against the traceability matrix on the **M1 topology**; resolve deviations.
@@ -301,7 +301,7 @@ middleware flow-down**, stand up its **own breach apparatus**, design **central 
 
 ## 4. Milestones
 
-> *Milestone IDs use an `MS` prefix to avoid collision with the deployment models M1/M2/M3 (ADR-0004).*
+> *Milestone IDs use an `MS` prefix to avoid collision with the deployment models M1/M2/M3 (ADR-0006).*
 
 | ID | Milestone | Closes |
 |---|---|---|
@@ -339,7 +339,7 @@ middleware flow-down**, stand up its **own breach apparatus**, design **central 
 
 1. **Core strategy** — confirm "fork OpenELIS" vs greenfield.
 2. **Stack language** — Java end-to-end vs polyglot edge (Python drivers + Java core).
-3. ~~**Deployment topology**~~ — ✅ **RESOLVED ([ADR-0004](docs/adr/0004-deployment-topology.md), 2026-06-24):** pilot = **M1 fully onsite, no sync**; chosen sync model = **M3 own on-prem central sync** as a post-pilot spoke behind the [compliance extra-work gate](docs/compliance/m3-sync-compliance-gate.md); **M2 public cloud not selected.**
+3. ~~**Deployment topology**~~ — ✅ **RESOLVED ([ADR-0006](docs/adr/0006-deployment-topology.md), 2026-06-24):** pilot = **M1 fully onsite, no sync**; chosen sync model = **M3 own on-prem central sync** as a post-pilot spoke behind the [compliance extra-work gate](docs/compliance/m3-sync-compliance-gate.md); **M2 public cloud not selected.**
 4. **v1 fleet scope** — HL7 group only first, or commit to full ASTM + proprietary before pilot.
 5. **Regulatory ownership** — who owns NPC registration + the ISO 15189 dossier.
 6. **Build vs buy the interface engine** — adopt OIE vs minimal bespoke drivers on HAPI/python-hl7.

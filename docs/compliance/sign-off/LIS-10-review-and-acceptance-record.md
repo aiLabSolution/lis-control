@@ -52,14 +52,14 @@ By signing, the reviewers confirm these decisions are taken and correctly record
 
 | Decision | Outcome | Record |
 |---|---|---|
-| **DEC-01** Regulatory ownership | Lab = PIC (all models); LabSolution (single legal entity) = neither-M1/PIP-M3; SaMD-if-triggered. Pinote = accountable QA/regulatory owner; Uy = system owner + validation lead | ADR-0005 |
-| **DEC-02** DPO | **Kirsten Pinote** designated DPO (independence charter — LIS-COMP-SIGNOFF-002) | ADR-0005 |
-| **DEC-07** Signatories | Uy (system owner + validation lead); Pinote (independent QA approver); pathologist per-customer | ADR-0005 |
-| **DEC-08** analyzer-bridge license | **MPL-2.0** (+ Healthcare Disclaimer); HOLD-001 lifted; folds into REQ-LIC-01 | ADR-0006 |
-| **DEC-04** Interface engine | Reuse `openelis-analyzer-bridge` | ADR-0006 |
-| **DEC-05** Stack | Polyglot — Java validated *production* runtime (core + bridge); Python for the edge simulator + conformance harness (LIS-9) + tooling | ADR-0006 |
-| **DEC-06** v1 fleet | Minimal HL7-v2.x/MLLP-first (anchor RAYTO RAC-050); ASTM-serial + proprietary middleware + bidirectional deferred under change control. *Exact machines pending pilot-fleet confirmation.* | ADR-0006 |
-| **DEC-03** Topology | M1 pilot / M3 post-pilot spoke / M2 parked | ADR-0004 |
+| **DEC-01** Regulatory ownership | Lab = PIC (all models); LabSolution (single legal entity) = neither-M1/PIP-M3; SaMD-if-triggered. Pinote = accountable QA/regulatory owner; Uy = system owner + validation lead | ADR-0007 |
+| **DEC-02** DPO | **Kirsten Pinote** designated DPO (independence charter — LIS-COMP-SIGNOFF-002) | ADR-0007 |
+| **DEC-07** Signatories | Uy (system owner + validation lead); Pinote (independent QA approver); pathologist per-customer | ADR-0007 |
+| **DEC-08** analyzer-bridge license | **MPL-2.0** (+ Healthcare Disclaimer); HOLD-001 lifted; folds into REQ-LIC-01 | ADR-0008 |
+| **DEC-04** Interface engine | Reuse `openelis-analyzer-bridge` | ADR-0008 |
+| **DEC-05** Stack | Polyglot — Java validated *production* runtime (core + bridge); Python for the edge simulator + conformance harness (LIS-9) + tooling | ADR-0008 |
+| **DEC-06** v1 fleet | Minimal HL7-v2.x/MLLP-first (anchor RAYTO RAC-050); ASTM-serial + proprietary middleware + bidirectional deferred under change control. *Exact machines pending pilot-fleet confirmation.* | ADR-0008 |
+| **DEC-03** Topology | M1 pilot / M3 post-pilot spoke / M2 parked | ADR-0006 |
 
 ## 4. Residual `[NEEDS-HUMAN]` items acknowledged
 

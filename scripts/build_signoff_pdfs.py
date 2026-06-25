@@ -94,17 +94,17 @@ DOSSIER = [
     f"{COMP}/decisions-register.md",
     f"{COMP}/responsibility-and-deployment.md",
     f"{COMP}/m3-sync-compliance-gate.md",
-    f"{ADR}/0004-deployment-topology.md",
-    f"{ADR}/0005-regulatory-ownership-and-responsibility-allocation.md",
-    f"{ADR}/0006-interface-engine-stack-and-fleet-scope.md",
+    f"{ADR}/0006-deployment-topology.md",
+    f"{ADR}/0007-regulatory-ownership-and-responsibility-allocation.md",
+    f"{ADR}/0008-interface-engine-stack-and-fleet-scope.md",
 ]
 titles = ["Sign-off — Review & Acceptance Record","Sign-off — DPO Designation & Independence Charter",
     "Preparation brief (start here)","Core 1 — Validation Master Plan (outline)",
     "Core 2 — NPC registration checklist","Core 3 — Threat model (STRIDE)",
     "Core 4 — Traceability matrix (seed)","Decisions register (HITL)",
     "Responsibility & deployment (PIC/PIP)","M3 sync compliance gate",
-    "ADR-0004 — Deployment topology","ADR-0005 — Regulatory ownership",
-    "ADR-0006 — Interface engine / stack / fleet"]
+    "ADR-0006 — Deployment topology","ADR-0007 — Regulatory ownership",
+    "ADR-0008 — Interface engine / stack / fleet"]
 toc = "".join(f"<li>{i+1}. {htmlmod.escape(t)}</li>" for i,t in enumerate(titles))
 cover = f"""<div class="cover">
   <span class="badge">FOR REVIEW · PENDING SIGNATURES</span>

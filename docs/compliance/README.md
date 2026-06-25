@@ -9,7 +9,7 @@ is system-wide (ADR-0001), not specific to any one submodule.
 **Start here:** [`LIS-10-preparation-brief.md`](LIS-10-preparation-brief.md) — plain-language
 explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 
-> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0004](../adr/0004-deployment-topology.md).** The
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0006](../adr/0006-deployment-topology.md).** The
 > deployment topology is **decided**: the **pilot is M1 (fully onsite, no sync)**; a **central
 > sync at LabSolution's own on-prem server (M3)** is a **post-pilot spoke** gated by the
 > **"compliance extra work"** in [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md);
@@ -17,7 +17,7 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 > compliance. Every artifact below was revised on 2026-06-24 to scope the pilot to M1 and tag the
 > M3-spoke deltas.
 >
-> **⮕ LEADERSHIP DECISIONS TAKEN (2026-06-25) — [ADR-0005](../adr/0005-regulatory-ownership-and-responsibility-allocation.md) + [ADR-0006](../adr/0006-interface-engine-stack-and-fleet-scope.md).**
+> **⮕ LEADERSHIP DECISIONS TAKEN (2026-06-25) — [ADR-0007](../adr/0007-regulatory-ownership-and-responsibility-allocation.md) + [ADR-0008](../adr/0008-interface-engine-stack-and-fleet-scope.md).**
 > The LIS-10 leadership-decision gate is **cleared**: regulatory ownership (**DEC-01** — Pinote = accountable
 > QA/regulatory owner, Uy = system owner + validation lead, Kirsten Pinote = DPO), DPO (**DEC-02**), signatories
 > (**DEC-07**); interface engine = **reuse `openelis-analyzer-bridge`** (**DEC-04**), license = **MPL-2.0** (**DEC-08**,
@@ -34,9 +34,9 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 | [`npc-registration-checklist.md`](npc-registration-checklist.md) | **NPC checklist** — RA 10173 / NPC Circular 2022-04 registration & data-privacy checklist | Drafted, pending review |
 | [`threat-model.md`](threat-model.md) | **Threat model** — STRIDE over the LIS reference architecture | Drafted, pending review |
 | [`traceability-matrix.md`](traceability-matrix.md) | **Traceability matrix (seed)** — requirement → verification → evidence; the authoritative `REQ-*` registry | Drafted, pending review |
-| [`decisions-register.md`](decisions-register.md) | **26 decisions** (HITL), ranked by what they block — **8 resolved (ADR-0004/0005/0006: DEC-01/02/03/04/05/06/07/08); 18 open** | Leadership gate cleared; counsel/clause items remain |
+| [`decisions-register.md`](decisions-register.md) | **26 decisions** (HITL), ranked by what they block — **8 resolved (ADR-0006/0005/0006: DEC-01/02/03/04/05/06/07/08); 18 open** | Leadership gate cleared; counsel/clause items remain |
 | [`reading-list.md`](reading-list.md) | Primary sources to read before deciding | Reference |
-| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. **Topology now decided (ADR-0004): M1 pilot ✅, M3 spoke 🔜, M2 parked ⛔.** | Drafted, pending review + counsel |
+| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. **Topology now decided (ADR-0006): M1 pilot ✅, M3 spoke 🔜, M2 parked ⛔.** | Drafted, pending review + counsel |
 | [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) | **Compliance extra work** — the PIP-status obligations (own NPC DPS registration, head DPA + flow-down, breach apparatus, physical custody, central key custody) that must complete **before** the post-pilot M3 on-prem central-sync spoke. **Not on the pilot critical path.** | Drafted, pending review + counsel |
 
 The four core artifacts (VMP, NPC, threat model, matrix) are the literal deliverables named
@@ -85,7 +85,7 @@ workflow. Grounded only in the fact-checked research, so regulatory citations ar
 invented; unverified specifics are marked *"(confirm exact clause)"*. **Pending human
 review** — not approved, not filed, not signed.
 
-**Revised 2026-06-24** to incorporate the deployment-topology decision ([ADR-0004](../adr/0004-deployment-topology.md)):
+**Revised 2026-06-24** to incorporate the deployment-topology decision ([ADR-0006](../adr/0006-deployment-topology.md)):
 pilot scoped to **M1 (fully onsite)**; sync/PIP-status compliance decoupled from the pilot and
 consolidated into the **M3 compliance extra-work gate**; **M2 (public cloud) parked**. New
-artifacts: `m3-sync-compliance-gate.md` and ADR-0004.
+artifacts: `m3-sync-compliance-gate.md` and ADR-0006.

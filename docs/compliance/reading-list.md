@@ -9,7 +9,7 @@
 > clause/window/process is asserted but not in the grounding facts, the human must **confirm
 > against the primary text** rather than the drafted artifact.
 
-> **⮕ TOPOLOGY DECISION (2026-06-24).** **DEC-03 is resolved** ([ADR-0004](../adr/0004-deployment-topology.md)):
+> **⮕ TOPOLOGY DECISION (2026-06-24).** **DEC-03 is resolved** ([ADR-0006](../adr/0006-deployment-topology.md)):
 > M1 fully-onsite pilot → M3 own on-prem central-sync as a post-pilot spoke; M2 public cloud not
 > selected. The **cross-border / data-residency** and **PIP-status** reading below is now mainly
 > relevant to the **M3 spoke** (the [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md)

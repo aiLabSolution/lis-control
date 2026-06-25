@@ -1,4 +1,4 @@
-# ADR-0005 — Regulatory ownership & responsibility allocation
+# ADR-0007 — Regulatory ownership & responsibility allocation
 
 - **Status:** Accepted
 - **Date:** 2026-06-25
@@ -7,7 +7,7 @@
 - **Resolves:** **DEC-01** (regulatory ownership), **DEC-02** (DPO appointment), **DEC-07**
   (named signatories) in `docs/compliance/decisions-register.md`; Open Decision #5
   (regulatory ownership) in `LIS_IMPLEMENTATION_PLAN.md` §6 / `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` §13.
-- **Depends on / relates to:** ADR-0004 (deployment topology — fixes which model drives the
+- **Depends on / relates to:** ADR-0006 (deployment topology — fixes which model drives the
   PIC/PIP split); `docs/compliance/responsibility-and-deployment.md` (the requirement-by-requirement
   allocation this ADR adopts).
 
@@ -17,7 +17,7 @@ DEC-01 ("regulatory ownership") was the single most-blocking item in the complia
 until it was taken, **no signature line in the VMP, no Owner cell in the NPC checklist or
 traceability matrix, and no `REQ-PRIV-*` / `REQ-VAL-01` row could be owned or closed**, and it
 gated the DPO appointment (DEC-02), the named signatories (DEC-07), and the disposition of
-HOLD-001 (DEC-08, see ADR-0006).
+HOLD-001 (DEC-08, see ADR-0008).
 
 On inspection DEC-01 is really **two** decisions:
 
@@ -30,7 +30,7 @@ On inspection DEC-01 is really **two** decisions:
    device, sits on LabSolution **regardless of topology**. This part needed *adoption*, not
    invention.
 2. **The appointment** — *who inside the venture is the named accountable owner*. This was the
-   genuine open gap that every "DEC-01 owner" cell hangs off. ADR-0004 already implicitly named
+   genuine open gap that every "DEC-01 owner" cell hangs off. ADR-0006 already implicitly named
    the people (its deciders are "Marloe Uy (System owner), Artis Lindy Pinote (QA/regulatory
    owner)"); this ADR makes that explicit and assigns the dependent roles.
 
@@ -95,7 +95,7 @@ actual vendor entity.)
   and matrix now resolves to a named person; the VMP can carry real signature lines; DEC-02 and
   DEC-07 close with it.
 - **Clean accountability line.** One accountable owner (Pinote) spans the topology decision
-  (ADR-0004), this allocation, and the dossier/NPC/SaMD — no split-brain ownership.
+  (ADR-0006), this allocation, and the dossier/NPC/SaMD — no split-brain ownership.
 - **Counsel cost is bounded** to a defined confirmation scope rather than an open-ended outsource.
 
 **Negative / costs / residual `[NEEDS-HUMAN]`**
@@ -121,11 +121,11 @@ actual vendor entity.)
 
 ## References
 
-- ADR-0004 — deployment topology (M1 pilot / M3 spoke), which sets which model drives the PIC/PIP split.
+- ADR-0006 — deployment topology (M1 pilot / M3 spoke), which sets which model drives the PIC/PIP split.
 - `docs/compliance/responsibility-and-deployment.md` — the requirement-by-requirement PIC/PIP
   allocation adopted in Decision 1.
 - `docs/compliance/decisions-register.md` — DEC-01/02/07 (now resolved by this ADR).
 - `docs/compliance/npc-registration-checklist.md` — DPO designation (§B), registration scope (§A).
 - `docs/compliance/validation-master-plan-outline.md` — signatory block (DEC-07).
-- ADR-0006 — interface engine / stack / fleet (resolves DEC-04/05/06/08), the sibling leadership
+- ADR-0008 — interface engine / stack / fleet (resolves DEC-04/05/06/08), the sibling leadership
   decisions taken in the same session.

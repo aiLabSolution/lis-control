@@ -1,4 +1,4 @@
-# ADR-0006 — Interface engine (reuse analyzer-bridge), edge stack (Java) & v1 fleet scope
+# ADR-0008 — Interface engine (reuse analyzer-bridge), edge stack (Java) & v1 fleet scope
 
 - **Status:** Accepted
 - **Date:** 2026-06-25
@@ -8,8 +8,8 @@
   **DEC-06** (v1 fleet scope), **DEC-08** (`openelis-analyzer-bridge` license / HOLD-001) in
   `docs/compliance/decisions-register.md`; Open Decisions #6 (interface engine), #2 (stack),
   #4 (fleet) in `LIS_IMPLEMENTATION_PLAN.md` §6 / `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` §13.
-- **Relates to:** ADR-0005 (regulatory ownership — names the owner who accepts the validated
-  boundary), ADR-0001 (pinned-submodule snapshot = IQ baseline), ADR-0004 (M1 pilot scope).
+- **Relates to:** ADR-0007 (regulatory ownership — names the owner who accepts the validated
+  boundary), ADR-0001 (pinned-submodule snapshot = IQ baseline), ADR-0006 (M1 pilot scope).
 
 ## Context
 
@@ -112,7 +112,7 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
   the REQ-LIC-01 MPL-2.0 obligation set the venture already plans to honor for the core.
 - **Smallest pilot surface** — HL7-v2/MLLP-first, result-ingestion-only, one anchor analyzer keeps
   TB-1 trust boundaries and REQ-CONF-01 conformance reports minimal, consistent with the M1
-  "smallest validated base" story (ADR-0004).
+  "smallest validated base" story (ADR-0006).
 
 **Negative / costs / residual `[NEEDS-HUMAN]`**
 - **Reusing the bridge means inheriting its code** as a validated object — its channel-isolation
@@ -149,4 +149,4 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
 - `docs/compliance/decisions-register.md` — DEC-04/05/06/08 (now resolved by this ADR).
 - `docs/compliance/traceability-matrix.md` — REQ-LIC-01/02, REQ-SEC-03, REQ-CONF-01/02.
 - `docs/compliance/threat-model.md` — TB-1/TB-2 edge boundaries, supply-chain row.
-- ADR-0005 — regulatory ownership (the owner who accepts this validated boundary).
+- ADR-0007 — regulatory ownership (the owner who accepts this validated boundary).

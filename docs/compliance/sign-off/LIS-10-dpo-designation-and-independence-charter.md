@@ -6,11 +6,11 @@
 | **Version** | 1.0 — *draft for signature* |
 | **Date prepared** | 2026-06-25 |
 | **Status** | ☐ Pending signatures |
-| **Organisation** | LabSolution (incl. the planned LIS child company — treated as one legal entity; ADR-0005) |
+| **Organisation** | LabSolution (incl. the planned LIS child company — treated as one legal entity; ADR-0007) |
 | **Statutory basis** | RA 10173 (Data Privacy Act of 2012) + its IRR Sec. 26; NPC Circular 2022-04 (DPO contact registered via NPCRS) |
 
 > **What this is.** The instrument designating LabSolution's **Data Protection Officer (DPO)** and
-> recording the DPO's **independence and reporting line** — resolving **DEC-02** (ADR-0005). It is a
+> recording the DPO's **independence and reporting line** — resolving **DEC-02** (ADR-0007). It is a
 > **draft pending PH privacy counsel review** and is **not legal advice**; exact RA 10173 / IRR
 > clause numbers are to be confirmed (DEC-20).
 
@@ -31,7 +31,7 @@ data, specifically:
 - **All deployment models** — LabSolution's **own corporate processing** (staff, customer, and
   business-contact data), for which LabSolution is a **Personal Information Controller (PIC)**.
 - **The M3 post-pilot spoke** — the PHI that LabSolution will process as a **Personal Information
-  Processor (PIP)** when the central-sync spoke goes live (per ADR-0004 / the M3 compliance gate).
+  Processor (PIP)** when the central-sync spoke goes live (per ADR-0006 / the M3 compliance gate).
 - **The M1 pilot** — although LabSolution is *neither PIC nor PIP for the lab's PHI* at M1, the DPO
   oversees the **scoped support / break-glass DPA** and confirms the load-bearing "no PHI access"
   premise holds (DEC-17).
@@ -94,6 +94,6 @@ processing, topology, or the M1→M3 transition. Supersedes any prior designatio
 
 ---
 
-*Prepared 2026-06-25 to resolve DEC-02 (ADR-0005). **Draft pending PH privacy counsel review** — exact
+*Prepared 2026-06-25 to resolve DEC-02 (ADR-0007). **Draft pending PH privacy counsel review** — exact
 RA 10173 / IRR Sec. 26 clause enumeration and the NPCRS DPO-registration fields to be confirmed
 (DEC-13/DEC-20). Not legal advice.*

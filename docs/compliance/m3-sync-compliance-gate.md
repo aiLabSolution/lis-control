@@ -5,13 +5,13 @@
 > `[NEEDS-HUMAN]`.** This is the "**compliance extra work**" that must be completed **before**
 > the on-prem central-sync (**M3**) spoke is implemented. It is **not** on the pilot critical
 > path — the pilot ships on **M1 (fully onsite)** with none of this (see
-> [ADR-0004](../adr/0004-deployment-topology.md)). It is **not formal legal advice.**
+> [ADR-0006](../adr/0006-deployment-topology.md)). It is **not formal legal advice.**
 
 ---
 
 ## 0. Why this gate exists
 
-Per **ADR-0004**, the committed roadmap is:
+Per **ADR-0006**, the committed roadmap is:
 
 ```
 M1 (pilot — committed, no sync)
@@ -122,7 +122,7 @@ pre-submission classification (the MDSW circular is draft/unsigned as of 2026-06
 
 ## Deferred decisions (HITL)
 
-- **DEC-03 (topology)** — resolved by ADR-0004 (M1 pilot; M3 spoke; M2 parked). This gate is the
+- **DEC-03 (topology)** — resolved by ADR-0006 (M1 pilot; M3 spoke; M2 parked). This gate is the
   consequence.
 - **DEC-12** — live NPC breach-notification window + citing instrument (M3-7).
 - **DEC-09 / DEC-10** — central key custody + TLS/PKI for the sync channel (M3-11, M3-12).
@@ -135,6 +135,6 @@ pre-submission classification (the MDSW circular is draft/unsigned as of 2026-06
 - [`responsibility-and-deployment.md`](responsibility-and-deployment.md) — full citations (RA
   10173 / IRR Rule X, NPC Circulars 2022-04 / 16-03 / 2023-06, NPC Advisories 2024-01 / 2025-01,
   ISO 15189:2022 Cl. 6.8 / 7.6, FDA draft MDSW circular).
-- [ADR-0004](../adr/0004-deployment-topology.md) — the topology decision this gate implements.
+- [ADR-0006](../adr/0006-deployment-topology.md) — the topology decision this gate implements.
 - [`traceability-matrix.md`](traceability-matrix.md) — REQ-PRIV-09, REQ-REG-01, REQ-RES-01/02,
   REQ-SEC-* rows.
