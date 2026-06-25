@@ -10,13 +10,18 @@
 - **Is:** a small, dependency-free Python harness that loads versioned
   **conformance fixtures** (a captured message + a validated manifest) and replays
   them through a pluggable **transport**, asserting a byte-faithful round-trip.
-- **Isn't:** a protocol implementation. MLLP framing (LIS-13 / S1.1) and the ASTM
-  E1381 codec (LIS-23 / S2.1) are later slices — they plug into the `Transport`
-  interface here. This skeleton ships only the identity **loopback** transport.
+  Ships the identity **loopback** transport and the **MLLP** transport
+  (`0x0B <msg> 0x1C 0x0D` frame/de-frame + HL7 `ACK^R01`, LIS-13 / S1.1).
+- **Isn't:** a full message parser. MLLP framing is implemented; the tolerant
+  ORU^R01 parser + LOINC/UCUM normalization is the next slice (S1.2 / LIS-14), and
+  the ASTM E1381 codec (LIS-23 / S2.1) is its own slice — both plug into the same
+  `Transport` interface / fixture contract. The MLLP transport reads only the
+  inbound `MSH` segment (enough to acknowledge), not the result content.
 
 Fixtures are the **contract**: language-neutral (raw bytes + JSON manifest), so the
 production driver — whatever language the S1.0 substrate decision picks — consumes
-the same files this Python harness does.
+the same files this Python harness does. ADR for the MLLP/ACK decisions:
+[`docs/adr/0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md).
 
 ## Layout
 
@@ -25,14 +30,17 @@ edge/sim/
   pyproject.toml            # uv project; pytest dev-group; src/ layout
   src/edge_sim/
     fixtures.py             # Fixture model + loader + manifest validation
-    transport.py            # Transport ABC + LoopbackTransport
+    transport.py            # Transport ABC + LoopbackTransport + MllpTransport
+    mllp.py                 # MLLP wire codec: frame/deframe + streaming MllpDecoder
+    ack.py                  # HL7 v2 ACK^R01 builder (original + enhanced modes)
     replay.py               # replay(fixture, transport) -> ReplayResult
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay`
-  tests/                    # pytest: schema, fixtures, transport, replay, cli
+    cli.py / __main__.py    # `edge-sim list | validate | replay | ack`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli
   fixtures/
     schema/fixture.schema.json   # canonical, cross-language manifest contract
     _example/                    # synthetic seed proving the replay self-test
+    example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
 ```
 
 ## Run
@@ -43,6 +51,8 @@ uv run pytest -q                       # unit tests + the replay self-test
 uv run edge-sim list                   # list discovered fixtures
 uv run edge-sim validate               # validate every manifest
 uv run edge-sim replay example-hl7v2-oru-r01
+uv run edge-sim replay example-mllp-oru-r01 --transport mllp   # round-trip over MLLP framing
+uv run edge-sim ack example-mllp-oru-r01                       # the ACK^R01 the listener returns
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`

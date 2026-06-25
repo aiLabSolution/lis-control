@@ -6,11 +6,14 @@ import argparse
 import sys
 from pathlib import Path
 
+from .ack import Hl7AckError, build_ack
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .replay import replay
-from .transport import LoopbackTransport
+from .transport import LoopbackTransport, MllpTransport
 
 __all__ = ["main"]
+
+_TRANSPORTS = {"loopback": LoopbackTransport, "mllp": MllpTransport}
 
 
 def _resolve(root: Path, fixture_ref: str):
@@ -48,7 +51,20 @@ def _replay_and_report(fx, transport) -> int:
 
 def _cmd_replay(args: argparse.Namespace) -> int:
     fx = _resolve(args.root, args.fixture)
-    return _replay_and_report(fx, LoopbackTransport())
+    return _replay_and_report(fx, _TRANSPORTS[args.transport]())
+
+
+def _cmd_ack(args: argparse.Namespace) -> int:
+    """Build the HL7 ``ACK`` the listener would return for a fixture's message
+    and print it (segments on their own lines for readability)."""
+    fx = _resolve(args.root, args.fixture)
+    try:
+        ack = build_ack(fx.message_bytes)
+    except Hl7AckError as exc:
+        print(f"error: cannot acknowledge {fx.id}: {exc}", file=sys.stderr)
+        return 2
+    print(ack.decode("latin-1").replace("\r", "\n"))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,9 +81,18 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="list discovered fixtures").set_defaults(func=_cmd_list)
     sub.add_parser("validate", help="validate every fixture manifest").set_defaults(func=_cmd_validate)
-    replay_parser = sub.add_parser("replay", help="replay a fixture through the loopback transport")
+    replay_parser = sub.add_parser("replay", help="replay a fixture through a transport")
     replay_parser.add_argument("fixture", help="fixture id or directory path")
+    replay_parser.add_argument(
+        "--transport",
+        choices=sorted(_TRANSPORTS),
+        default="loopback",
+        help="transport to replay through (default: loopback)",
+    )
     replay_parser.set_defaults(func=_cmd_replay)
+    ack_parser = sub.add_parser("ack", help="print the HL7 ACK for a fixture's message")
+    ack_parser.add_argument("fixture", help="fixture id or directory path")
+    ack_parser.set_defaults(func=_cmd_ack)
 
     args = parser.parse_args(argv)
     try:
