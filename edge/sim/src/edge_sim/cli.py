@@ -1,4 +1,4 @@
-"""``edge-sim`` command line: list, validate, and replay conformance fixtures."""
+"""``edge-sim`` command line: list, validate, replay, ack, and normalize fixtures."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from pathlib import Path
 
 from .ack import Hl7AckError, build_ack
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
+from .normalize import Normalizer
+from .oru import OruParseError, parse_oru_r01
 from .replay import replay
 from .transport import LoopbackTransport, MllpTransport
 
@@ -67,6 +69,25 @@ def _cmd_ack(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_normalize(args: argparse.Namespace) -> int:
+    """Parse a fixture's ORU^R01 and print each observation's normalized
+    LOINC/UCUM intermediate row (raw code/unit beside the resolved LOINC/UCUM)."""
+    fx = _resolve(args.root, args.fixture)
+    try:
+        report = parse_oru_r01(fx.message_bytes)
+    except OruParseError as exc:
+        print(f"error: cannot parse {fx.id} as ORU^R01: {exc}", file=sys.stderr)
+        return 2
+    rows = Normalizer().normalize_report(report)
+    print(f"{fx.id}\t{report.message_type}\tpatient={report.patient_id}\tspecimen={report.specimen_id}")
+    for r in rows:
+        print(
+            f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
+            f"\t-> LOINC {r.loinc or '-'} / UCUM {r.ucum_value or '-'}\t[{r.status}]"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="edge-sim",
@@ -93,6 +114,11 @@ def main(argv: list[str] | None = None) -> int:
     ack_parser = sub.add_parser("ack", help="print the HL7 ACK for a fixture's message")
     ack_parser.add_argument("fixture", help="fixture id or directory path")
     ack_parser.set_defaults(func=_cmd_ack)
+    normalize_parser = sub.add_parser(
+        "normalize", help="parse a fixture's ORU^R01 and print the normalized LOINC/UCUM rows"
+    )
+    normalize_parser.add_argument("fixture", help="fixture id or directory path")
+    normalize_parser.set_defaults(func=_cmd_normalize)
 
     args = parser.parse_args(argv)
     try:
