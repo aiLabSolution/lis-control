@@ -31,6 +31,29 @@ plan §0 Stage 0).
 - **License hygiene.** MPL-2.0 file-level copyleft applies; confirm the
   `openelis-analyzer-bridge` license before reuse (plan §0).
 
+## Component decisions
+
+- **ADR-0001 — Result table shape + append-only result versions** (S0.5 / LIS-7):
+  `docs/adr/0001-append-only-result-versions.md`.
+
 ## Glossary
 
-_(lazy — populated by `/grill-with-docs` as terms are resolved)_
+Result data model (post-S0.5 — see component ADR-0001):
+
+- **Raw observation** — what the analyzer reported, persisted on `clinlims.result` as
+  `raw_code` (vendor/analyzer test code) + `raw_unit` (unit string as reported).
+- **Normalized observation** — the LOINC/UCUM form, persisted beside the raw on the same
+  `result` row as `loinc` (a snapshot of `TEST.LOINC`, not a new authority) + `ucum_value`,
+  with `status` (`RAW` / `NORMALIZED` / `RECONCILED`) tracking normalization state. Distinct
+  from `result_type` (the legacy value-type discriminator: Dictionary / titer / number / date).
+- **Result version** — an append-only snapshot of a result's `value` + the five
+  normalization columns, one row per change in `clinlims.result_version` (`version_number`
+  per `result_id`). Written automatically by an `AFTER INSERT OR UPDATE` trigger on
+  `result`; made immutable by a `BEFORE UPDATE OR DELETE` trigger (rejects mutation with an
+  `append-only` error). `result_id` is a **soft reference** (no FK), mirroring the
+  append-only `clinlims.history` audit spine. This is the no-last-writer-wins foundation
+  Stage-4 site↔central reconciliation builds on.
+- **Append-only spine** — the project's tamper-evident DB-layer pattern: a `BEFORE
+  UPDATE OR DELETE` trigger that `RAISE`s, used by `clinlims.history` (S0.4 / changeset 046)
+  and `clinlims.result_version` (S0.5 / changeset 047). `UPDATE`/`DELETE` rejected;
+  `INSERT` and `TRUNCATE` (fixture/training resets) unaffected.
