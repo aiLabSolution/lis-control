@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aiLabSolution/lis-control/edge/sim/fixtures/schema/fixture.schema.json",
+  "title": "Analyzer conformance fixture manifest",
+  "description": "Language-neutral contract for one captured (or synthetic) analyzer message used as a conformance fixture. The simulator harness and any future driver consume the same fixtures; the manifest carries provenance for ISO 15189 traceability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "analyzer", "protocol", "transport", "direction", "message", "source", "synthetic"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable, kebab-case fixture id, unique within the fixtures tree."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary of what this message exercises."
+    },
+    "analyzer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendor", "model"],
+      "properties": {
+        "vendor": { "type": "string" },
+        "model": { "type": "string" }
+      }
+    },
+    "protocol": {
+      "type": "string",
+      "description": "Application protocol of the captured message.",
+      "enum": ["hl7v2", "astm-e1394", "astm-e1381", "raw"]
+    },
+    "transport": {
+      "type": "string",
+      "description": "Transport the real instrument speaks; the harness replays via a matching Transport (loopback in the skeleton).",
+      "enum": ["mllp", "serial-rs232", "file", "loopback"]
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["analyzer-to-host", "host-to-analyzer", "bidirectional"]
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "encoding", "framing"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Raw application-payload bytes file, relative to this manifest. Wire framing is NOT stored here — the transport applies it at replay time."
+        },
+        "encoding": {
+          "type": "string",
+          "enum": ["ascii", "latin-1", "utf-8"]
+        },
+        "framing": {
+          "type": "string",
+          "description": "Wire framing the transport must apply/strip around the payload.",
+          "enum": ["raw", "mllp", "astm"]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference"],
+      "properties": {
+        "reference": {
+          "type": "string",
+          "description": "Provenance: instrument manual section, bench-capture session id, or synthetic-seed note (ISO 15189 evidence chain)."
+        },
+        "captured_at": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "synthetic": {
+      "type": "boolean",
+      "description": "true = not a real instrument capture (illustrative/skeleton seed). Real conformance captures set false."
+    },
+    "expected": {
+      "type": "object",
+      "description": "Placeholder for downstream parser/normalization assertions (e.g. the normalized LOINC/UCUM Result row). Wired up once those services land in Stage 1.",
+      "additionalProperties": true
+    }
+  }
+}

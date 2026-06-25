@@ -1,0 +1,15 @@
+{
+  "id": "example-hl7v2-oru-r01",
+  "description": "Synthetic HL7 v2.3 ORU^R01 result message — skeleton seed that exercises the replay self-test. NOT a real instrument capture.",
+  "analyzer": { "vendor": "ACME", "model": "SIM-1" },
+  "protocol": "hl7v2",
+  "transport": "loopback",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "raw" },
+  "source": {
+    "reference": "synthetic skeleton seed (LIS-9 / S0.7)",
+    "note": "Real RAYTO RAC-050 + Mindray labXpert captures land in Stage 1 (LIS-13..21). Replace synthetic seeds per the per-analyzer supported checklist, step (2)."
+  },
+  "synthetic": true,
+  "expected": {}
+}

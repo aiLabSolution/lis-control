@@ -1,0 +1,47 @@
+# LIS Stage 0 (LIS-9 / S0.7) — analyzer simulator harness + conformance-fixture
+# skeleton, tested in CI.
+#
+# The harness lives umbrella-side under edge/sim/ until the edge/drivers submodule
+# exists (CONTEXT-MAP marks it "planned"); fixtures are a language-neutral contract
+# (raw bytes + JSON manifest) consumed by this Python harness today and by future
+# drivers. This job runs the harness unit tests + the replay self-test on every
+# change under edge/sim/. Rationale: docs/adr/0004-analyzer-simulator-harness-and-
+# conformance-fixtures.md.
+name: Stage 0 — Edge simulator harness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - edge/sim/**
+      - .github/workflows/edge-sim.yml
+  pull_request:
+    paths:
+      - edge/sim/**
+      - .github/workflows/edge-sim.yml
+  workflow_dispatch:
+
+concurrency:
+  group: edge-sim-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-tests:
+    name: pytest (harness + replay self-test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: edge/sim
+    steps:
+      - name: Checkout umbrella (lis-control)
+        uses: actions/checkout@v4
+        # No submodules: the harness is umbrella-side and self-contained.
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Run tests
+        run: uv run --frozen --python 3.12 pytest -q
