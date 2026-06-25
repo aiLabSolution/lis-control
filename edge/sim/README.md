@@ -13,14 +13,16 @@
   Ships the identity **loopback** transport, the **MLLP** transport
   (`0x0B <msg> 0x1C 0x0D` frame/de-frame + HL7 `ACK^R01`, LIS-13 / S1.1), and the
   **ASTM E1381** transport (`STX FN text ETX|ETB C1 C2 CR LF` framing + modulo-256
-  checksum, with an ENQ/ACK/NAK/EOT session + retransmit, LIS-23 / S2.1). Also parses
-  a tolerant **HL7 v2 `ORU^R01`** and **normalizes** each observation to a LOINC/UCUM
-  intermediate row (vendor code → LOINC, vendor unit → UCUM, LIS-14 / S1.2).
+  checksum, with an ENQ/ACK/NAK/EOT session + retransmit, LIS-23 / S2.1). Parses the
+  **ASTM E1394** records (`H→P→O→R→L`) carried over that framing into a typed, tolerant
+  record tree (LIS-24 / S2.2). Also parses a tolerant **HL7 v2 `ORU^R01`** and
+  **normalizes** each observation to a LOINC/UCUM intermediate row (vendor code →
+  LOINC, vendor unit → UCUM, LIS-14 / S1.2).
 - **Isn't:** a production driver or a persistence layer. The normalized intermediate
-  row is in-memory; persisting it to the core append-only Result store is a later
-  slice (S1.3 / LIS-15). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM
-  slice (S2.2 / LIS-24). All plug into the same `Transport` interface / fixture
-  contract; the MLLP transport reads only the inbound `MSH` segment (enough to
+  row is in-memory; persisting it to the core append-only Result store is a later slice
+  (S1.3 / LIS-15), and normalizing a parsed **ASTM** result to a LOINC/UCUM Result row
+  is a later ASTM slice (S2.4 / LIS-26). All plug into the same `Transport` interface /
+  fixture contract; the MLLP transport reads only the inbound `MSH` segment (enough to
   acknowledge), not the result content.
 
 Fixtures are the **contract**: language-neutral (raw bytes + JSON manifest), so the
@@ -28,7 +30,8 @@ production driver — whatever language the S1.0 substrate decision picks — co
 the same files this Python harness does. ADRs:
 [`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
 [`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization),
-[`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session).
+[`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session),
+[`0010-astm-e1394-record-parser.md`](../../docs/adr/0010-astm-e1394-record-parser.md) (ASTM E1394 record parser).
 
 ## Layout
 
@@ -44,11 +47,11 @@ edge/sim/
     oru.py                  # ORU^R01 -> typed RawObservations (PID/OBR/OBX) (S1.2)
     normalize.py            # vendor code -> LOINC, unit -> UCUM -> NormalizedObservation (S1.2)
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
+    e1394.py                # ASTM E1394 record parser: H>P>O>R>L -> typed record tree (S2.2)
     replay.py               # replay(fixture, transport) -> ReplayResult
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | ack | normalize`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli, hl7, oru+normalize, astm
-
+    cli.py / __main__.py    # `edge-sim list | validate | replay | ack | normalize | parse-astm`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli, hl7, oru+normalize, astm, e1394
   fixtures/
     schema/fixture.schema.json   # canonical, cross-language manifest contract
     _example/                    # synthetic seed proving the replay self-test
@@ -69,6 +72,7 @@ uv run edge-sim replay example-mllp-oru-r01 --transport mllp   # round-trip over
 uv run edge-sim replay diasys-r920-astm-result --transport astm # round-trip over ASTM E1381 framing
 uv run edge-sim ack example-mllp-oru-r01                       # the ACK^R01 the listener returns
 uv run edge-sim normalize rayto-rac050-oru-r01                 # parse ORU^R01 -> normalized LOINC/UCUM rows
+uv run edge-sim parse-astm diasys-r920-astm-result            # parse ASTM E1394 records -> record tree
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`
