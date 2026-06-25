@@ -13,25 +13,28 @@
   Ships the identity **loopback** transport, the **MLLP** transport
   (`0x0B <msg> 0x1C 0x0D` frame/de-frame + HL7 `ACK^R01`, LIS-13 / S1.1), and the
   **ASTM E1381** transport (`STX FN text ETX|ETB C1 C2 CR LF` framing + modulo-256
-  checksum, with an ENQ/ACK/NAK/EOT session + retransmit, LIS-23 / S2.1). Also parses
-  a tolerant **HL7 v2 `ORU^R01`** and **normalizes** each observation to a LOINC/UCUM
-  intermediate row (vendor code → LOINC, vendor unit → UCUM, LIS-14 / S1.2). Archives
-  the raw inbound bytes in a content-addressed, integrity-checked **raw-message
-  archive** and runs a **deterministic replay round-trip** — archive → reload →
-  replay → normalize to a Result, fingerprinted and checked against the fixture's
-  asserted `expected` rows (LIS-16 / S1.4). Composes all of the above into the
-  **Stage-1 milestone E2E** — an **EDAN H60S** `ORU^R01` over MLLP → normalized
-  Result (raw code/unit preserved beside LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 =
-  AA)** — and emits the **core ingest contract DTO** the core
-  `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5). Answers a
-  **bidirectional host-query** — a `QRY^R02` (QRD/QRF) is answered with an `ORF^R04`
-  (`MSA-1 = AA`, query id echoed) and the returned result normalizes (LIS-18 / S1.6).
+  checksum, with an ENQ/ACK/NAK/EOT session + retransmit, LIS-23 / S2.1). Parses the
+  **ASTM E1394** records (`H→P→O→R→L`) carried over that framing into a typed, tolerant
+  record tree (LIS-24 / S2.2). Also parses a tolerant **HL7 v2 `ORU^R01`** and
+  **normalizes** each observation to a LOINC/UCUM intermediate row (vendor code → LOINC,
+  vendor unit → UCUM, LIS-14 / S1.2). Archives the raw inbound bytes in a
+  content-addressed, integrity-checked **raw-message archive** and runs a
+  **deterministic replay round-trip** — archive → reload → replay → normalize to a
+  Result, fingerprinted and checked against the fixture's asserted `expected` rows
+  (LIS-16 / S1.4). Composes all of the above into the **Stage-1 milestone E2E** — an
+  **EDAN H60S** `ORU^R01` over MLLP → normalized Result (raw code/unit preserved beside
+  LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 = AA)** — and emits the **core ingest contract
+  DTO** the core `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5).
+  Answers a **bidirectional host-query** — a `QRY^R02` (QRD/QRF) is answered with an
+  `ORF^R04` (`MSA-1 = AA`, query id echoed) and the returned result normalizes
+  (LIS-18 / S1.6).
 - **Isn't:** a production driver or the core persistence layer. The raw-message
   archive keeps the *wire bytes* (edge evidence); persisting the normalized row to
   the **core** append-only Result store is a separate seam (S1.3 / LIS-15, core
   ADR-0003) — this harness emits the language-neutral ingest DTO that targets it, but
-  the live cross-process leg waits on the S1.0 substrate decision (umbrella ADR-0013). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM slice
-  (S2.2 / LIS-24). All plug into the same `Transport` interface / fixture contract;
+  the live cross-process leg waits on the S1.0 substrate decision (umbrella ADR-0013).
+  Normalizing a parsed **ASTM** result to a LOINC/UCUM Result row is a later ASTM slice
+  (S2.4 / LIS-26). All plug into the same `Transport` interface / fixture contract;
   the MLLP transport reads only the inbound `MSH` segment (enough to acknowledge),
   not the result content.
 
@@ -41,6 +44,7 @@ the same files this Python harness does. ADRs:
 [`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
 [`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization),
 [`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session),
+[`0010-astm-e1394-record-parser.md`](../../docs/adr/0010-astm-e1394-record-parser.md) (ASTM E1394 record parser),
 [`0012-raw-message-archive-and-deterministic-replay.md`](../../docs/adr/0012-raw-message-archive-and-deterministic-replay.md) (raw-message archive + deterministic replay),
 [`0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md`](../../docs/adr/0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md) (Stage-1 milestone E2E + edge↔core ingest-contract DTO),
 [`0014-bidirectional-host-query-qrd-qrf.md`](../../docs/adr/0014-bidirectional-host-query-qrd-qrf.md) (bidirectional host-query QRD/QRF → ORF^R04).
@@ -59,15 +63,15 @@ edge/sim/
     oru.py                  # ORU^R01 -> typed RawObservations (PID/OBR/OBX) (S1.2)
     normalize.py            # vendor code -> LOINC, unit -> UCUM -> NormalizedObservation (S1.2)
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
+    e1394.py                # ASTM E1394 record parser: H>P>O>R>L -> typed record tree (S2.2)
     archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
     milestone.py            # Stage-1 milestone E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) (S1.5)
     ingest.py               # edge -> core Result-ingest contract DTO (core ADR-0003) (S1.5)
     query.py                # bidirectional host-query: QRY^R02 (QRD/QRF) -> ORF^R04 + correlation (S1.6)
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize | milestone | query`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest, query
-
+    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize | milestone | query | parse-astm`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest, query, e1394
   fixtures/
     schema/fixture.schema.json          # canonical, cross-language manifest contract
     schema/ingest-contract.schema.json  # edge->core NormalizedObservation DTO contract (S1.5)
@@ -91,6 +95,7 @@ uv run edge-sim replay example-mllp-oru-r01 --transport mllp   # round-trip over
 uv run edge-sim replay diasys-r920-astm-result --transport astm # round-trip over ASTM E1381 framing
 uv run edge-sim ack example-mllp-oru-r01                       # the ACK^R01 the listener returns
 uv run edge-sim normalize rayto-rac050-oru-r01                 # parse ORU^R01 -> normalized LOINC/UCUM rows
+uv run edge-sim parse-astm diasys-r920-astm-result            # parse ASTM E1394 records -> record tree
 uv run edge-sim archive rayto-rac050-oru-r01                   # archive the raw message -> content digest
 uv run edge-sim roundtrip rayto-rac050-oru-r01                # archive -> replay -> normalized Result, checked vs expected
 uv run edge-sim roundtrip rayto-rac050-oru-r01 --transport mllp # the same deterministic round-trip over MLLP framing
