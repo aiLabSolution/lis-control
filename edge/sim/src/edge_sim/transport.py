@@ -2,10 +2,8 @@
 
 A :class:`Transport` carries an application payload from a (simulated) analyzer to
 the host and back. :class:`LoopbackTransport` is the identity channel that applies
-no wire framing; :class:`MllpTransport` (LIS-13 / S1.1) applies MLLP block framing.
-The remaining framed transport is its own slice:
-
-* **ASTM E1381** — ENQ/ACK/NAK contention + modulo-256 checksum — LIS-23 / S2.1.
+no wire framing; :class:`MllpTransport` (LIS-13 / S1.1) applies MLLP block framing;
+:class:`AstmTransport` (LIS-23 / S2.1) applies ASTM E1381 frame/checksum framing.
 
 Whatever framing a transport applies on the wire, its ``roundtrip`` MUST preserve
 the application payload (frame on send, de-frame on receive) so the replay
@@ -17,9 +15,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
 
+from .astm import MAX_FRAME_TEXT, build_frame, parse_frame
 from .mllp import MllpDecoder, frame
 
-__all__ = ["Transport", "LoopbackTransport", "MllpTransport", "TransportError"]
+__all__ = ["Transport", "LoopbackTransport", "MllpTransport", "AstmTransport", "TransportError"]
 
 
 class TransportError(RuntimeError):
@@ -108,3 +107,48 @@ class MllpTransport(Transport):
     def wire_bytes(self) -> bytes:
         """The framed bytes currently sitting unread on the wire (for inspection)."""
         return bytes(self._wire)
+
+
+class AstmTransport(Transport):
+    """ASTM E1381 framing transport (LIS-23 / S2.1).
+
+    ``send`` splits the payload into <=240-char text chunks and wraps each in an
+    E1381 frame (``STX FN text ETX|ETB C1 C2 CR LF``, modulo-256 checksum);
+    ``receive`` validates each frame's checksum and reassembles the payload — so a
+    captured ASTM record survives the framing byte-for-byte (the round-trip the
+    replay engine asserts). A checksum failure surfaces as a
+    :class:`TransportError`; the ACK/NAK/retransmit session that recovers from one
+    on a live link is :func:`edge_sim.astm.run_session`. A production serial channel
+    swaps the in-memory frame queue for an RS-232 port; the codec is identical.
+    """
+
+    name = "astm"
+
+    def __init__(self) -> None:
+        self._frames: deque[bytes] = deque()
+
+    def send(self, payload: bytes) -> None:
+        if not isinstance(payload, (bytes, bytearray)):
+            raise TransportError(f"payload must be bytes, got {type(payload).__name__}")
+        payload = bytes(payload)
+        chunks = [payload[i : i + MAX_FRAME_TEXT] for i in range(0, len(payload), MAX_FRAME_TEXT)] or [b""]
+        last = len(chunks) - 1
+        for idx, chunk in enumerate(chunks):
+            self._frames.append(build_frame((idx + 1) % 8, chunk, final=(idx == last)))
+
+    def receive(self) -> bytes:
+        if not self._frames:
+            raise TransportError("no ASTM frame available to receive")
+        reassembled = bytearray()
+        while self._frames:
+            parsed = parse_frame(self._frames.popleft())
+            if not parsed.valid:
+                raise TransportError(f"ASTM frame failed validation: {parsed.error}")
+            reassembled.extend(parsed.text.encode("latin-1"))
+            if parsed.final:
+                return bytes(reassembled)
+        raise TransportError("ASTM record not terminated by a final (ETX) frame")
+
+    def wire_bytes(self) -> bytes:
+        """The framed bytes currently queued unread on the wire (for inspection)."""
+        return b"".join(self._frames)

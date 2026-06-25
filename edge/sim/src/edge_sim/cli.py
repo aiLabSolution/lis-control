@@ -11,11 +11,11 @@ from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fi
 from .normalize import Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .replay import replay
-from .transport import LoopbackTransport, MllpTransport
+from .transport import AstmTransport, LoopbackTransport, MllpTransport
 
 __all__ = ["main"]
 
-_TRANSPORTS = {"loopback": LoopbackTransport, "mllp": MllpTransport}
+_TRANSPORTS = {"loopback": LoopbackTransport, "mllp": MllpTransport, "astm": AstmTransport}
 
 
 def _resolve(root: Path, fixture_ref: str):
