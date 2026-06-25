@@ -60,24 +60,19 @@ columns and the `047` result columns, so a mapping is directly comparable to wha
 populates.
 
 **2. One seeded mapping** — `ANALYZER`/`GLU` → LOINC `2345-7` (*Glucose [Mass/volume] in
-Serum or Plasma*), UCUM `mg/dL`.
+Serum or Plasma*), UCUM `mg/dL`. The row carries **both** the LOINC code and the UCUM unit,
+so it is the self-contained LOINC/UCUM reference the slice needs — no second table.
 
-**3. The matching UCUM unit on the canonical `clinlims.unit_of_measure` master** —
-`name = 'mg/dL'`, `ucum_code = 'mg/dL'` — so the UCUM half of the seed lands in OpenELIS's
-existing unit reference, not only the new table. Seeded idempotently: insert the unit if
-absent (by `name`), then a guarded update guarantees `ucum_code` is set even if an `mg/dL`
-row pre-existed without it.
-
-All four changesets are idempotent (`preConditions onFail="MARK_RAN"`) and ship to every
+Both changesets are idempotent (`preConditions onFail="MARK_RAN"`) and ship to every
 environment (no `context`), each with an explicit `<rollback>`.
 
 **Verifiable output (S0.6 exit):** `VendorCodeNormalizationIntegrationTest` proves, via raw
 JDBC against the migrated schema, that (a) the seed loaded — `ANALYZER`/`GLU` resolves to
-LOINC `2345-7` + UCUM `mg/dL` on `vendor_code_mapping`, and the canonical `unit_of_measure`
-carries `ucum_code = mg/dL`; and (b) resolving the vendor code and writing `(loinc, ucum)`
-onto a `clinlims.result` persists a row where the analyzer-native `raw_code`/`raw_unit`
-coexist with the normalized `loinc`/`ucum_value`/`status` — the normalization tracer-bullet
-end-to-end.
+LOINC `2345-7` + UCUM `mg/dL` on `vendor_code_mapping`; and (b) resolving the vendor code and
+writing `(loinc, ucum)` onto a `clinlims.result` persists a row where the analyzer-native
+`raw_code`/`raw_unit` coexist with the normalized `loinc`/`ucum_value`/`status` — the
+normalization tracer-bullet end-to-end. The assertion targets only the new
+`vendor_code_mapping`; see the unit-of-measure alternative below.
 
 ## Alternatives considered
 
@@ -97,23 +92,32 @@ end-to-end.
   Rejected for S0.6: the canonical rows are not guaranteed present in every environment, and
   a soft (by-value) link keeps the seed self-contained and the migration order-independent —
   consistent with how `047` treats `loinc` as a snapshot, not a second authority.
+- **Also seed the canonical `clinlims.unit_of_measure` UCUM column** (an `mg/dL` row with
+  `ucum_code = 'mg/dL'`). Tried, then dropped: the OpenELIS integration-test harness
+  **resets/reloads the canonical reference tables** (`unit_of_measure` included) between
+  tests, so a row a new changeset seeds there is **not observable** to an integration test
+  (it failed in the full suite though it passed in isolation) — whereas the new
+  `vendor_code_mapping`, which the harness does not reset, is. Since the mapping row already
+  carries the UCUM unit, seeding `unit_of_measure` added an untestable artifact for no gain;
+  tying the UCUM unit into `unit_of_measure.ucum_code` is deferred to later
+  normalization-service work that can handle the harness reset properly.
 
 ## Consequences
 
 - **Positive:** the analyzer-code → `(LOINC, UCUM)` lookup is first-class and queryable, the
-  exact shape Stage-1 normalization consumes; the UCUM half lands in the canonical
-  `unit_of_measure` master; the change is small, additive, idempotent, and reversible; the
-  end-to-end proof onto a `result` row is a real data-layer test, not a mock.
+  exact shape Stage-1 normalization consumes; the change is small, additive, idempotent, and
+  reversible; the seed lives in one self-contained table (no dependency on harness-reset
+  reference tables); the end-to-end proof onto a `result` row is a real data-layer test, not
+  a mock.
 - **Costs / deferred (flagged for review):**
   - **No entity/DAO/service** — `vendor_code_mapping` is reachable only via SQL until the
     Stage-1 normalization service maps it (LIS-14). The seed test reads it via JDBC.
   - **One mapping, one analyzer family** (`ANALYZER`/`GLU`). A real per-analyzer terminology
     set (RAC-050, labXpert, DiaSys, …) is seeded per-driver in Stages 1–3; `source` is sized
     now to carry the analyzer family then.
-  - **`loinc` is free text**, not FK-validated against a LOINC authority; tighten when a
-    LOINC reference table is introduced.
-  - **By-value link to `unit_of_measure.ucum_code`** (no FK); fine for a reference seed,
-    revisit if the mapping becomes user-editable.
-  - The `unit_of_measure` seed rollback deletes the `mg/dL` row / nulls its `ucum_code` —
-    a best-effort data rollback (acceptable for reference seed, unlike the schema rollbacks
-    in `047`).
+  - **`loinc`/`ucum_code` are free text**, not FK-validated against a LOINC/UCUM authority
+    or against `unit_of_measure.ucum_code`; tighten when those references are wired in (and
+    when the harness-reset constraint above is handled).
+  - The `vendor_code_mapping` seed rollback deletes the seeded row by `(source, vendor_code)`
+    — a best-effort data rollback (acceptable for a reference seed, unlike the schema
+    `dropTable` rollback of the table changeset).

@@ -70,4 +70,8 @@ Normalization reference (post-S0.6 — see component ADR-0002):
   Stage-1 entity/service lands (LIS-14). Distinct from `test_terminology_mapping` (043),
   which keys a LOINC code per OpenELIS `test` (FK to `test`), not per analyzer code.
 - **UCUM master** — `clinlims.unit_of_measure.ucum_code` (changeset 042) is the canonical
-  UCUM home; the S0.6 seed lands its UCUM unit (`mg/dL`) here as well as on the mapping.
+  UCUM home. The S0.6 seed keeps the UCUM unit only on `vendor_code_mapping` (a
+  self-contained reference), **not** on `unit_of_measure`: the integration-test harness
+  resets/reloads `unit_of_measure` between tests, so a seeded row there is unobservable to
+  an integration test. Wiring the mapping's UCUM into `unit_of_measure.ucum_code` is later
+  normalization-service work (ADR-0002).
