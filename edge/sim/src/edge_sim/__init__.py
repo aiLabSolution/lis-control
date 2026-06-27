@@ -15,7 +15,17 @@ from .fixtures import (
     load_fixture,
     load_fixtures,
 )
+from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
+from .normalize import (
+    STATUS_NORMALIZED,
+    STATUS_PARTIAL,
+    STATUS_UNMAPPED,
+    NormalizedObservation,
+    Normalizer,
+    TerminologyMap,
+)
+from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
 from .replay import ReplayResult, replay
 from .transport import LoopbackTransport, MllpTransport, Transport, TransportError
 
@@ -50,4 +60,21 @@ __all__ = [
     "parse_msh",
     "build_ack",
     "wants_accept_ack",
+    # HL7 v2 parser + ORU^R01 + LOINC/UCUM normalization (LIS-14 / S1.2)
+    "Encoding",
+    "Segment",
+    "Message",
+    "Hl7Error",
+    "parse_message",
+    "unescape",
+    "OruReport",
+    "RawObservation",
+    "OruParseError",
+    "parse_oru_r01",
+    "NormalizedObservation",
+    "TerminologyMap",
+    "Normalizer",
+    "STATUS_NORMALIZED",
+    "STATUS_PARTIAL",
+    "STATUS_UNMAPPED",
 ]

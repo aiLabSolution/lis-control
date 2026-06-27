@@ -11,17 +11,20 @@
   **conformance fixtures** (a captured message + a validated manifest) and replays
   them through a pluggable **transport**, asserting a byte-faithful round-trip.
   Ships the identity **loopback** transport and the **MLLP** transport
-  (`0x0B <msg> 0x1C 0x0D` frame/de-frame + HL7 `ACK^R01`, LIS-13 / S1.1).
-- **Isn't:** a full message parser. MLLP framing is implemented; the tolerant
-  ORU^R01 parser + LOINC/UCUM normalization is the next slice (S1.2 / LIS-14), and
-  the ASTM E1381 codec (LIS-23 / S2.1) is its own slice — both plug into the same
-  `Transport` interface / fixture contract. The MLLP transport reads only the
-  inbound `MSH` segment (enough to acknowledge), not the result content.
+  (`0x0B <msg> 0x1C 0x0D` frame/de-frame + HL7 `ACK^R01`, LIS-13 / S1.1). Parses a
+  tolerant **HL7 v2 `ORU^R01`** and **normalizes** each observation to a
+  LOINC/UCUM intermediate row (vendor code → LOINC, vendor unit → UCUM,
+  LIS-14 / S1.2).
+- **Isn't:** a production driver or a persistence layer. The normalized
+  intermediate row is in-memory; persisting it to the core append-only Result
+  store is the next slice (S1.3 / LIS-15). The ASTM E1381 codec (LIS-23 / S2.1) is
+  its own slice — it plugs into the same `Transport` interface / fixture contract.
 
 Fixtures are the **contract**: language-neutral (raw bytes + JSON manifest), so the
 production driver — whatever language the S1.0 substrate decision picks — consumes
-the same files this Python harness does. ADR for the MLLP/ACK decisions:
-[`docs/adr/0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md).
+the same files this Python harness does. ADRs:
+[`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
+[`0006-oru-parse-and-normalization.md`](../../docs/adr/0006-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization).
 
 ## Layout
 
@@ -33,14 +36,18 @@ edge/sim/
     transport.py            # Transport ABC + LoopbackTransport + MllpTransport
     mllp.py                 # MLLP wire codec: frame/deframe + streaming MllpDecoder
     ack.py                  # HL7 v2 ACK^R01 builder (original + enhanced modes)
+    hl7.py                  # tolerant HL7 v2 parser: segments/fields/components + escapes (S1.2)
+    oru.py                  # ORU^R01 -> typed RawObservations (PID/OBR/OBX) (S1.2)
+    normalize.py            # vendor code -> LOINC, unit -> UCUM -> NormalizedObservation (S1.2)
     replay.py               # replay(fixture, transport) -> ReplayResult
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | ack`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli
+    cli.py / __main__.py    # `edge-sim list | validate | replay | ack | normalize`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli, hl7, oru+normalize
   fixtures/
     schema/fixture.schema.json   # canonical, cross-language manifest contract
     _example/                    # synthetic seed proving the replay self-test
     example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
+    rayto-rac050-oru-r01/        # synthetic RAC-050 ORU^R01 w/ local codes + expected normalized rows (S1.2)
 ```
 
 ## Run
@@ -53,6 +60,7 @@ uv run edge-sim validate               # validate every manifest
 uv run edge-sim replay example-hl7v2-oru-r01
 uv run edge-sim replay example-mllp-oru-r01 --transport mllp   # round-trip over MLLP framing
 uv run edge-sim ack example-mllp-oru-r01                       # the ACK^R01 the listener returns
+uv run edge-sim normalize rayto-rac050-oru-r01                 # parse ORU^R01 -> normalized LOINC/UCUM rows
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`

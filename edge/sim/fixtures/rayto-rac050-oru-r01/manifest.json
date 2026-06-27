@@ -1,0 +1,25 @@
+{
+  "id": "rayto-rac050-oru-r01",
+  "description": "Synthetic HL7 v2.3 ORU^R01 CBC result from a RAYTO RAC-050 carrying analyzer-native (local, 99RAC) observation codes and raw vendor units — the input the tolerant ORU^R01 parser + LOINC/UCUM normalization (LIS-14 / S1.2) maps to a normalized intermediate row. NOT a real instrument capture.",
+  "analyzer": { "vendor": "RAYTO", "model": "RAC-050" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-14 / S1.2)",
+    "note": "Application payload only. Uses local 99RAC observation codes (HGB/HCT/WBC/PLT) and raw vendor units so normalization is non-trivial (e.g. 10^9/L -> UCUM 10*9/L). A real RAYTO RAC-050 capture replaces this in LIS-20 (bench conformance): set synthetic:false with a capture reference."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "patient_id": "PID-0142",
+    "specimen_id": "SPEC-0142",
+    "observations": [
+      { "set_id": "1", "raw_code": "HGB", "value": "14.2", "raw_unit": "g/dL", "loinc": "718-7", "ucum_value": "g/dL", "status": "NORMALIZED" },
+      { "set_id": "2", "raw_code": "HCT", "value": "42.1", "raw_unit": "%", "loinc": "4544-3", "ucum_value": "%", "status": "NORMALIZED" },
+      { "set_id": "3", "raw_code": "WBC", "value": "7.2", "raw_unit": "K/uL", "loinc": "6690-2", "ucum_value": "10*3/uL", "status": "NORMALIZED" },
+      { "set_id": "4", "raw_code": "PLT", "value": "250", "raw_unit": "K/uL", "loinc": "777-3", "ucum_value": "10*3/uL", "status": "NORMALIZED" }
+    ]
+  }
+}
