@@ -42,3 +42,7 @@ conventions): `docs/agents/slice-loop.md`.
 ### Domain docs
 
 Multi-context layout — `CONTEXT-MAP.md` at the root points to per-context `CONTEXT.md` files. See `docs/agents/domain.md`.
+
+### Compliance docs ↔ Plane pages
+
+The compliance scaffold under `docs/compliance/` is the **source of truth** and is mirrored to **Plane project pages** (LIS project). **Whenever any `docs/compliance/*.md` file changes, update the matching Plane page to keep it in sync.** The file↔page mapping and the sync procedure are in `docs/agents/compliance-pages.md`. Note: the Plane public API only **creates/reads** pages (no update/delete), so page edits are done in the Plane UI.

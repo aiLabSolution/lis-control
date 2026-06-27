@@ -1,0 +1,91 @@
+# Compliance scaffold (`docs/compliance/`)
+
+System-wide compliance & quality artifacts for the LabSolution LIS programme. This folder is
+the **Stage-0 deliverable of [LIS-10 / S0.8 "Compliance scaffold"]** — the Compliance/QA
+(workstream D) foundation that lets every later stage validate *deltas on a known base*
+rather than one unauditable leap at go-live. It lives in the umbrella repo because compliance
+is system-wide (ADR-0001), not specific to any one submodule.
+
+**Start here:** [`LIS-10-preparation-brief.md`](LIS-10-preparation-brief.md) — plain-language
+explanation of what LIS-10 is, what's drafted, and what needs a human decision.
+
+> **⮕ TOPOLOGY DECISION (2026-06-24) — [ADR-0006](../adr/0006-deployment-topology.md).** The
+> deployment topology is **decided**: the **pilot is M1 (fully onsite, no sync)**; a **central
+> sync at LabSolution's own on-prem server (M3)** is a **post-pilot spoke** gated by the
+> **"compliance extra work"** in [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md);
+> **public cloud (M2) is not selected.** The pilot is **decoupled** from all sync/PIP-status
+> compliance. Every artifact below was revised on 2026-06-24 to scope the pilot to M1 and tag the
+> M3-spoke deltas.
+>
+> **⮕ LEADERSHIP DECISIONS TAKEN (2026-06-25) — [ADR-0007](../adr/0007-regulatory-ownership-and-responsibility-allocation.md) + [ADR-0008](../adr/0008-interface-engine-stack-and-fleet-scope.md).**
+> The LIS-10 leadership-decision gate is **cleared**: regulatory ownership (**DEC-01** — Pinote = accountable
+> QA/regulatory owner, Uy = system owner + validation lead, Kirsten Pinote = DPO), DPO (**DEC-02**), signatories
+> (**DEC-07**); interface engine = **reuse `openelis-analyzer-bridge`** (**DEC-04**), license = **MPL-2.0** (**DEC-08**,
+> HOLD-001 lifted), **polyglot stack** — Java *production* runtime + Python for the simulator/tooling (**DEC-05**), minimal **HL7-v2.x/MLLP-first** v1 fleet (**DEC-06**). What
+> remains for the human is **review + acceptance of the four core artifacts** plus the counsel/clause `[NEEDS-HUMAN]`
+> items — see [`decisions-register.md`](decisions-register.md).
+
+## Contents
+
+| File | What it is | Status |
+|---|---|---|
+| [`LIS-10-preparation-brief.md`](LIS-10-preparation-brief.md) | Plain-language brief + how to close LIS-10 | Drafted |
+| [`validation-master-plan-outline.md`](validation-master-plan-outline.md) | **VMP** — ISO 15189:2022 / IQ-OQ-PQ validation plan (outline) | Drafted, pending review |
+| [`npc-registration-checklist.md`](npc-registration-checklist.md) | **NPC checklist** — RA 10173 / NPC Circular 2022-04 registration & data-privacy checklist | Drafted, pending review |
+| [`threat-model.md`](threat-model.md) | **Threat model** — STRIDE over the LIS reference architecture | Drafted, pending review |
+| [`traceability-matrix.md`](traceability-matrix.md) | **Traceability matrix (seed)** — requirement → verification → evidence; the authoritative `REQ-*` registry | Drafted, pending review |
+| [`decisions-register.md`](decisions-register.md) | **26 decisions** (HITL), ranked by what they block — **8 resolved (ADR-0006/0005/0006: DEC-01/02/03/04/05/06/07/08); 18 open** | Leadership gate cleared; counsel/clause items remain |
+| [`reading-list.md`](reading-list.md) | Primary sources to read before deciding | Reference |
+| [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. **Topology now decided (ADR-0006): M1 pilot ✅, M3 spoke 🔜, M2 parked ⛔.** | Drafted, pending review + counsel |
+| [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) | **Compliance extra work** — the PIP-status obligations (own NPC DPS registration, head DPA + flow-down, breach apparatus, physical custody, central key custody) that must complete **before** the post-pilot M3 on-prem central-sync spoke. **Not on the pilot critical path.** | Drafted, pending review + counsel |
+
+The four core artifacts (VMP, NPC, threat model, matrix) are the literal deliverables named
+in the LIS-10 title; the brief, registers, and this index are the preparation wrapper.
+
+## How these relate
+
+- The **traceability matrix is the spine** — it owns the canonical `REQ-*` IDs. The VMP, NPC
+  checklist, and threat model all reference those IDs; they don't restate requirements.
+- The **VMP** is the *plan to validate*; the **matrix** is *what gets validated*; the
+  **threat model** supplies the *security requirements* the matrix tracks; the **NPC
+  checklist** supplies the *privacy requirements*.
+- Every document separates `[DRAFTED]` (agent-drafted, ready to review) from `[NEEDS-HUMAN]`
+  (needs a decision, appointment, signature, or filing). The consolidated `[NEEDS-HUMAN]`
+  items are deduplicated in [`decisions-register.md`](decisions-register.md).
+
+## File-layout convention (DEC-25 default)
+
+To keep the matrix's evidence cells pointing at real paths, this layout is the chosen
+default (pending ratification — see DEC-25 in the register):
+
+- **Core artifacts** — flat in `docs/compliance/` (the table above).
+- **NPC filing pack** (created later, mostly Stage 5) — under `docs/compliance/npc/`:
+  `ropa.md`, `pia.md`, `breach-runbook.md`, `retention.md`, `lawful-basis.md`.
+
+## Published to Plane
+
+These docs are mirrored to **Plane project pages** (LIS project) for in-tracker reading —
+titled `LIS-10 · N · …`. **This repo is the source of truth.** When a doc here changes,
+update the matching Plane page; the file↔page-ID mapping and sync procedure (and the Plane
+API's create/read-only limitation for pages) are in
+[`../agents/compliance-pages.md`](../agents/compliance-pages.md). `README.md` is not mirrored.
+
+> **Sync pending (2026-06-24):** the topology-decision revision touched every mirrored page —
+> they need re-syncing per the procedure in `compliance-pages.md`. Two newer docs,
+> `responsibility-and-deployment.md` and `m3-sync-compliance-gate.md`, are **not yet published**
+> as Plane pages; publish them and add their page IDs to the mapping table (see that doc's
+> "New compliance docs added later" note).
+
+## Provenance
+
+Drafted 2026-06-23 from `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` (§5, §10, §13) and
+`LIS_IMPLEMENTATION_PLAN.md` (§1, Stage 0/5 gates), via a parallel draft → 3-lens adversarial
+review (regulatory accuracy · cross-document consistency · completeness/HITL) → reconcile
+workflow. Grounded only in the fact-checked research, so regulatory citations are not
+invented; unverified specifics are marked *"(confirm exact clause)"*. **Pending human
+review** — not approved, not filed, not signed.
+
+**Revised 2026-06-24** to incorporate the deployment-topology decision ([ADR-0006](../adr/0006-deployment-topology.md)):
+pilot scoped to **M1 (fully onsite)**; sync/PIP-status compliance decoupled from the pilot and
+consolidated into the **M3 compliance extra-work gate**; **M2 (public cloud) parked**. New
+artifacts: `m3-sync-compliance-gate.md` and ADR-0006.

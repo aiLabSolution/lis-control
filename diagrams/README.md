@@ -7,12 +7,12 @@ and `../LIS_IMPLEMENTATION_PLAN.md`.
 
 | File | What it shows |
 |---|---|
-| `01-reference-architecture.excalidraw` | Edge → interface engine → normalization → OpenELIS core → FHIR / offline-sync, with cross-cutting compliance |
-| `02-implementation-roadmap.excalidraw` | Stages 0–6 in three lanes (deliverable / red verify-gate / milestone) with G0–G5 stage gates |
+| `01-reference-architecture.excalidraw` | Edge → interface engine → normalization → OpenELIS core → FHIR, with cross-cutting compliance; distinguishes in-pilot single-site edge store-and-forward (M1) from the post-pilot site↔central sync (M3 spoke) |
+| `02-implementation-roadmap.excalidraw` | Stages 0–6 + the post-pilot M3 central-sync spoke in three lanes (deliverable / red verify-gate / milestone MS1–MS7), G0–G6 stage gates; G5 = the compliance extra-work gate before the spoke |
 | `03-fleet-protocol-map.excalidraw` | Fleet grouped by protocol, ordered clean-HL7-first → proprietary-last (HORRON verify flag) |
 | `04-message-exchange-sequence.excalidraw` | HL7 v2 + ASTM handshake: host-query / order-down, result-up, ACK |
-| `05-offline-sync-topology.excalidraw` | Store-and-forward queue, append-only result versions, site↔central reconciliation |
-| `06-regulatory-controls-map.excalidraw` | 6 regimes → 12 LIS controls; sprint-1 hard-reqs outlined in red |
+| `05-offline-sync-topology.excalidraw` | The **post-pilot M3 spoke** (ADR-0006): site (validated M1 base) ↔ LabSolution's own on-prem datacenter in PH (not public cloud); store-and-forward, append-only result versions, explicit reconciliation; gated by the compliance extra-work — not in the pilot |
+| `06-regulatory-controls-map.excalidraw` | 6 regimes → 12 LIS controls; sprint-1 hard-reqs outlined in red; side panel = RA 10173 PIC/PIP split by topology (M1 lab=PIC, LabSolution neither; M3 LabSolution=PIP) |
 | `07-er-data-model.excalidraw` | Dual-coded Result (raw + LOINC/UCUM), host-query Worklist, append-only AuditEvent |
 | `08-verification-pyramid.excalidraw` | Unit → bench conformance → integration E2E → IQ/OQ/PQ, mapped to roadmap gates |
 
@@ -46,5 +46,5 @@ a preview after editing:
 
 ```bash
 cd .claude/skills/excalidraw-diagram/references
-uv run python render_excalidraw.py /home/marloeu/projects/lis/diagrams/<name>.excalidraw
+uv run python render_excalidraw.py /home/marloeu/projects/lis-control-lis-10/diagrams/<name>.excalidraw
 ```
