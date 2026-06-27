@@ -35,6 +35,8 @@ plan §0 Stage 0).
 
 - **ADR-0001 — Result table shape + append-only result versions** (S0.5 / LIS-7):
   `docs/adr/0001-append-only-result-versions.md`.
+- **ADR-0002 — LOINC/UCUM reference seed + vendor-code normalization mapping** (S0.6 / LIS-8):
+  `docs/adr/0002-loinc-ucum-vendor-code-seed.md`.
 
 ## Glossary
 
@@ -57,3 +59,19 @@ Result data model (post-S0.5 — see component ADR-0001):
   UPDATE OR DELETE` trigger that `RAISE`s, used by `clinlims.history` (S0.4 / changeset 046)
   and `clinlims.result_version` (S0.5 / changeset 047). `UPDATE`/`DELETE` rejected;
   `INSERT` and `TRUNCATE` (fixture/training resets) unaffected.
+
+Normalization reference (post-S0.6 — see component ADR-0002):
+
+- **Vendor-code mapping** — the analyzer-native code → normalized `(LOINC, UCUM)` lookup,
+  `clinlims.vendor_code_mapping`, keyed by `(source, vendor_code)` (e.g. `ANALYZER`/`GLU`
+  → LOINC `2345-7`, UCUM `mg/dL`). The reference the Stage-1 normalization service
+  ("vendor code → LOINC, unit → UCUM") consumes to populate a result's `loinc`/`ucum_value`
+  from its `raw_code`/`raw_unit`. Seeded by changeset 048; reached via SQL until the
+  Stage-1 entity/service lands (LIS-14). Distinct from `test_terminology_mapping` (043),
+  which keys a LOINC code per OpenELIS `test` (FK to `test`), not per analyzer code.
+- **UCUM master** — `clinlims.unit_of_measure.ucum_code` (changeset 042) is the canonical
+  UCUM home. The S0.6 seed keeps the UCUM unit only on `vendor_code_mapping` (a
+  self-contained reference), **not** on `unit_of_measure`: the integration-test harness
+  resets/reloads `unit_of_measure` between tests, so a seeded row there is unobservable to
+  an integration test. Wiring the mapping's UCUM into `unit_of_measure.ucum_code` is later
+  normalization-service work (ADR-0002).
