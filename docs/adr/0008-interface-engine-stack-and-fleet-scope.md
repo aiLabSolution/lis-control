@@ -81,26 +81,31 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
      explicitly extends the validated runtime, its L1/L2 surface, and the production license
      inventory (adding the Python edge supply chain — typically MIT/BSD).
 
-4. **DEC-06 — minimal v1 fleet, HL7 v2.x / MLLP first** (decided in principle; exact analyzers
-   pinned at pilot-fleet confirmation). v1 is scoped to the **HL7 v2.x-over-MLLP/TCP analyzers the
-   pilot lab actually runs**, proven first against the **RAYTO RAC-050** (the research's reference
-   HL7 v2.3 implementation — MSH/PID/OBR/OBX/ORU^R01/ACK + MLLP framing), with the **result-ingestion
-   path first** (ORU^R01 → bridge → OpenELIS). The other HL7 siblings (RAYTO Chemray-120, DIATRON
-   Aquila, SNIBE Biossays 240, EDAN H60S, Mindray labXpert urine) are added as same-stack L3
-   conformance deltas as the pilot menu requires.
+4. **DEC-06 — v1 fleet PINNED (2026-06-27)** from LabSolution's available test units. v1 is the
+   **HL7 v2.x-over-MLLP/TCP** analyzers, **result-ingestion first** (ORU-style → bridge → OpenELIS),
+   anchored on the **EDAN H60S** — confirmed **HL7 V2.4 / MLLP** (LIS protocol manual on file; a
+   warehouse unit, so an ideal bench reference). The validated path is built against it, then extended.
+   Protocols below are confirmed against the manuals repo (✅) or flagged for confirmation (⚠/❌):
 
-   **Explicitly deferred from v1 → post-pilot, under change control (REQ-QMS-03):** the
-   **ASTM/serial group** (DiaSys Respons 920/940/240C/420C, ERBA EC90 — RS232 physical layer + ASTM
-   line contention = a separate validation surface), the **proprietary middleware families** (Snibe
-   MAGLUMI via SnibeLis/SnibeLinker, Mindray BC hematology via labXpert/DMS — no clean socket,
-   highest integration risk, and they pull in the REQ-PRIV-09 DPA flow-down because middleware
-   touches PHI), and **bidirectional host-query / order-download** (do result-ingestion first; add
-   query in v1.1). Each deferred analyzer is one TB-1 trust boundary + one REQ-CONF-01 signed bench
-   report kept out of the pilot.
+   | Unit | Transport / protocol | v1 placement |
+   |---|---|---|
+   | **EDAN H60S** (warehouse) | ✅ HL7 V2.4 / MLLP (TCP) | **v1 anchor** |
+   | **EDAN H99S** | HL7 (EDAN family) | **v1** — ⚠ confirm H99S = same driver |
+   | **RAYTO RT-7600** (hematology) | ✅ TCP (Netport), bidirectional; ⚠ message format unconfirmed | **v1** — confirm HL7 vs vendor format |
+   | **SNIBE MAGLUMI X3** | ✅ ASTM E1394 / TCP (via SnibeLis) | **v1.1** — bridge-native ASTM, but +SnibeLis middleware → REQ-PRIV-09 DPA flow-down |
+   | **Seamaty SD1** | ❌ no protocol doc on hand | **confirm** before placing |
+   | **ERBA EC90** (warehouse) | ✅ RS-232 serial (ASTM-ish) | **deferred** (serial group) |
+   | **HETO AU120** (arriving next) | ⚠ "Konig LIS Protocol V2.1" (manual is Konig AP300; AU120 may differ) | **deferred** — confirm on arrival |
 
-   > **`[NEEDS-HUMAN]` — pin the v1 analyzer list.** The exact pilot machines/protocols are pending
-   > confirmation of LabSolution's available test units; the anchor (RAC-050) is a recommended
-   > default to be confirmed or substituted with a different HL7 unit per the pilot site's real menu.
+   **v1 = EDAN H60S/H99S + RAYTO RT-7600** (HL7/MLLP, result-ingestion). **v1.1 = MAGLUMI X3** (pull
+   into v1 only if immunoassay is pilot-critical, accepting the SnibeLis middleware + DPA cost).
+   **Deferred post-pilot under change control (REQ-QMS-03):** ERBA EC90 (RS-232 serial) and HETO
+   AU120 (incoming), plus **bidirectional host-query / order-download** (add in v1.1). Each
+   deferred/added analyzer is one TB-1 trust boundary + one REQ-CONF-01 signed bench report.
+
+   > **`[NEEDS-HUMAN]` — protocol confirmations to firm the pin (4):** RAYTO RT-7600 message format
+   > (HL7 vs vendor), EDAN H99S driver = H60S, Seamaty SD1 protocol (no manual on hand), and HETO
+   > AU120 vs Konig AP300 on arrival.
 
 ## Consequences
 
