@@ -62,12 +62,23 @@ and becomes the spine of the validation dossier in Stage 5.
 | Stage | Goal | Gate levels | Effort |
 |---|---|---|---|
 | **0 — Foundations & compliance scaffold** | Core boots reproducibly; audit/RBAC proven; compliance plan drafted | 1,2,6 | 4–6 wks |
-| **1 — HL7 v2 edge** | *First result through the pipe* (RAC-050 + Mindray labXpert) | 1,2,3,4 | 4–6 wks |
-| **2 — ASTM/serial edge** | Chemistry/electrolyte fleet (DiaSys + 5 serial units) | 1,2,3,4 | 6–8 wks |
-| **3 — Proprietary tails** | MAGLUMI (SnibeLis) + Mindray BC (DMS) | 2,3,4 | 4–6 wks |
+| **1 — HL7 v2 edge** | *First result through the pipe* — **EDAN H60S** (+ HETO AU120); RAC-050 / labXpert deferred | 1,2,3,4 | 4–6 wks |
+| **2 — ASTM/serial edge** | Chemistry/electrolyte — **ERBA EC90** (sole available ASTM unit); DiaSys + serial fleet deferred | 1,2,3,4 | 6–8 wks |
+| **3 — Proprietary tails** | **MAGLUMI X3** (SnibeLis) + RT-7600 candidate; Mindray BC deferred | 2,3,4 | 4–6 wks |
 | **4 — FHIR API + offline** | EMR-ready + outage-proof + on-prem deploy kit | 1,4,5 | 4–6 wks |
 | **5 — Validation + pilot** | IQ/OQ/PQ signed; pilot go-live; NPC registered | 3,4,5,6 | 4–6 wks |
 | **6 — Scale-out (optional)** | 2nd site from kit; upstream generic plugins | 3,4,6 | ongoing |
+
+> **⚠️ Availability re-scope (2026-06-26).** The physically-available test fleet
+> (confirmed by Pinote/LabSolution) does **not** include most of the machines named in
+> Stages 1–3. They are re-scoped onto available equivalents — **Stage 1 → EDAN H60S**
+> (HL7/MLLP), **Stage 2 → ERBA EC90** (ASTM), **Stage 3 → SNIBE MAGLUMI X3** (SnibeLis).
+> The named-but-unavailable machines (RAC-050, "Mindray labXpert", DiaSys R920, the
+> serial fleet, Mindray BC) are **deferred, not dropped** — they re-enter when the
+> hardware is on hand. The **protocol contract per stage is unchanged**; only the named
+> instrument changes. Full cross-check, readiness, and per-machine access status:
+> [`docs/testing/stage-1-3-machine-access-checklist.md`](docs/testing/stage-1-3-machine-access-checklist.md).
+> Tracked as **LIS-74**; per-slice retargeting under LIS-11 / LIS-22 / LIS-31.
 
 ---
 
@@ -101,25 +112,33 @@ skeleton in place — so every later stage validates *deltas on a known base*.
 ---
 
 ### Stage 1 — HL7 v2 edge (*first result through the pipe*)
-**Goal:** one MLLP listener + HL7 v2.3 parser covers the whole clean-HL7 group;
-prove it end-to-end on **RAYTO RAC-050** and **Mindray labXpert**.
+**Goal:** one MLLP listener + HL7 v2.3 parser covers the whole clean-HL7 group.
+**Re-scoped vehicle (2026-06):** prove it end-to-end on **EDAN H60S** (HL7 v2.4 / MLLP /
+port 7999; the analyzer is the TCP client, our edge listens), with **HETO AU120** as a
+second-vendor HL7 unit on arrival. *Original targets RAYTO RAC-050 + Mindray labXpert are
+deferred — not in the available fleet, and "labXpert" is Mindray middleware, not an
+analyzer. The protocol contract is unchanged. See the
+[access checklist](docs/testing/stage-1-3-machine-access-checklist.md) / LIS-74.*
 
 **Key tasks**
-- **MLLP listener:** frame `0x0B <msg> 0x1C 0x0D`; original **and** enhanced ACK modes.
-- **HL7 v2.3 parser** (tolerant): MSH/PID/PV1/ORC/OBR/OBX/NTE/MSA/ERR/SPM.
+- **MLLP listener:** frame `0x0B <msg> 0x1C 0x0D`; original ACK (EDAN H60S uses
+  original-mode ACK; enhanced-ACK only where a unit documents it).
+- **HL7 v2.3/2.4 parser** (tolerant): MSH/PID/PV1/ORC/OBR/OBX/NTE/MSA/ERR/SPM.
 - **Normalization service:** vendor code → LOINC, unit → UCUM, QC flags; persist raw + normalized.
-- **Bidirectional** host-query for labXpert (TCP server/client) + **file-mode** fallback ingest.
-- Build conformance fixtures from the RAC-050 and labXpert manuals; raw-message archive + replay.
+- **Bidirectional** host-query on EDAN H60S (QRD/QRF). *labXpert's file-mode (shared-folder)
+  fallback is deferred — no available unit speaks it (H60S / AU120 are MLLP-only).*
+- Build conformance fixtures from the EDAN H60S (+ HETO AU120) LIS manuals; raw-message archive + replay.
 
 **Deliverables:** edge driver service; HL7 parser; normalization service; fixtures.
 
 **✅ Verifiable output (exit gate)**
-- 🎯 **Milestone — first result:** a captured RAC-050 `ORU^R01` replayed over MLLP
+- 🎯 **Milestone — first result:** a captured **EDAN H60S** `ORU^R01` replayed over MLLP
   produces a normalized **Result** row (raw_code+raw_unit preserved; LOINC+UCUM
   populated; status=final), asserted by an **automated E2E test**; the listener
   returns a correct **`ACK^R01` (MSA-1 = AA)**.
-- **labXpert bidirectional:** a host-query is answered and a result returns; the
-  **file-mode** path also yields a result (both transports tested).
+- **Second vendor:** the same parser ingests a **HETO AU120** HL7/MLLP message without
+  code changes (vendor-tolerance proof).
+- **Bidirectional:** an EDAN H60S host-query (QRD/QRF) is answered and a result returns.
 - **Tolerant-parse negatives:** under-populated / mis-ordered-component variants ingest without crash.
 - **Round-trip:** archived raw message re-ingests to a byte-identical normalized row.
 - Demo on staging from a real or captured instrument message.
@@ -127,44 +146,60 @@ prove it end-to-end on **RAYTO RAC-050** and **Mindray labXpert**.
 ---
 
 ### Stage 2 — ASTM / serial edge
-**Goal:** the ASTM E1381/E1394 stack (to the DiaSys ASTM-HOST spec) + the small
-serial fleet via the analyzer-bridge RS232 connector.
+**Goal:** the ASTM E1381/E1394 stack + serial channels.
+**Re-scoped vehicle (2026-06):** **ERBA EC90** is the sole available ASTM unit (ASTM
+E1381/E1394; RS232 or Ethernet; **upload-only**). *DiaSys R920 and the GOLDSITE / HETO
+Konig / MEDICA / HORRON serial units are deferred (not in the available fleet) — and the
+cross-check found several are actually HL7/Ethernet or a proprietary text dump, not ASTM.
+See the [access checklist](docs/testing/stage-1-3-machine-access-checklist.md) / LIS-74.*
 
 **Key tasks**
 - **Low level (ASTM E1381):** ENQ/ACK/NAK/EOT contention; framing; **modulo-256 checksum**; RS232 settings/unit.
 - **High level (ASTM E1394):** records H→P→O→R→C/Q/L; query record for bidirectional.
-- Route **ERBA EC90, GOLDSITE GPP-100, HETO Konig AP300, MEDICA ES, HORRON EA2000**; confirm direction per unit on the bench.
-- **HORRON:** re-verify the vision-extracted serial/DB9 detail against the source PDF before coding.
+- Route **ERBA EC90** (electrolyte/ISE); capture its undocumented RS232 baud/pinout on the bench.
+- **Coverage gap:** ERBA EC90 is upload-only, so the **bidirectional Q-record + NAK-retransmit**
+  negatives need a **bidirectional ASTM unit** (e.g. a DiaSys RESPONS) to be sourced — deferred.
 
 **Deliverables:** ASTM driver; serial channel configs; per-unit conformance reports.
 
 **✅ Verifiable output (exit gate)**
-- A **DiaSys R920** ASTM session decodes: checksum validated, H→P→O→R→L parsed,
-  result normalized; a **corrupted frame triggers NAK + retransmit** (negative test).
-- Each serial unit has a **signed bench-conformance report** (direction confirmed,
-  sample result captured + normalized, raw archived).
-- 🚦 **HORRON gate:** driver **not merged** until source-PDF re-verification is signed off (explicit checklist item).
-- DiaSys + ≥4 serial units **live on staging** with reports; checksum/NAK negatives pass in CI.
+- An **ERBA EC90** ASTM session decodes: checksum validated, H→P→O→R→L parsed, result normalized.
+- A **corrupted frame triggers NAK + retransmit**, proven against the **ASTM simulator**
+  (EC90 is upload-only; the bidirectional/NAK path stays simulator-driven until a
+  bidirectional ASTM unit is on hand).
+- **ERBA EC90** has a **signed bench-conformance report** (direction confirmed, sample
+  result captured + normalized, raw archived).
+- 🚦 **HORRON gate** (when HORRON EA2000 becomes available): driver **not merged** until
+  source-PDF re-verification is signed off.
+- ERBA EC90 **live on staging** with its report; checksum/NAK negatives pass in CI.
 
 ---
 
 ### Stage 3 — Proprietary middleware tails
-**Goal:** the two non-vanilla families — **MAGLUMI via SnibeLis/SnibeLinker** and
-**Mindray BC hematology via DMS** — at highest reverse-mapping effort.
+**Goal:** the proprietary middleware tails at highest reverse-mapping effort.
+**Re-scoped vehicle (2026-06):** **SNIBE MAGLUMI X3 via SnibeLis** (ASTM E1394; bidirectional
++ QC) is the available tail. *Mindray BC/DMS is deferred (not available); **RAYTO RT-7600**
+— available hematology with a proprietary TCP "Netport" stream — is the candidate 2nd tail,
+pending a wire-format capture (LIS-76). See the
+[access checklist](docs/testing/stage-1-3-machine-access-checklist.md) / LIS-74.*
 
 **Key tasks**
-- Prefer configuring **SnibeLis** to emit HL7/ASTM to the engine; fallback = ingest its export/DB.
-- **Mindray DMS** export ingest for BC hematology; reverse-map analyte fields.
+- Stand up the **SnibeLis** middleware PC (vendor license) and prefer configuring it to emit
+  to the engine; **fallback = ingest its export/DB** *(the SnibeLis→engine relay is
+  undocumented — confirm with SNIBE; LIS-75)*.
+- **RAYTO RT-7600:** byte-capture the Netport/serial stream, then reverse-map its CBC fields
+  *(replaces the deferred Mindray DMS BC-hematology ingest; LIS-76)*.
 - Budget explicit reverse-engineering time; capture raw for replay.
 
-**Deliverables:** SnibeLis channel; Mindray DMS ingest; mapping tables.
+**Deliverables:** SnibeLis channel; RT-7600 ingest; mapping tables.
 
 **✅ Verifiable output (exit gate)**
-- A **MAGLUMI** immunoassay result flows MAGLUMI → SnibeLis → engine → normalized
+- A **MAGLUMI X3** immunoassay result flows MAGLUMI → SnibeLis → engine → normalized
   Result (LOINC/UCUM), asserted E2E; **QC results flagged** correctly.
-- A **Mindray BC** result via DMS export produces a normalized **CBC panel** covering the documented analytes.
+- A **RAYTO RT-7600** result produces a normalized **CBC panel** covering the documented
+  analytes *(or a Mindray BC via DMS, when available)*.
 - Any unit lacking a clean interface has a **documented fallback** (export/DB parser) with a conformance test.
-- ≥1 MAGLUMI model + ≥1 BC model **live on staging**; reverse-mapping documented.
+- ≥1 immunoassay tail (**MAGLUMI X3**) + ≥1 hematology tail (**RT-7600**) **live on staging**; reverse-mapping documented.
 
 ---
 
