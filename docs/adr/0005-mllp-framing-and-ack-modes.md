@@ -97,3 +97,9 @@ Stage 1 analyzers (RAYTO RAC-050, Mindray labXpert). Three questions shaped how:
 - Block characters: `SB`/`<VT>` = `0x0B`, `EB`/`<FS>` = `0x1C`, `CR` = `0x0D`.
 - The ACK payload joins segments with `CR` and adds no trailing `CR`, matching the
   payload-only fixture convention; MLLP framing supplies the wire envelope.
+- **ACK-mode note (2026-06 availability re-scope, LIS-74):** enhanced-mode ACK is
+  currently **unexercised by any available analyzer** — the original Stage-1 unit
+  (RAC-050) and its re-scoped replacement (EDAN H60S) both use **original-mode ACK
+  only** — so the implemented enhanced path stays simulator-tested but hardware-unproven
+  until a unit that requests it is on hand. See
+  `docs/testing/stage-1-3-machine-access-checklist.md`.
