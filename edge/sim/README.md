@@ -24,7 +24,7 @@ Fixtures are the **contract**: language-neutral (raw bytes + JSON manifest), so 
 production driver — whatever language the S1.0 substrate decision picks — consumes
 the same files this Python harness does. ADRs:
 [`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
-[`0006-oru-parse-and-normalization.md`](../../docs/adr/0006-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization).
+[`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization).
 
 ## Layout
 
