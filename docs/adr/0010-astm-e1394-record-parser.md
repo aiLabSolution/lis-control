@@ -4,7 +4,7 @@
 - **Date:** 2026-06-26
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the umbrella-side analyzer harness; the `edge/drivers` submodule is "planned")
-- **Relates to:** ADR-0004 (simulator harness + fixtures, LIS-9); ADR-0009 (ASTM E1381 codec + session, LIS-23 — the framing this parses out of); ADR-0006 (HL7 ORU parser, LIS-14 — the HL7 analog one layer up); LIS-22 (Stage 2 PRD); LIS-24 (S2.2); plan §2 ("High level (ASTM E1394): records H→P→O→R→C/Q/L"); forward to S2.4 / LIS-26 (DiaSys result → normalized Result row)
+- **Relates to:** ADR-0004 (simulator harness + fixtures, LIS-9); ADR-0009 (ASTM E1381 codec + session, LIS-23 — the framing this parses out of); ADR-0011 (HL7 ORU parser, LIS-14 — the HL7 analog one layer up); LIS-22 (Stage 2 PRD); LIS-24 (S2.2); plan §2 ("High level (ASTM E1394): records H→P→O→R→C/Q/L"); forward to S2.4 / LIS-26 (DiaSys result → normalized Result row)
 
 ## Context
 
@@ -18,7 +18,7 @@ a LOINC/UCUM Result row is the next slice (S2.4 / LIS-26).
 Facts that shape the decision:
 
 - The harness is **dependency-free** (ADR-0004); the HL7 side already proved a small
-  hand-written record/field parser is the right shape (ADR-0006), and the fixture is
+  hand-written record/field parser is the right shape (ADR-0011), and the fixture is
   the cross-language contract.
 - ASTM E1394 differs from HL7 v2 in delimiter encoding: the **`H` record itself
   declares the delimiters** — the char after `H` is the field delimiter and the next
