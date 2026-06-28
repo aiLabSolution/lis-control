@@ -1,0 +1,19 @@
+{
+  "id": "diasys-r920-astm-result",
+  "description": "Synthetic ASTM E1394 record set (H->P->O->R->L) for one DiaSys R920 glucose result, framed on the wire by the ASTM E1381 codec (LIS-23 / S2.1). The application payload is CR-separated records; the AstmTransport applies STX/FN/checksum/ETX framing at replay time. NOT a real instrument capture.",
+  "analyzer": { "vendor": "DiaSys", "model": "R920" },
+  "protocol": "astm-e1381",
+  "transport": "serial-rs232",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-23 / S2.1)",
+    "note": "Application payload only (CR-separated E1394 records); the E1381 transport applies the STX FN text ETX C1 C2 CR LF envelope + modulo-256 checksum at replay time. A real DiaSys R920 ASTM-HOST capture replaces this in LIS-30 (bench conformance): set synthetic:false with a capture reference. E1394 record parsing is S2.2 / LIS-24."
+  },
+  "synthetic": true,
+  "expected": {
+    "round_trip": true,
+    "records": 5,
+    "frames": 1
+  }
+}

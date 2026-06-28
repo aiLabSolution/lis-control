@@ -15,6 +15,20 @@ from .fixtures import (
     load_fixture,
     load_fixtures,
 )
+from .astm import (
+    ACK,
+    ENQ,
+    EOT,
+    NAK,
+    AstmError,
+    AstmFrame,
+    AstmReceiver,
+    SessionResult,
+    build_frame,
+    checksum,
+    parse_frame,
+    run_session,
+)
 from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
@@ -27,7 +41,7 @@ from .normalize import (
 )
 from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
 from .replay import ReplayResult, replay
-from .transport import LoopbackTransport, MllpTransport, Transport, TransportError
+from .transport import AstmTransport, LoopbackTransport, MllpTransport, Transport, TransportError
 
 __all__ = [
     "Fixture",
@@ -39,6 +53,7 @@ __all__ = [
     "Transport",
     "LoopbackTransport",
     "MllpTransport",
+    "AstmTransport",
     "TransportError",
     "ReplayResult",
     "replay",
@@ -77,4 +92,17 @@ __all__ = [
     "STATUS_NORMALIZED",
     "STATUS_PARTIAL",
     "STATUS_UNMAPPED",
+    # ASTM E1381 codec + session (LIS-23 / S2.1)
+    "ENQ",
+    "ACK",
+    "NAK",
+    "EOT",
+    "AstmError",
+    "AstmFrame",
+    "checksum",
+    "build_frame",
+    "parse_frame",
+    "AstmReceiver",
+    "SessionResult",
+    "run_session",
 ]

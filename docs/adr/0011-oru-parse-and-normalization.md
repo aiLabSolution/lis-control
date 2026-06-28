@@ -1,6 +1,6 @@
-# ADR-0006 — Tolerant ORU^R01 parse + LOINC/UCUM normalization (edge)
+# ADR-0011 — Tolerant ORU^R01 parse + LOINC/UCUM normalization (edge)
 
-- **Status:** Proposed (pending review — LIS-14)
+- **Status:** Accepted (merged — LIS-14 / PR #9; renumbered 0006 → 0011 to resolve a number collision with ADR-0006 deployment-topology)
 - **Date:** 2026-06-26
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the umbrella-side analyzer harness; CONTEXT-MAP marks the `edge/drivers` submodule "planned")
