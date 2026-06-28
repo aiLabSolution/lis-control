@@ -89,3 +89,18 @@ def test_roundtrip_over_mllp_exit_zero(capsys, tmp_path):
     out = capsys.readouterr().out
     assert "via mllp" in out
     assert "expected: OK" in out
+
+
+def test_milestone_edan_exit_zero(capsys):
+    assert main(["milestone", "edan-h60s-oru-r01"]) == 0
+    out = capsys.readouterr().out
+    assert "ACCEPTED" in out
+    assert "MSA-1=AA" in out
+    assert "ACK^R01" in out
+    assert "LOINC 6690-2" in out
+    assert "(final)" in out
+    assert "ingest contract (core ADR-0003): 6 observation(s)" in out
+
+
+def test_milestone_unknown_fixture_exit_two(capsys):
+    assert main(["milestone", "does-not-exist"]) == 2

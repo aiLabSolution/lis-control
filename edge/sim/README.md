@@ -19,11 +19,16 @@
   the raw inbound bytes in a content-addressed, integrity-checked **raw-message
   archive** and runs a **deterministic replay round-trip** — archive → reload →
   replay → normalize to a Result, fingerprinted and checked against the fixture's
-  asserted `expected` rows (LIS-16 / S1.4).
+  asserted `expected` rows (LIS-16 / S1.4). Composes all of the above into the
+  **Stage-1 milestone E2E** — an **EDAN H60S** `ORU^R01` over MLLP → normalized
+  Result (raw code/unit preserved beside LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 =
+  AA)** — and emits the **core ingest contract DTO** the core
+  `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5).
 - **Isn't:** a production driver or the core persistence layer. The raw-message
   archive keeps the *wire bytes* (edge evidence); persisting the normalized row to
   the **core** append-only Result store is a separate seam (S1.3 / LIS-15, core
-  ADR-0003). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM slice
+  ADR-0003) — this harness emits the language-neutral ingest DTO that targets it, but
+  the live cross-process leg waits on the S1.0 substrate decision (umbrella ADR-0013). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM slice
   (S2.2 / LIS-24). All plug into the same `Transport` interface / fixture contract;
   the MLLP transport reads only the inbound `MSH` segment (enough to acknowledge),
   not the result content.
@@ -34,7 +39,8 @@ the same files this Python harness does. ADRs:
 [`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
 [`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization),
 [`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session),
-[`0012-raw-message-archive-and-deterministic-replay.md`](../../docs/adr/0012-raw-message-archive-and-deterministic-replay.md) (raw-message archive + deterministic replay).
+[`0012-raw-message-archive-and-deterministic-replay.md`](../../docs/adr/0012-raw-message-archive-and-deterministic-replay.md) (raw-message archive + deterministic replay),
+[`0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md`](../../docs/adr/0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md) (Stage-1 milestone E2E + edge↔core ingest-contract DTO).
 
 ## Layout
 
@@ -52,15 +58,18 @@ edge/sim/
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
     archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
+    milestone.py            # Stage-1 milestone E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) (S1.5)
+    ingest.py               # edge -> core Result-ingest contract DTO (core ADR-0003) (S1.5)
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm
+    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize | milestone`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest
 
   fixtures/
     schema/fixture.schema.json   # canonical, cross-language manifest contract
     _example/                    # synthetic seed proving the replay self-test
     example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
     rayto-rac050-oru-r01/        # synthetic RAC-050 ORU^R01 w/ local codes + expected normalized rows (S1.2)
+    edan-h60s-oru-r01/           # synthetic EDAN H60S ORU^R01 (HL7 v2.4) — Stage-1 milestone vehicle (S1.5)
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
 ```
 
@@ -79,6 +88,7 @@ uv run edge-sim normalize rayto-rac050-oru-r01                 # parse ORU^R01 -
 uv run edge-sim archive rayto-rac050-oru-r01                   # archive the raw message -> content digest
 uv run edge-sim roundtrip rayto-rac050-oru-r01                # archive -> replay -> normalized Result, checked vs expected
 uv run edge-sim roundtrip rayto-rac050-oru-r01 --transport mllp # the same deterministic round-trip over MLLP framing
+uv run edge-sim milestone edan-h60s-oru-r01                   # Stage-1 E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) + ingest DTO
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`

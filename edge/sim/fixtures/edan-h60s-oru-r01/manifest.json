@@ -1,0 +1,27 @@
+{
+  "id": "edan-h60s-oru-r01",
+  "description": "Synthetic HL7 v2.4 ORU^R01 CBC result from an EDAN H60S 3-part hematology analyzer (MLLP / port 7999; the analyzer is the TCP client, our edge listens) carrying analyzer-native (local, 99EDAN) observation codes and raw vendor units — the Stage-1 milestone vehicle (LIS-17 / S1.5). All observations are final (OBX-11 = F). NOT a real instrument capture.",
+  "analyzer": { "vendor": "EDAN", "model": "H60S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-17 / S1.5 milestone — EDAN H60S LIS interface manual, CBC result profile)",
+    "note": "Application payload only (no MLLP framing). HL7 v2.4 with EDAN-native 99EDAN codes (WBC/RBC/HGB/HCT/MCV/PLT) and EDAN-default units (HGB in g/L, RBC in 10^12/L) so normalization exercises a second vendor's terminology beyond the RAYTO seed. The 10^9/L and 10^12/L unit carets are HL7-escaped on the wire (10\\S\\9/L) since '^' is the component separator; the tolerant parser unescapes them to 10^9/L before normalization. A real EDAN H60S capture replaces this at bench conformance (LIS-74 access checklist): set synthetic:false with a capture reference."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "patient_id": "PID-0231",
+    "specimen_id": "SPEC-0231",
+    "observations": [
+      { "set_id": "1", "raw_code": "WBC", "value": "6.8", "raw_unit": "10^9/L", "loinc": "6690-2", "ucum_value": "10*9/L", "status": "NORMALIZED" },
+      { "set_id": "2", "raw_code": "RBC", "value": "4.85", "raw_unit": "10^12/L", "loinc": "789-8", "ucum_value": "10*12/L", "status": "NORMALIZED" },
+      { "set_id": "3", "raw_code": "HGB", "value": "142", "raw_unit": "g/L", "loinc": "718-7", "ucum_value": "g/L", "status": "NORMALIZED" },
+      { "set_id": "4", "raw_code": "HCT", "value": "42.5", "raw_unit": "%", "loinc": "4544-3", "ucum_value": "%", "status": "NORMALIZED" },
+      { "set_id": "5", "raw_code": "MCV", "value": "88.5", "raw_unit": "fL", "loinc": "787-2", "ucum_value": "fL", "status": "NORMALIZED" },
+      { "set_id": "6", "raw_code": "PLT", "value": "250", "raw_unit": "10^9/L", "loinc": "777-3", "ucum_value": "10*9/L", "status": "NORMALIZED" }
+    ]
+  }
+}

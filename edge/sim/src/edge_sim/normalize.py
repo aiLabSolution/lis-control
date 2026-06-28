@@ -73,6 +73,9 @@ _DEFAULT_UNITS: dict[str, str] = {
     "10*3/uL": "10*3/uL",
     "K/uL": "10*3/uL",
     "M/uL": "10*6/uL",
+    "10^12/L": "10*12/L",  # EDAN H60S RBC unit (LIS-17 / S1.5)
+    "10*12/L": "10*12/L",
+    "g/L": "g/L",  # EDAN H60S HGB unit (g/L; RAYTO seed uses g/dL)
     "fL": "fL",
     "pg": "pg",
     "mg/dL": "mg/dL",

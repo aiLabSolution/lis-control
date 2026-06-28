@@ -11,6 +11,7 @@ from pathlib import Path
 from .ack import Hl7AckError, build_ack
 from .archive import RawMessageArchive, archive_fixture
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
+from .milestone import run_milestone
 from .normalize import Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .replay import check_against_expected, deterministic_round_trip, replay
@@ -148,6 +149,39 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_milestone(args: argparse.Namespace) -> int:
+    """Stage-1 milestone E2E (LIS-17 / S1.5): replay a fixture's ORU^R01 over MLLP,
+    acknowledge it (ACK^R01 / MSA-1=AA), normalize it to a Result, and print the
+    core ingest contract DTO. Exit 1 unless the message survived the wire, was
+    accepted (AA), and every observation is a final, fully-normalized result."""
+    fx = _resolve(args.root, args.fixture)
+    try:
+        out = run_milestone(fx.message_bytes)
+    except (OruParseError, Hl7AckError) as exc:
+        print(f"error: cannot run milestone for {fx.id}: {exc}", file=sys.stderr)
+        return 2
+
+    verdict = "ACCEPTED" if out.accepted else f"NOT-ACCEPTED ({out.ack_code})"
+    print(
+        f"milestone {fx.id} via mllp: {verdict} "
+        f"(ACK^{out.ack_trigger_event} MSA-1={out.ack_code})"
+    )
+    print(
+        f"  {out.report.message_type}\tpatient={out.report.patient_id}"
+        f"\tspecimen={out.report.specimen_id}"
+    )
+    all_normalized = True
+    for o, fin in zip(out.observations, out.result_statuses):
+        all_normalized = all_normalized and bool(o.loinc and o.ucum_value)
+        print(
+            f"  OBX-{o.set_id}\t{o.raw_code} {o.value} {o.raw_unit}"
+            f"\t-> LOINC {o.loinc or '-'} / UCUM {o.ucum_value or '-'}\t[{o.status}] ({fin})"
+        )
+    print(f"  ingest contract (core ADR-0003): {len(out.ingest_payload())} observation(s)")
+    ok = out.round_trip_ok and out.accepted and out.all_final and all_normalized
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="edge-sim",
@@ -202,6 +236,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     normalize_parser.add_argument("fixture", help="fixture id or directory path")
     normalize_parser.set_defaults(func=_cmd_normalize)
+    milestone_parser = sub.add_parser(
+        "milestone",
+        help="Stage-1 E2E: replay ORU^R01 over MLLP -> normalized Result + ACK (AA)",
+    )
+    milestone_parser.add_argument("fixture", help="fixture id or directory path")
+    milestone_parser.set_defaults(func=_cmd_milestone)
 
     args = parser.parse_args(argv)
     try:
