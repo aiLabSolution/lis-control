@@ -39,6 +39,10 @@ plan §0 Stage 0).
   `docs/adr/0002-loinc-ucum-vendor-code-seed.md`.
 - **ADR-0003 — Result ingest contract (edge → append-only Result store)** (S1.3 / LIS-15):
   `docs/adr/0003-result-ingest-contract.md`.
+- **ADR-0004 — FHIR R4 result validation (`$validate`) + HAPI/logging stack realignment**
+  (S4.1 / LIS-41): `docs/adr/0004-fhir-r4-result-validation.md`. Bumps hapi-fhir 7.0.2→8.10.0
+  (+ slf4j 2.x / log4j2 2.24.3) so the FHIR instance validator runs; a finalized result is gated
+  as a `$validate`-clean R4 DiagnosticReport + Observation.
 
 ## Glossary
 
