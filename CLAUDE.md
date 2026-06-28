@@ -20,9 +20,10 @@ Five canonical triage roles, mapped onto Plane workflow states. See `docs/agents
 
 ### Working a slice (the loop)
 
-Work each Plane slice (`LIS-NN`) as a self-paced `/loop`: claim it on Plane → work
-increments in a **dedicated worktree** → push to the slice branch → log progress on the
-issue → open a PR. Non-negotiables:
+Work each Plane slice (`LIS-NN`) as a self-paced `/loop`: find & claim the next slice with
+`scripts/slice.py next` / `claim` (the cheap, structured front door — **not** a raw
+`plane issues list` dump) → work increments in a **dedicated worktree** → push to the slice
+branch → log progress on the issue → open a PR. Non-negotiables:
 
 - **Worktree per slice, never the shared `main` checkout.** `../lis-control-<key>` on branch
   `<key>-<slug>` (e.g. `lis-control-lis-10` / `lis-10-compliance-scaffold`). Don't switch the
@@ -32,9 +33,10 @@ issue → open a PR. Non-negotiables:
   once reviewed and CI is green.
 - **Submodule changes are two-level**: PR the component repo first, then bump the pin in the
   umbrella PR.
-- **Coordinate across sessions via the Plane issue** — its state + comments are the shared
-  ledger. Read all comments and post a claim before editing; fetch+rebase before every
-  commit, push right after, and never force-push a shared slice branch.
+- **Coordinate across sessions via the Plane issue** — assignee = the *taken* flag, plus a
+  TTL'd claim ledger (`scripts/slice.py status` / `claim` / `heartbeat` / `release`). Check
+  status and claim before editing; a live claim by another agent is a cooperative lock.
+  Fetch+rebase before every commit, push right after, and never force-push a shared slice branch.
 
 Full protocol (loop steps, multi-session coordination, two-level submodule sync, PR
 conventions): `docs/agents/slice-loop.md`.

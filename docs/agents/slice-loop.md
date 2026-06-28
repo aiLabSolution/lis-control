@@ -22,8 +22,11 @@ Run with `/loop` self-paced (no interval) so each iteration re-reads the issue b
 acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plane` CLI per
 `docs/agents/issue-tracker.md`. One iteration:
 
-1. **Select** — the slice is the current `.claude/plane-context.json` issue, or the top
-   `ready-for-agent` item (`plane issues list -p PROJECT_ID --state <ready-for-agent>`).
+1. **Select** — the slice is the current `.claude/plane-context.json` issue, or pick one from
+   `python3 scripts/slice.py next` (ready-for-agent ∧ unassigned, grouped by stage and
+   priority-sorted — prefer the **earliest open stage**, that's the startable work). Don't use
+   raw `plane issues list --state <…>`: the API ignores that filter and returns everything
+   (`docs/agents/issue-tracker.md`).
 2. **Set up the workspace** (first iteration) — ensure the slice worktree + branch exist;
    create them from an up-to-date `main` if not:
    ```bash
@@ -32,12 +35,15 @@ acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plan
    ```
    Reuse the worktree if it already exists. Point that worktree's
    `.claude/plane-context.json` at the slice issue.
-3. **Sync + claim** — read the issue and **all** comments
-   (`plane issues get` + `plane comments list --all`); this is how you see what other
-   sessions have done. Post a **claim** comment naming the sub-task you're taking, then set
-   the issue to its in-progress state (resolve via `plane states -p PROJECT_ID -f json`).
-   If another session holds an active, recent claim on that sub-task, take a different one
-   or back off — see Coordination.
+3. **Sync + claim** — `python3 scripts/slice.py status LIS-NN` shows current ownership
+   (assignee + any live claims with their TTL) without reading the whole activity feed. To
+   take work, `python3 scripts/slice.py claim LIS-NN --task "<sub-task / files>"` — this
+   assigns the issue (the coarse *taken* flag, which then hides it from other agents'
+   `slice.py next`) **and** posts a machine-readable, TTL'd claim record. If another agent
+   holds a live claim, `claim` refuses (cooperative lock) — take a different sub-task, or
+   `--force` to share the slice and partition by sub-item. Then set the issue to its
+   in-progress state (`plane issues update … --state <In Progress>`). For full history,
+   `plane comments list --all` still works.
 4. **Work one increment** toward the acceptance criteria. For code, follow `/tdd`
    (red→green→refactor) and the relevant `CONTEXT.md` glossary (`docs/agents/domain.md`).
    Keep the increment small enough to commit cleanly.
@@ -57,9 +63,12 @@ issue to `needs-info`, comment why, stop); or you hit a budget/time bound.
 Sessions may run **in the same worktree** (memory: "multiple sessions share this checkout")
 or in separate worktrees on the same branch. The Plane issue is the coordination point:
 
-- **Claim, then work.** Before editing, read the issue comments and post a claim for the
-  specific sub-task and files. Treat a recent active claim as a cooperative lock — take a
-  different sub-task.
+- **Claim, then work.** `scripts/slice.py status LIS-NN` to see live claims; `scripts/slice.py
+  claim LIS-NN --task "<sub-task / files>"` to take one. Claims are a machine-readable ledger
+  (assignee = coarse *taken* flag; a `LIS-CLAIM v1 agent=… task=… until=…` comment = the
+  fine, per-agent record) — not free-text prose to eyeball. A live claim by another agent is a
+  cooperative lock: `claim` refuses without `--force`. Claims carry a **TTL**, so an expired
+  claim is automatically reclaimable.
 - **Partition by sub-item.** Split a slice into Plane sub-items
   (`plane issues create -p PROJECT_ID --name "…" --parent <key>`); each session owns disjoint
   sub-items → disjoint files. This is the unit of parallelism.
@@ -69,8 +78,10 @@ or in separate worktrees on the same branch. The Plane issue is the coordination
 - **Branch hygiene.** `fetch && rebase origin/<branch>` before every commit; push right
   after. **Never force-push** a shared slice branch. A rebase conflict means two sessions
   touched the same lines — resolve and re-partition.
-- **Heartbeat.** Long loops post periodic progress comments so a second session can tell
-  active-vs-stalled and either back off or take over.
+- **Heartbeat.** Long loops run `scripts/slice.py heartbeat LIS-NN` to extend the claim's TTL,
+  so a second agent reads active-vs-stalled from the structured record instead of guessing from
+  prose. On done / blocked / handoff, `scripts/slice.py release LIS-NN` drops the claim and
+  unassigns (returning the slice to `slice.py next`).
 
 ## Submodule slices (two-level sync)
 

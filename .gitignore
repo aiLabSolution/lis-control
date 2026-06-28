@@ -9,5 +9,9 @@ Thumbs.db
 *~
 .idea/
 
+# Python bytecode (e.g. scripts/ imported as a module)
+__pycache__/
+*.pyc
+
 # Note: component repos live as git submodules (see .gitmodules);
 # do NOT add their paths here.

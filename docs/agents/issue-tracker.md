@@ -27,6 +27,32 @@ The active Plane project (and optionally issue) for this repo is stored in
 Read it to get `PROJECT_ID`. If it's missing, ask the user which Plane project LIS issues
 belong to (`plane projects list -f json`), then write it.
 
+## Finding & claiming the next slice — use `scripts/slice.py`
+
+`scripts/slice.py` is the **cheap, structured front door** to the tracker for agents. It
+digests the Plane API *inside the subprocess* (via `?fields=`/`?expand=`) so only a tiny,
+already-filtered, already-sorted result reaches context — **~800 tokens** instead of the
+**~28k** a raw `issues list -f json` dump costs. Prefer it over `plane issues list` for the
+loop (`docs/agents/slice-loop.md`).
+
+```bash
+python3 scripts/slice.py next                  # ready-for-agent ∧ unassigned, grouped by stage, priority-sorted
+python3 scripts/slice.py next --stage S2 --json
+python3 scripts/slice.py claim LIS-26 --task "ASTM channel thread"  # assign (taken flag) + TTL'd claim record
+python3 scripts/slice.py status LIS-26         # who holds what, and is the claim still live
+python3 scripts/slice.py heartbeat LIS-26      # extend my claim while I keep working
+python3 scripts/slice.py release LIS-26        # drop claim + unassign (done / blocked / handoff)
+```
+
+It reads the same env + `.claude/plane-context.json` as the `plane` CLI; agent identity
+defaults to `$CLAUDE_CODE_SESSION_ID`. Coordination model in `slice-loop.md`.
+
+**Why not raw `plane issues list --state …`?** The Plane API **silently ignores** the
+server-side `state` and `assignee` query params (it returns the whole backlog) and returns
+`state` as a bare UUID — so the raw path forces a full dump + a second `states` fetch + an
+in-context UUID→name join + manual filtering. `slice.py` does all that subprocess-side and
+orders by stage (the `[S<n>.<m>]` title prefix) so the *startable* work surfaces first.
+
 ## Conventions
 
 - **Create an issue**: `plane issues create -p PROJECT_ID --name "..." [--priority high] [--label ID] [--parent ID]`.
@@ -36,7 +62,8 @@ belong to (`plane projects list -f json`), then write it.
 - **Read an issue**: `plane issues get -p PROJECT_ID ISSUE_ID`, plus
   `plane comments list -p PROJECT_ID -i ISSUE_ID --all` for the conversation.
 - **List issues**: `plane issues list -p PROJECT_ID [--state ID] [--priority high] [--assignee ID]`
-  (add `-f json` to parse).
+  (add `-f json` to parse). ⚠ `--state`/`--assignee` are **ignored by the Plane API** (the
+  whole backlog comes back) — for "what's ready" use `scripts/slice.py next`, not this.
 - **Comment**: `plane comments add -p PROJECT_ID -i ISSUE_ID "..."`.
 - **Sub-items**: `plane issues create -p PROJECT_ID --name "..." --parent PARENT_ID`.
 - **Transition triage state**: resolve the state ID with `plane states -p PROJECT_ID -f json`,
