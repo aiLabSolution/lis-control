@@ -15,20 +15,26 @@
   **ASTM E1381** transport (`STX FN text ETX|ETB C1 C2 CR LF` framing + modulo-256
   checksum, with an ENQ/ACK/NAK/EOT session + retransmit, LIS-23 / S2.1). Also parses
   a tolerant **HL7 v2 `ORU^R01`** and **normalizes** each observation to a LOINC/UCUM
-  intermediate row (vendor code → LOINC, vendor unit → UCUM, LIS-14 / S1.2).
-- **Isn't:** a production driver or a persistence layer. The normalized intermediate
-  row is in-memory; persisting it to the core append-only Result store is a later
-  slice (S1.3 / LIS-15). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM
-  slice (S2.2 / LIS-24). All plug into the same `Transport` interface / fixture
-  contract; the MLLP transport reads only the inbound `MSH` segment (enough to
-  acknowledge), not the result content.
+  intermediate row (vendor code → LOINC, vendor unit → UCUM, LIS-14 / S1.2). Archives
+  the raw inbound bytes in a content-addressed, integrity-checked **raw-message
+  archive** and runs a **deterministic replay round-trip** — archive → reload →
+  replay → normalize to a Result, fingerprinted and checked against the fixture's
+  asserted `expected` rows (LIS-16 / S1.4).
+- **Isn't:** a production driver or the core persistence layer. The raw-message
+  archive keeps the *wire bytes* (edge evidence); persisting the normalized row to
+  the **core** append-only Result store is a separate seam (S1.3 / LIS-15, core
+  ADR-0003). The ASTM **E1394 record** parser (H→P→O→R→L) is the next ASTM slice
+  (S2.2 / LIS-24). All plug into the same `Transport` interface / fixture contract;
+  the MLLP transport reads only the inbound `MSH` segment (enough to acknowledge),
+  not the result content.
 
 Fixtures are the **contract**: language-neutral (raw bytes + JSON manifest), so the
 production driver — whatever language the S1.0 substrate decision picks — consumes
 the same files this Python harness does. ADRs:
 [`0005-mllp-framing-and-ack-modes.md`](../../docs/adr/0005-mllp-framing-and-ack-modes.md) (MLLP/ACK),
 [`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization),
-[`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session).
+[`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session),
+[`0012-raw-message-archive-and-deterministic-replay.md`](../../docs/adr/0012-raw-message-archive-and-deterministic-replay.md) (raw-message archive + deterministic replay).
 
 ## Layout
 
@@ -44,10 +50,11 @@ edge/sim/
     oru.py                  # ORU^R01 -> typed RawObservations (PID/OBR/OBX) (S1.2)
     normalize.py            # vendor code -> LOINC, unit -> UCUM -> NormalizedObservation (S1.2)
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
-    replay.py               # replay(fixture, transport) -> ReplayResult
+    archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
+    replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | ack | normalize`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay, cli, hl7, oru+normalize, astm
+    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm
 
   fixtures/
     schema/fixture.schema.json   # canonical, cross-language manifest contract
@@ -69,6 +76,9 @@ uv run edge-sim replay example-mllp-oru-r01 --transport mllp   # round-trip over
 uv run edge-sim replay diasys-r920-astm-result --transport astm # round-trip over ASTM E1381 framing
 uv run edge-sim ack example-mllp-oru-r01                       # the ACK^R01 the listener returns
 uv run edge-sim normalize rayto-rac050-oru-r01                 # parse ORU^R01 -> normalized LOINC/UCUM rows
+uv run edge-sim archive rayto-rac050-oru-r01                   # archive the raw message -> content digest
+uv run edge-sim roundtrip rayto-rac050-oru-r01                # archive -> replay -> normalized Result, checked vs expected
+uv run edge-sim roundtrip rayto-rac050-oru-r01 --transport mllp # the same deterministic round-trip over MLLP framing
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`

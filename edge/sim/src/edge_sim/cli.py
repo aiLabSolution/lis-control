@@ -1,21 +1,33 @@
-"""``edge-sim`` command line: list, validate, replay, ack, and normalize fixtures."""
+"""``edge-sim`` command line: list, validate, replay, archive, roundtrip, ack, and
+normalize fixtures."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .ack import Hl7AckError, build_ack
+from .archive import RawMessageArchive, archive_fixture
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .normalize import Normalizer
 from .oru import OruParseError, parse_oru_r01
-from .replay import replay
+from .replay import check_against_expected, deterministic_round_trip, replay
 from .transport import AstmTransport, LoopbackTransport, MllpTransport
 
 __all__ = ["main"]
 
 _TRANSPORTS = {"loopback": LoopbackTransport, "mllp": MllpTransport, "astm": AstmTransport}
+
+# Default scratch archive for the CLI (gitignored; content-addressed so re-runs of
+# the same fixture are idempotent rather than accumulating).
+DEFAULT_ARCHIVE_DIR = Path(".edge-archive")
+
+
+def _now_iso() -> str:
+    """The receive instant the CLI stamps on an archived message."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _resolve(root: Path, fixture_ref: str):
@@ -54,6 +66,54 @@ def _replay_and_report(fx, transport) -> int:
 def _cmd_replay(args: argparse.Namespace) -> int:
     fx = _resolve(args.root, args.fixture)
     return _replay_and_report(fx, _TRANSPORTS[args.transport]())
+
+
+def _cmd_archive(args: argparse.Namespace) -> int:
+    """Archive a fixture's captured message into the content-addressed raw-message
+    archive and print its digest (the key a Result is later re-derived from)."""
+    fx = _resolve(args.root, args.fixture)
+    entry = archive_fixture(RawMessageArchive(args.dir), fx, received_at=_now_iso())
+    print(f"archived {fx.id} -> {entry.digest} ({entry.byte_count} bytes) in {args.dir}")
+    return 0
+
+
+def _cmd_roundtrip(args: argparse.Namespace) -> int:
+    """Deterministic replay round-trip: archive a fixture's message, replay it back
+    *from the archive* through a transport, normalize the ORU^R01, and check the
+    normalized Result against the manifest's asserted ``expected`` rows. Exit 1 if
+    the bytes don't survive the wire or the Result doesn't match expected."""
+    fx = _resolve(args.root, args.fixture)
+    try:
+        res = deterministic_round_trip(
+            fx, _TRANSPORTS[args.transport](), archive=RawMessageArchive(args.dir),
+            received_at=_now_iso(),
+        )
+    except OruParseError as exc:
+        print(f"error: cannot replay {fx.id} as ORU^R01: {exc}", file=sys.stderr)
+        return 2
+
+    bytes_status = "OK" if res.round_trip_ok else "MISMATCH"
+    print(
+        f"roundtrip {fx.id} via {res.transport}: bytes {bytes_status} | "
+        f"src {res.digest[:12]} -> result {res.result_digest[:12]}"
+    )
+    print(f"  {res.message_type}\tpatient={res.patient_id}\tspecimen={res.specimen_id}")
+    for o in res.observations:
+        print(
+            f"  OBX-{o.set_id}\t{o.raw_code} {o.value} {o.raw_unit}"
+            f"\t-> LOINC {o.loinc or '-'} / UCUM {o.ucum_value or '-'}\t[{o.status}]"
+        )
+
+    problems = check_against_expected(res, fx.expected) if fx.expected else []
+    if not fx.expected:
+        print("  expected: (none asserted in manifest)")
+    elif problems:
+        print("  expected: MISMATCH")
+        for p in problems:
+            print(f"    - {p}")
+    else:
+        print("  expected: OK")
+    return 0 if res.round_trip_ok and not problems else 1
 
 
 def _cmd_ack(args: argparse.Namespace) -> int:
@@ -111,6 +171,29 @@ def main(argv: list[str] | None = None) -> int:
         help="transport to replay through (default: loopback)",
     )
     replay_parser.set_defaults(func=_cmd_replay)
+    archive_parser = sub.add_parser(
+        "archive", help="archive a fixture's captured message (content-addressed)"
+    )
+    archive_parser.add_argument("fixture", help="fixture id or directory path")
+    archive_parser.add_argument(
+        "--dir", type=Path, default=DEFAULT_ARCHIVE_DIR,
+        help=f"raw-message archive directory (default: {DEFAULT_ARCHIVE_DIR})",
+    )
+    archive_parser.set_defaults(func=_cmd_archive)
+    roundtrip_parser = sub.add_parser(
+        "roundtrip",
+        help="archive + deterministic replay -> normalized Result, checked vs expected",
+    )
+    roundtrip_parser.add_argument("fixture", help="fixture id or directory path")
+    roundtrip_parser.add_argument(
+        "--transport", choices=sorted(_TRANSPORTS), default="loopback",
+        help="transport to replay through (default: loopback)",
+    )
+    roundtrip_parser.add_argument(
+        "--dir", type=Path, default=DEFAULT_ARCHIVE_DIR,
+        help=f"raw-message archive directory (default: {DEFAULT_ARCHIVE_DIR})",
+    )
+    roundtrip_parser.set_defaults(func=_cmd_roundtrip)
     ack_parser = sub.add_parser("ack", help="print the HL7 ACK for a fixture's message")
     ack_parser.add_argument("fixture", help="fixture id or directory path")
     ack_parser.set_defaults(func=_cmd_ack)
