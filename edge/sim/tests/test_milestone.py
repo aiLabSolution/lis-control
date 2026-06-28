@@ -10,6 +10,7 @@ core ingest contract DTO the edge would hand to ``ResultIngestService.ingest``.
 from pathlib import Path
 
 from edge_sim.fixtures import load_fixture
+from edge_sim.ingest import validate_dto
 from edge_sim.mllp import deframe
 from edge_sim.milestone import RESULT_STATUS_FINAL, result_status, run_milestone
 from edge_sim.normalize import STATUS_NORMALIZED
@@ -88,7 +89,7 @@ def test_milestone_ack_is_deterministic_with_pinned_timestamp():
 
 
 def test_milestone_emits_core_ingest_contract_payload():
-    """The edge emits the core ADR-0003 NormalizedObservation DTO per observation."""
+    """The edge emits the core ADR-0003 NormalizedObservation DTO per (final) observation."""
     fx = load_fixture(EDAN)
     out = run_milestone(fx.message_bytes, ack_timestamp=ACK_TS)
     payload = out.ingest_payload()
@@ -100,9 +101,37 @@ def test_milestone_emits_core_ingest_contract_payload():
         "ucumValue": "10*9/L",
         "status": "NORMALIZED",
     }
-    # one DTO per observation, raw beside normalized on every row.
+    # all six observations are final, so all six DTOs are emitted.
     assert len(payload) == 6
     assert all(set(d) == {"value", "rawCode", "rawUnit", "loinc", "ucumValue", "status"} for d in payload)
+    # every emitted DTO conforms to the committed ingest-contract schema.
+    for dto in payload:
+        validate_dto(dto)
+
+
+def _flip_last_obx11_to_preliminary(message: bytes) -> bytes:
+    """Flip the last OBX-11 from F (final) to P (preliminary) — the PLT row."""
+    i = message.rfind(b"|||F")
+    assert i != -1
+    return message[:i] + b"|||P" + message[i + 4:]
+
+
+def test_milestone_holds_back_non_final_observations_from_ingest():
+    """The safety gate: a non-final (preliminary) observation is NOT handed to the
+    core ingest seam — only final results flow to the append-only store."""
+    fx = load_fixture(EDAN)
+    mutated = _flip_last_obx11_to_preliminary(fx.message_bytes)
+    out = run_milestone(mutated, ack_timestamp=ACK_TS)
+
+    # finality is observed correctly: 5 final + 1 preliminary (PLT).
+    assert out.all_final is False
+    assert out.result_statuses == (RESULT_STATUS_FINAL,) * 5 + ("preliminary",)
+
+    # the preliminary PLT observation is held back from the ingest payload.
+    payload = out.ingest_payload()
+    assert len(payload) == 5
+    assert all(d["rawCode"] != "PLT" for d in payload)
+    assert [d["rawCode"] for d in payload] == ["WBC", "RBC", "HGB", "HCT", "MCV"]
 
 
 def test_result_status_maps_obx11_codes():

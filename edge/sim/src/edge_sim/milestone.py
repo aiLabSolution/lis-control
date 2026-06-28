@@ -44,15 +44,16 @@ RESULT_STATUS_FINAL = "final"
 # label. The milestone asserts the captured result is *final* (``F``); the other
 # states are mapped so a non-final observation is reported, not silently dropped.
 _OBX11_STATUS = {
-    "F": RESULT_STATUS_FINAL,  # final
-    "C": "corrected",
-    "P": "preliminary",
+    "F": RESULT_STATUS_FINAL,  # final results
+    "U": RESULT_STATUS_FINAL,  # status change to final w/o retransmit (0085) — final
+    "C": "corrected",  # correction that replaces a final result
+    "P": "preliminary",  # preliminary results
     "R": "preliminary",  # results entered, not verified
-    "I": "pending",  # specimen in lab, no results
-    "X": "cancelled",
-    "D": "deleted",
-    "U": "final",  # mature for final per 0085, treated as final
-    "W": "corrected",  # post-original, wrong patient corrected
+    "S": "preliminary",  # partial results
+    "I": "pending",  # specimen in lab, results pending
+    "X": "cancelled",  # results cannot be obtained for this observation
+    "W": "cancelled",  # posted as wrong (e.g. wrong patient) — retraction
+    "D": "deleted",  # delete the observation
 }
 
 
@@ -92,9 +93,20 @@ class MilestoneOutcome:
         return self.ack_code == AckCode.AA.value
 
     def ingest_payload(self) -> list[dict]:
-        """The core ingest contract DTOs for the normalized observations
-        (core ADR-0003) — what the edge hands the core persistence seam."""
-        return to_ingest_payload(self.observations)
+        """The core ingest contract DTOs (core ADR-0003) for the **final**
+        observations only — what the edge hands the core persistence seam.
+
+        Non-final observations (preliminary / corrected / cancelled / …, OBX-11 ≠
+        F/U) are **held back**: the edge does not land a non-final result in the
+        append-only Result store as if authoritative — persisting a preliminary
+        result indistinguishably from a final one is a clinical hazard. Carrying
+        finality onto the row (so a later preliminary→final reconciliation can
+        supersede it) is deferred (ADR-0013); until then, only final results flow."""
+        return to_ingest_payload(
+            obs
+            for obs, finality in zip(self.observations, self.result_statuses)
+            if finality == RESULT_STATUS_FINAL
+        )
 
 
 def run_milestone(

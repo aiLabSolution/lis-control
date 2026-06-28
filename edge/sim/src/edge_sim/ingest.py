@@ -25,10 +25,17 @@ contract (core ``result.status`` is the normalization status per core ADR-0003).
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from ._schema import validate as _schema_validate
 from .normalize import NormalizedObservation
 
 __all__ = [
     "INGEST_CONTRACT_FIELDS",
+    "INGEST_CONTRACT_SCHEMA_PATH",
+    "contract_schema",
+    "validate_dto",
     "to_ingest_dto",
     "to_ingest_payload",
 ]
@@ -37,6 +44,27 @@ __all__ = [
 # order the contract documents them. camelCase mirrors the core Java type; the edge
 # emits exactly these keys so the JSON is consumed without a rename layer.
 INGEST_CONTRACT_FIELDS = ("value", "rawCode", "rawUnit", "loinc", "ucumValue", "status")
+
+# The committed, language-neutral JSON-Schema for the DTO — the SHARED artifact the
+# edge and core both bind to (so a field rename on either side fails fast instead of
+# drifting silently). ingest.py lives at src/edge_sim/; the fixtures tree is a sibling
+# of src/ (same anchor as fixtures.DEFAULT_FIXTURES_ROOT).
+INGEST_CONTRACT_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2] / "fixtures" / "schema" / "ingest-contract.schema.json"
+)
+
+
+def contract_schema() -> dict:
+    """Load the committed ingest-contract JSON-Schema."""
+    return json.loads(INGEST_CONTRACT_SCHEMA_PATH.read_text())
+
+
+def validate_dto(dto: dict) -> None:
+    """Validate one ingest DTO against the committed contract schema.
+
+    Raises :class:`edge_sim._schema.SchemaError` on a missing/extra/mistyped field —
+    the guard that keeps the edge's emitted shape pinned to core ADR-0003."""
+    _schema_validate(dto, contract_schema())
 
 
 def to_ingest_dto(obs: NormalizedObservation) -> dict:

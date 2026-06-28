@@ -5,7 +5,16 @@ the core ``ResultIngestService.ingest`` consumes — value plus analyzer-native
 rawCode/rawUnit beside the normalized loinc/ucumValue and the normalization status.
 """
 
-from edge_sim.ingest import INGEST_CONTRACT_FIELDS, to_ingest_dto, to_ingest_payload
+import pytest
+
+from edge_sim._schema import SchemaError
+from edge_sim.ingest import (
+    INGEST_CONTRACT_FIELDS,
+    contract_schema,
+    to_ingest_dto,
+    to_ingest_payload,
+    validate_dto,
+)
 from edge_sim.normalize import (
     STATUS_NORMALIZED,
     STATUS_UNMAPPED,
@@ -68,3 +77,35 @@ def test_to_ingest_payload_preserves_order():
     payload = to_ingest_payload([a, b])
     assert [d["rawCode"] for d in payload] == ["WBC", "RBC"]
     assert len(payload) == 2
+
+
+def test_emitted_dto_validates_against_committed_contract_schema():
+    """The edge's emitted DTO conforms to the shared ingest-contract JSON-Schema —
+    the guard that pins the edge shape to core ADR-0003's field names."""
+    validate_dto(to_ingest_dto(NORMALIZED))  # raises SchemaError on drift
+
+
+def test_contract_schema_rejects_renamed_field():
+    """A drifted field name (snake_case / core renames a field) fails the schema."""
+    drifted = {
+        "value": "6.8",
+        "raw_code": "WBC",  # wrong: contract is rawCode
+        "rawUnit": "10^9/L",
+        "loinc": "6690-2",
+        "ucumValue": "10*9/L",
+        "status": "NORMALIZED",
+    }
+    with pytest.raises(SchemaError):
+        validate_dto(drifted)
+
+
+def test_contract_schema_rejects_unknown_normalization_status():
+    bad = dict(to_ingest_dto(NORMALIZED), status="final")  # finality is not a normalization status
+    with pytest.raises(SchemaError):
+        validate_dto(bad)
+
+
+def test_contract_schema_required_fields_match_constant():
+    schema = contract_schema()
+    assert set(schema["required"]) == set(INGEST_CONTRACT_FIELDS)
+    assert schema["additionalProperties"] is False

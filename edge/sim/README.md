@@ -65,7 +65,8 @@ edge/sim/
   tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest
 
   fixtures/
-    schema/fixture.schema.json   # canonical, cross-language manifest contract
+    schema/fixture.schema.json          # canonical, cross-language manifest contract
+    schema/ingest-contract.schema.json  # edge->core NormalizedObservation DTO contract (S1.5)
     _example/                    # synthetic seed proving the replay self-test
     example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
     rayto-rac050-oru-r01/        # synthetic RAC-050 ORU^R01 w/ local codes + expected normalized rows (S1.2)

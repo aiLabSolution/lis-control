@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aiLabSolution/lis-control/edge/sim/fixtures/schema/ingest-contract.schema.json",
+  "title": "Result ingest contract — NormalizedObservation DTO",
+  "description": "Language-neutral shape of the value object the edge hands the core Result-ingest seam: org.openelisglobal.result.ingest.ResultIngestService.ingest(NormalizedObservation) (core ADR-0003). One DTO = one observation; the analyzer-native rawCode/rawUnit ride beside the normalized loinc/ucumValue so core persists raw evidence next to normalized form. This schema is the SHARED artifact both sides bind to: the edge validates its emitted DTO against it (edge_sim.ingest), and the core integration test should validate the payload it ingests against the same file — so a field rename on either side fails fast instead of drifting silently.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["value", "rawCode", "rawUnit", "loinc", "ucumValue", "status"],
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "The observation value as reported by the analyzer (OBX-5), verbatim."
+    },
+    "rawCode": {
+      "type": "string",
+      "description": "Analyzer-native observation code (e.g. 99EDAN WBC), preserved."
+    },
+    "rawUnit": {
+      "type": "string",
+      "description": "Raw vendor unit string as reported (e.g. 10^9/L), preserved."
+    },
+    "loinc": {
+      "type": "string",
+      "description": "Normalized LOINC code; empty string when unmapped (tolerant ingest)."
+    },
+    "ucumValue": {
+      "type": "string",
+      "description": "Normalized UCUM unit; empty string when unmapped (tolerant ingest)."
+    },
+    "status": {
+      "type": "string",
+      "description": "Normalization status carried onto core result.status (core ADR-0003).",
+      "enum": ["NORMALIZED", "PARTIAL", "UNMAPPED"]
+    }
+  }
+}

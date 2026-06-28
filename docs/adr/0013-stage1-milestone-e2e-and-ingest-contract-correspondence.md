@@ -70,22 +70,37 @@ single umbrella PR (pure `edge/sim` + docs), test-first:
 
 3. **`edge_sim.ingest.to_ingest_dto`** — the edge half of the wiring: serialize the edge
    `NormalizedObservation` to the **core ADR-0003 ingest contract DTO**, field-for-field
-   (`value`, `rawCode`, `rawUnit`, `loinc`, `ucumValue`, `status`). This makes the edge↔core
-   correspondence an auditable, tested artifact (ISO 15189 evidence) rather than an ad-hoc
-   dict at a call site. The `edge-sim milestone <fixture>` CLI command prints the Result,
-   the ACK, and the DTO — the human-runnable demo path.
+   (`value`, `rawCode`, `rawUnit`, `loinc`, `ucumValue`, `status`). The shape is pinned by a
+   committed, language-neutral **JSON-Schema** (`fixtures/schema/ingest-contract.schema.json`)
+   that the edge validates its emitted DTO against (`validate_dto`) — the **shared artifact
+   the core integration test binds to as well**, so a field rename on *either* side fails fast
+   instead of drifting silently. This makes the edge↔core correspondence an auditable, tested
+   artifact (ISO 15189 evidence), not an ad-hoc dict at a call site.
 
-4. **Status-terminology reconciliation.** The plan's "status = final" is the HL7
-   **result-lifecycle finality** (OBX-11 `F`), surfaced at the edge by `run_milestone`. The
-   core contract's `status` field (core ADR-0003) is the **normalization** status
-   (`NORMALIZED`/`PARTIAL`/`UNMAPPED`). Both coexist: the milestone asserts the captured
-   result is final *and* fully normalized; the contract DTO carries the normalization status.
+4. **Finality is a safety gate, not just a label.** `MilestoneOutcome.ingest_payload()` emits
+   DTOs for **final** observations only (OBX-11 = `F`/`U`); non-final results
+   (preliminary / corrected / cancelled / …) are **held back** from the ingest seam. The edge
+   does not land a non-final result in the append-only Result store as if authoritative —
+   persisting a preliminary result indistinguishably from a final one is a clinical hazard. The
+   `edge-sim milestone <fixture>` CLI prints the Result, the ACK and the DTO and **exits
+   non-zero unless every observation is final and fully normalized** — the human-runnable demo
+   path that is also a gate.
+
+5. **Status-terminology reconciliation.** The plan's "status = final" is the HL7
+   **result-lifecycle finality** (OBX-11 `F`), surfaced at the edge by `run_milestone` and
+   enforced by the gate above. The core contract's `status` field (core ADR-0003) is the
+   **normalization** status (`NORMALIZED`/`PARTIAL`/`UNMAPPED`). Both coexist: the milestone
+   asserts the captured result is final *and* fully normalized; the contract DTO carries the
+   normalization status (finality gates *whether* a row flows, not a DTO field — yet).
 
 **Verifiable output (S1.5 exit):** `test_milestone.py` proves, on the EDAN H60S fixture,
 that the `ORU^R01` survives MLLP framing, is accepted (`ACK^R01` / MSA-1 = `AA`, framed back
 on the wire), and normalizes to six final Result rows with analyzer-native code/unit
-preserved beside populated LOINC/UCUM; `test_ingest.py` proves the edge emits the core
-ADR-0003 DTO field-for-field; the `edge-sim milestone` CLI is the demo path.
+preserved beside populated LOINC/UCUM — *and* that a non-final variant is held back from the
+ingest seam (the safety gate); `test_ingest.py` proves the edge emits the core ADR-0003 DTO
+field-for-field and that it validates against the committed contract schema (a renamed/extra
+field fails); the `edge-sim milestone` CLI is the demo path and exits non-zero on a non-final
+or under-normalized result.
 
 ## Alternatives considered
 
@@ -119,8 +134,11 @@ ADR-0003 DTO field-for-field; the `edge-sim milestone` CLI is the demo path.
   - **Staging demo** — the plan's "demo on staging from a real or captured instrument message"
     is the manual exit-gate bullet, separate from this automated test; it follows a core
     bring-up (memory: `local-openelis-bringup`).
-  - **Result-lifecycle status** is surfaced at the edge (OBX-11) but **not** propagated into the
-    core ingest contract; carrying finality to the store is later work.
+  - **Result-lifecycle status** is surfaced at the edge (OBX-11) and used as a **gate**
+    (non-final results are held back from ingest), but is **not** yet propagated onto the
+    persisted row as a field — so a preliminary result that later finalizes cannot yet be
+    matched and superseded in the store. Carrying finality onto the DTO/row (and the
+    preliminary→final reconciliation it enables) is later work.
   - **Synthetic fixture** — a real EDAN H60S capture replaces it at bench conformance
     (LIS-74); the second-vendor proof (HETO AU120) and the bidirectional QRD/QRF path
     (**LIS-18 / S1.6**) are the remaining Stage-1 edge slices.
