@@ -14,6 +14,13 @@ from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fi
 from .milestone import run_milestone
 from .normalize import Normalizer
 from .oru import OruParseError, parse_oru_r01
+from .query import (
+    QueryError,
+    build_query_response,
+    correlates,
+    parse_query,
+    parse_query_response,
+)
 from .replay import check_against_expected, deterministic_round_trip, replay
 from .transport import AstmTransport, LoopbackTransport, MllpTransport
 
@@ -182,6 +189,45 @@ def _cmd_milestone(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _cmd_query(args: argparse.Namespace) -> int:
+    """Bidirectional host-query (LIS-18 / S1.6): parse a QRY^R02 host-query, have the
+    host answer it (ORF^R04 / MSA-1=AA, echoing the query id) carrying the result
+    fixture, and print the correlation + the normalized rows. Exit 1 unless the answer
+    correlates to the query and every returned observation is fully normalized."""
+    qfx = _resolve(args.root, args.query)
+    rfx = _resolve(args.root, args.result)
+    try:
+        query = parse_query(qfx.message_bytes)
+        result = parse_oru_r01(rfx.message_bytes)
+    except (QueryError, OruParseError) as exc:
+        print(f"error: cannot run query exchange: {exc}", file=sys.stderr)
+        return 2
+
+    orf = build_query_response(
+        query, result, response_datetime=query.query_datetime, control_id=f"ORF{query.query_id}"
+    )
+    resp = parse_query_response(orf)
+    correlated = correlates(query, resp)
+    rows = Normalizer().normalize_report(resp.report)
+
+    print(
+        f"query {qfx.id}: QRY^R02 id={query.query_id} subject={query.subject_id} "
+        f"what={query.what_subject}"
+    )
+    print(
+        f"answer {rfx.id}: ORF^R04 MSA-1={resp.ack_code} echoed-id={resp.query_id} "
+        f"specimen={resp.report.specimen_id} correlates={correlated}"
+    )
+    all_normalized = True
+    for r in rows:
+        all_normalized = all_normalized and bool(r.loinc and r.ucum_value)
+        print(
+            f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
+            f"\t-> LOINC {r.loinc or '-'} / UCUM {r.ucum_value or '-'}\t[{r.status}]"
+        )
+    return 0 if correlated and all_normalized else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="edge-sim",
@@ -242,6 +288,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     milestone_parser.add_argument("fixture", help="fixture id or directory path")
     milestone_parser.set_defaults(func=_cmd_milestone)
+    query_parser = sub.add_parser(
+        "query",
+        help="bidirectional host-query: answer a QRY^R02 (QRD/QRF) -> ORF^R04 + normalized Result",
+    )
+    query_parser.add_argument("query", help="QRY^R02 query fixture id or directory path")
+    query_parser.add_argument(
+        "--result", default="edan-h60s-oru-r01",
+        help="result fixture the host answers with (default: edan-h60s-oru-r01)",
+    )
+    query_parser.set_defaults(func=_cmd_query)
 
     args = parser.parse_args(argv)
     try:

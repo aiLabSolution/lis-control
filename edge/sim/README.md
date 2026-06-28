@@ -23,7 +23,9 @@
   **Stage-1 milestone E2E** — an **EDAN H60S** `ORU^R01` over MLLP → normalized
   Result (raw code/unit preserved beside LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 =
   AA)** — and emits the **core ingest contract DTO** the core
-  `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5).
+  `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5). Answers a
+  **bidirectional host-query** — a `QRY^R02` (QRD/QRF) is answered with an `ORF^R04`
+  (`MSA-1 = AA`, query id echoed) and the returned result normalizes (LIS-18 / S1.6).
 - **Isn't:** a production driver or the core persistence layer. The raw-message
   archive keeps the *wire bytes* (edge evidence); persisting the normalized row to
   the **core** append-only Result store is a separate seam (S1.3 / LIS-15, core
@@ -40,7 +42,8 @@ the same files this Python harness does. ADRs:
 [`0011-oru-parse-and-normalization.md`](../../docs/adr/0011-oru-parse-and-normalization.md) (ORU parse + LOINC/UCUM normalization),
 [`0009-astm-e1381-codec-and-session.md`](../../docs/adr/0009-astm-e1381-codec-and-session.md) (ASTM E1381 codec + session),
 [`0012-raw-message-archive-and-deterministic-replay.md`](../../docs/adr/0012-raw-message-archive-and-deterministic-replay.md) (raw-message archive + deterministic replay),
-[`0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md`](../../docs/adr/0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md) (Stage-1 milestone E2E + edge↔core ingest-contract DTO).
+[`0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md`](../../docs/adr/0013-stage1-milestone-e2e-and-ingest-contract-correspondence.md) (Stage-1 milestone E2E + edge↔core ingest-contract DTO),
+[`0014-bidirectional-host-query-qrd-qrf.md`](../../docs/adr/0014-bidirectional-host-query-qrd-qrf.md) (bidirectional host-query QRD/QRF → ORF^R04).
 
 ## Layout
 
@@ -60,9 +63,10 @@ edge/sim/
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
     milestone.py            # Stage-1 milestone E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) (S1.5)
     ingest.py               # edge -> core Result-ingest contract DTO (core ADR-0003) (S1.5)
+    query.py                # bidirectional host-query: QRY^R02 (QRD/QRF) -> ORF^R04 + correlation (S1.6)
     _schema.py              # tiny stdlib JSON-Schema validator (no deps)
-    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize | milestone`
-  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest
+    cli.py / __main__.py    # `edge-sim list | validate | replay | archive | roundtrip | ack | normalize | milestone | query`
+  tests/                    # pytest: schema, fixtures, transport, mllp, ack, replay (+normalized), archive, cli, hl7, oru+normalize, astm, milestone, ingest, query
 
   fixtures/
     schema/fixture.schema.json          # canonical, cross-language manifest contract
@@ -71,6 +75,7 @@ edge/sim/
     example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
     rayto-rac050-oru-r01/        # synthetic RAC-050 ORU^R01 w/ local codes + expected normalized rows (S1.2)
     edan-h60s-oru-r01/           # synthetic EDAN H60S ORU^R01 (HL7 v2.4) — Stage-1 milestone vehicle (S1.5)
+    edan-h60s-host-query-qry-r02/ # synthetic EDAN H60S QRY^R02 host-query (QRD/QRF) (S1.6)
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
 ```
 
@@ -90,6 +95,7 @@ uv run edge-sim archive rayto-rac050-oru-r01                   # archive the raw
 uv run edge-sim roundtrip rayto-rac050-oru-r01                # archive -> replay -> normalized Result, checked vs expected
 uv run edge-sim roundtrip rayto-rac050-oru-r01 --transport mllp # the same deterministic round-trip over MLLP framing
 uv run edge-sim milestone edan-h60s-oru-r01                   # Stage-1 E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) + ingest DTO
+uv run edge-sim query edan-h60s-host-query-qry-r02           # bidirectional host-query (QRD/QRF) answered -> ORF^R04 + normalized Result
 ```
 
 CI runs the same `pytest` on every change under `edge/sim/`

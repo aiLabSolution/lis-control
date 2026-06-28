@@ -123,3 +123,16 @@ def test_milestone_exit_one_when_not_all_final(tmp_path, capsys):
     assert main(["--root", str(tmp_path), "milestone", "edan-prelim"]) == 1
     out = capsys.readouterr().out
     assert "(preliminary)" in out  # the non-final row is reported, not hidden
+
+
+def test_query_exchange_exit_zero(capsys):
+    assert main(["query", "edan-h60s-host-query-qry-r02"]) == 0
+    out = capsys.readouterr().out
+    assert "QRY^R02 id=Q0231-01" in out
+    assert "ORF^R04 MSA-1=AA" in out
+    assert "correlates=True" in out
+    assert "LOINC 6690-2" in out
+
+
+def test_query_unknown_fixture_exit_two(capsys):
+    assert main(["query", "does-not-exist"]) == 2
