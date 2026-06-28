@@ -65,3 +65,27 @@ def test_ack_prints_accept_ack(capsys):
     assert out.startswith("MSH|")
     assert "ACK^R01" in out
     assert "MSA|AA|MSG00050" in out
+
+
+def test_archive_exit_zero_prints_digest(capsys, tmp_path):
+    assert main(["archive", "rayto-rac050-oru-r01", "--dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "archived rayto-rac050-oru-r01 ->" in out
+    assert len(list(tmp_path.rglob("*.msg"))) == 1
+
+
+def test_roundtrip_exit_zero_matches_expected(capsys, tmp_path):
+    assert main(["roundtrip", "rayto-rac050-oru-r01", "--dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "bytes OK" in out
+    assert "expected: OK" in out
+    assert "LOINC 718-7" in out
+
+
+def test_roundtrip_over_mllp_exit_zero(capsys, tmp_path):
+    assert main(
+        ["roundtrip", "rayto-rac050-oru-r01", "--transport", "mllp", "--dir", str(tmp_path)]
+    ) == 0
+    out = capsys.readouterr().out
+    assert "via mllp" in out
+    assert "expected: OK" in out
