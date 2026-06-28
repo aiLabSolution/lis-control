@@ -55,10 +55,22 @@ orders by stage (the `[S<n>.<m>]` title prefix) so the *startable* work surfaces
 
 ## Conventions
 
-- **Create an issue**: `plane issues create -p PROJECT_ID --name "..." [--priority high] [--label ID] [--parent ID]`.
-  The create command takes a title only — for a multi-line PRD/issue body, create the
-  item with a descriptive title, then post the full body as the first comment via
-  `plane comments add`.
+- **Create an issue (with a body)**: use `scripts/plane_issue.py` — it renders the markdown
+  body into the work item's **description** (where it belongs), not a comment. The body comes
+  from a file or stdin, so multi-line markdown is easy:
+  ```bash
+  python3 scripts/plane_issue.py create --name "[S2.4] ERBA EC90 channel thread" \
+      --body-file slice.md [--priority high] [--parent UUID] [--state STATE_ID]
+  printf '%s' "$BODY" | python3 scripts/plane_issue.py create --name "..." --body-file -
+  python3 scripts/plane_issue.py render --body-file slice.md   # preview the HTML, no network
+  ```
+  Why not `plane issues create --description`? Its `--description` is a single shell arg and
+  the bundled CLI wraps whatever you pass in one HTML-escaped `<p>`, so a multi-line PRD
+  collapses into one run-on paragraph — that friction is why bodies used to be dumped into a
+  comment, leaving every issue with an empty description. `plane_issue.py` wraps the Plane API
+  directly (like `scripts/slice.py`) and renders real HTML. **Reserve comments for the running
+  progress log and the claim ledger — never the issue body.** For a title-only stub or a
+  field-only tweak, `plane issues create`/`update` is still fine.
 - **Read an issue**: `plane issues get -p PROJECT_ID ISSUE_ID`, plus
   `plane comments list -p PROJECT_ID -i ISSUE_ID --all` for the conversation.
 - **List issues**: `plane issues list -p PROJECT_ID [--state ID] [--priority high] [--assignee ID]`
@@ -76,8 +88,17 @@ issues → `plane issues search "query" -f json`. Cache within a conversation.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a Plane work item in the active project — title from the issue/PRD heading, full
-body as the item's first comment.
+Create a Plane work item in the active project — **title → the work item name, full body →
+the work item description** (markdown rendered to HTML):
+
+```bash
+python3 scripts/plane_issue.py create --name "<issue/PRD heading>" --body-file <body.md>
+```
+
+Do **not** put the body in a comment — comments are for the progress log and the claim ledger.
+If the skill wants the issue **ready for an AFK agent**, set its triage state too — triage is
+realised as a Plane **state**, not a label (see `triage-labels.md`): resolve the ID with
+`plane states -p PROJECT_ID -f json`, then pass `--state STATE_ID` to `create` (above).
 
 ## When a skill says "fetch the relevant ticket"
 
