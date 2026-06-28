@@ -43,6 +43,12 @@ plan §0 Stage 0).
   (S4.1 / LIS-41): `docs/adr/0004-fhir-r4-result-validation.md`. Bumps hapi-fhir 7.0.2→8.10.0
   (+ slf4j 2.x / log4j2 2.24.3) so the FHIR instance validator runs; a finalized result is gated
   as a `$validate`-clean R4 DiagnosticReport + Observation.
+- **ADR-0005 — FHIR R4 Specimen + Device resolve and link from the DiagnosticReport**
+  (S4.3 / LIS-43): `docs/adr/0005-fhir-specimen-device-linkage.md`. Extends the S4.1 gate: the
+  Specimen (direct, `DiagnosticReport.specimen`) and the analyzer Device (transitive, via
+  `DiagnosticReport.result → Observation.device`) build `$validate`-clean and their references
+  resolve. Adds two behavior-preserving transform seams (`linkObservationToDevice`,
+  package-visible `transformAnalyzerToDevice`) to make the linkage unit-testable.
 
 ## Glossary
 
