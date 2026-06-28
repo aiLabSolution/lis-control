@@ -89,3 +89,37 @@ def test_roundtrip_over_mllp_exit_zero(capsys, tmp_path):
     out = capsys.readouterr().out
     assert "via mllp" in out
     assert "expected: OK" in out
+
+
+def test_milestone_edan_exit_zero(capsys):
+    assert main(["milestone", "edan-h60s-oru-r01"]) == 0
+    out = capsys.readouterr().out
+    assert "ACCEPTED" in out
+    assert "MSA-1=AA" in out
+    assert "ACK^R01" in out
+    assert "LOINC 6690-2" in out
+    assert "(final)" in out
+    assert "ingest contract (core ADR-0003): 6 observation(s)" in out
+
+
+def test_milestone_unknown_fixture_exit_two(capsys):
+    assert main(["milestone", "does-not-exist"]) == 2
+
+
+def test_milestone_exit_one_when_not_all_final(tmp_path, capsys):
+    """The CLI gate fails (exit 1) when an observation is not final — a non-final
+    result must not pass the milestone as if it were a clean first result."""
+    src = DEFAULT_FIXTURES_ROOT / "edan-h60s-oru-r01"
+    dst = tmp_path / "edan-prelim"
+    dst.mkdir()
+    manifest = (src / "manifest.json").read_text().replace(
+        '"id": "edan-h60s-oru-r01"', '"id": "edan-prelim"'
+    )
+    (dst / "manifest.json").write_text(manifest)
+    msg = (src / "message.hl7").read_bytes()
+    i = msg.rfind(b"|||F")  # flip the last OBX-11 (PLT) F -> P
+    (dst / "message.hl7").write_bytes(msg[:i] + b"|||P" + msg[i + 4:])
+
+    assert main(["--root", str(tmp_path), "milestone", "edan-prelim"]) == 1
+    out = capsys.readouterr().out
+    assert "(preliminary)" in out  # the non-final row is reported, not hidden
