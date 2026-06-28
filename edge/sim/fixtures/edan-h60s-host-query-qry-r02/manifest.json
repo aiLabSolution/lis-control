@@ -1,0 +1,20 @@
+{
+  "id": "edan-h60s-host-query-qry-r02",
+  "description": "Synthetic HL7 v2.4 QRY^R02 bidirectional host-query from an EDAN H60S: a QRD (query definition) + QRF (query filter) requesting the results (QRD-9 = RES) for sample SPEC-0231, keyed by the QRD-4 query id Q0231-01 the answer must echo. The host answers with an ORF^R04 carrying the result (LIS-18 / S1.6). NOT a real instrument capture.",
+  "analyzer": { "vendor": "EDAN", "model": "H60S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "bidirectional",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-18 / S1.6 bidirectional host-query — EDAN H60S LIS interface manual, query/QRD-QRF profile)",
+    "note": "Application payload only (no MLLP framing). The query subject (sample id SPEC-0231) is in QRD-8; the correlation id (Q0231-01) is in QRD-4 and is echoed by the ORF^R04 answer. The live bidirectional host-query deployment to pilot sites is deferred post-pilot under change control (ADR-0008); this fixture proves the QRD/QRF protocol substrate in the simulator. A real EDAN H60S query capture replaces it at bench conformance (LIS-74)."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "QRY^R02",
+    "query_id": "Q0231-01",
+    "subject_id": "SPEC-0231",
+    "what_subject": "RES"
+  }
+}
