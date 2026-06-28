@@ -37,6 +37,8 @@ plan §0 Stage 0).
   `docs/adr/0001-append-only-result-versions.md`.
 - **ADR-0002 — LOINC/UCUM reference seed + vendor-code normalization mapping** (S0.6 / LIS-8):
   `docs/adr/0002-loinc-ucum-vendor-code-seed.md`.
+- **ADR-0003 — Result ingest contract (edge → append-only Result store)** (S1.3 / LIS-15):
+  `docs/adr/0003-result-ingest-contract.md`.
 
 ## Glossary
 
@@ -75,3 +77,14 @@ Normalization reference (post-S0.6 — see component ADR-0002):
   resets/reloads `unit_of_measure` between tests, so a seeded row there is unobservable to
   an integration test. Wiring the mapping's UCUM into `unit_of_measure.ucum_code` is later
   normalization-service work (ADR-0002).
+
+Result ingest (post-S1.3 — see component ADR-0003):
+
+- **Ingest contract** — the edge→core seam (`org.openelisglobal.result.ingest`): a
+  transport-neutral `NormalizedObservation` (the analyzer-native `rawCode`/`rawUnit` beside
+  the normalized `loinc`/`ucumValue` + `status`, mirroring the edge normalizer's intermediate
+  row) and `ResultIngestService.ingest(...)`, which persists one observation as a new
+  `result` row through `ResultService` so the append-only `result_version` spine records the
+  write. The edge normalizes (ADR-0006); core persists raw beside normalized. Insert-only —
+  order-linkage (S4.2), a configurable ingest service-account (today the system user `1`),
+  and re-ingest idempotency are deferred.
