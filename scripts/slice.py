@@ -91,9 +91,11 @@ def _key() -> str:
 
 
 # --------------------------------------------------------------------------- api
-def _api(method: str, path: str, params: dict | None = None, body: dict | None = None):
-    ws = _workspace()
-    url = f"https://api.plane.so/api/v1/workspaces/{ws}{path}"
+def _api(method: str, path: str, params: dict | None = None, body: dict | None = None,
+         scoped: bool = True):
+    # Most endpoints are workspace-scoped; a few (e.g. /users/me/) are not.
+    prefix = f"/workspaces/{_workspace()}" if scoped else ""
+    url = f"https://api.plane.so/api/v1{prefix}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
     data = json.dumps(body).encode() if body is not None else None
@@ -134,7 +136,7 @@ _ME = {}
 def _me() -> str:
     """The token's own user id — used as the coarse 'taken' assignee. Cached."""
     if "id" not in _ME:
-        _ME["id"] = _api("GET", "/users/me/")["id"]
+        _ME["id"] = _api("GET", "/users/me/", scoped=False)["id"]
     return _ME["id"]
 
 
