@@ -49,6 +49,13 @@ plan §0 Stage 0).
   `DiagnosticReport.result → Observation.device`) build `$validate`-clean and their references
   resolve. Adds two behavior-preserving transform seams (`linkObservationToDevice`,
   package-visible `transformAnalyzerToDevice`) to make the linkage unit-testable.
+- **ADR-0006 — Westgard multirule engine emits named in/out-of-control verdicts** (S5.1 / LIS-52):
+  `docs/adr/0006-westgard-multirule-conformance.md`. A conformance gate over the pinned core's existing
+  Westgard engine (upstream PR #3390): wires the **real** eight evaluators into
+  `WestgardRuleEvaluationServiceImpl` and asserts each canonical QC vector → the exact set of named
+  rule verdicts (`1₂ₛ 1₃ₛ 2₂ₛ R₄ₛ 3₁ₛ 4₁ₛ 7ₜ 10ₓ`) + WARNING/REJECTION severity, incl. the multirule
+  case (one point → both `1₂ₛ` and `1₃ₛ`). **Test-only — zero production change.** Autoverification
+  *gating* on these verdicts is LIS-55 (S5.4).
 
 ## Glossary
 
@@ -98,3 +105,18 @@ Result ingest (post-S1.3 — see component ADR-0003):
   write. The edge normalizes (ADR-0006); core persists raw beside normalized. Insert-only —
   order-linkage (S4.2), a configurable ingest service-account (today the system user `1`),
   and re-ingest idempotency are deferred.
+
+QC — Westgard multirules (post-S5.1 — see component ADR-0006):
+
+- **QC point vector** — a current control measurement (`QCResult`: value + optional pre-computed
+  z-score) plus its chronological history for one control lot, evaluated against the lot's
+  `QCStatistics` (mean / SD). The z-score is `(value − mean) / SD` when not pre-set.
+- **Named verdict** — a `RuleEvaluationResult` per rule: `ruleCode` (`1₂ₛ 1₃ₛ 2₂ₛ R₄ₛ 3₁ₛ 4₁ₛ 7ₜ
+  10ₓ`), `violated`, and `severity` — **WARNING** (`1₂ₛ 3₁ₛ 7ₜ`) or **REJECTION** (`1₃ₛ 2₂ₛ R₄ₛ
+  4₁ₛ 10ₓ`). *Multirule*: one vector can trip several rules at once (e.g. a +3.5 SD point →
+  `1₂ₛ` **and** `1₃ₛ`).
+- **In/out-of-control** — a run is **out-of-control** iff any verdict is a `REJECTION`
+  (`WestgardRuleEvaluationService.hasRejectionViolation`); WARNING-only runs are flagged but stay
+  in-control. The engine (`WestgardRuleEvaluationServiceImpl` + the eight evaluators) is upstream
+  (PR #3390); S5.1 (LIS-52) is the conformance gate over it. Blocking autorelease on an
+  out-of-control verdict is **S5.4 / LIS-55**.
