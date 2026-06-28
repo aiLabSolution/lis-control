@@ -29,6 +29,17 @@ from .astm import (
     parse_frame,
     run_session,
 )
+from .e1394 import (
+    AstmMessage,
+    AstmOrder,
+    AstmPatient,
+    AstmResult,
+    Delimiters,
+    E1394Error,
+    Header,
+    Record,
+    parse_e1394,
+)
 from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
@@ -105,4 +116,14 @@ __all__ = [
     "AstmReceiver",
     "SessionResult",
     "run_session",
+    # ASTM E1394 record parser (LIS-24 / S2.2)
+    "Delimiters",
+    "Record",
+    "Header",
+    "AstmResult",
+    "AstmOrder",
+    "AstmPatient",
+    "AstmMessage",
+    "E1394Error",
+    "parse_e1394",
 ]
