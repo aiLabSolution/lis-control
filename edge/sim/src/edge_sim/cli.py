@@ -218,13 +218,15 @@ def _cmd_query(args: argparse.Namespace) -> int:
         f"answer {rfx.id}: ORF^R04 MSA-1={resp.ack_code} echoed-id={resp.query_id} "
         f"specimen={resp.report.specimen_id} correlates={correlated}"
     )
-    all_normalized = True
+    all_normalized = bool(rows)  # an answer with no result rows is not a success
     for r in rows:
         all_normalized = all_normalized and bool(r.loinc and r.ucum_value)
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
             f"\t-> LOINC {r.loinc or '-'} / UCUM {r.ucum_value or '-'}\t[{r.status}]"
         )
+    if not rows:
+        print("  (no result rows returned)")
     return 0 if correlated and all_normalized else 1
 
 

@@ -184,15 +184,17 @@ def build_query_response(
         ["QRD", query.query_datetime, query.format_code or "R", query.priority or "I",
          query.query_id, "", "", "", query.subject_id, query.what_subject or WHAT_RESULTS]
     )
-    obr = "|".join(["OBR", "1", "", result.specimen_id, result.order_code])
+    obr = "|".join(["OBR", "1", "", _esc(result.specimen_id), _esc(result.order_code)])
     segs = [msh, msa, qrd, obr]
     for obs in result.observations:
+        # Every value-bearing field is escaped, not just the unit/code — a reserved
+        # character anywhere (value, range, flags) must not break the framing.
         segs.append(
             "|".join(
                 ["OBX", obs.set_id, obs.value_type or "NM",
                  _esc_component(obs.raw_code, obs.raw_text, obs.raw_system),
-                 "", obs.value, _esc(obs.raw_unit), obs.reference_range,
-                 obs.abnormal_flags, "", "", obs.status or "F"]
+                 "", _esc(obs.value), _esc(obs.raw_unit), _esc(obs.reference_range),
+                 _esc(obs.abnormal_flags), "", "", _esc(obs.status or "F")]
             )
         )
     return _SEG.join(segs).encode("latin-1")
@@ -201,9 +203,15 @@ def build_query_response(
 def correlates(query: QueryRecord, response: QueryResponse) -> bool:
     """True when ``response`` is an accepted answer to ``query``: the response echoes
     the request's query id, was accepted (`MSA-1 = AA`), and returned the queried
-    subject (the specimen ids match)."""
+    subject (the specimen ids match).
+
+    Both the query id **and** the subject must be non-empty — an empty id or specimen
+    would otherwise *vacuously* match an empty echo/specimen and bind an answer to the
+    wrong request. (This is identity correlation, not authentication: any party that
+    saw the query can reproduce its ids — fine for the simulator substrate.)"""
     return (
         bool(query.query_id)
+        and bool(query.subject_id)
         and query.query_id == response.query_id
         and response.ack_code == "AA"
         and query.subject_id == response.report.specimen_id

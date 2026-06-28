@@ -136,3 +136,24 @@ def test_query_exchange_exit_zero(capsys):
 
 def test_query_unknown_fixture_exit_two(capsys):
     assert main(["query", "does-not-exist"]) == 2
+
+
+def test_query_exit_one_when_answer_has_no_rows(tmp_path, capsys):
+    """An answer that carries no result rows is not a success — exit 1, not a
+    vacuous 0 (the gate must not pass an empty result)."""
+    src = DEFAULT_FIXTURES_ROOT / "edan-h60s-oru-r01"
+    rdst = tmp_path / "edan-noobx"
+    rdst.mkdir()
+    (rdst / "manifest.json").write_text(
+        (src / "manifest.json").read_text().replace(
+            '"id": "edan-h60s-oru-r01"', '"id": "edan-noobx"'
+        )
+    )
+    # a result message with OBR (specimen) but no OBX observation rows.
+    (rdst / "message.hl7").write_bytes(
+        b"MSH|^~\\&|H60S|EDAN|LIS|LAB|20260628093000||ORU^R01|H60S0|P|2.4\r"
+        b"OBR|1||SPEC-0231|CBC^Complete Blood Count^99EDAN"
+    )
+    qpath = str(DEFAULT_FIXTURES_ROOT / "edan-h60s-host-query-qry-r02")
+    assert main(["query", qpath, "--result", str(rdst)]) == 1
+    assert "(no result rows returned)" in capsys.readouterr().out

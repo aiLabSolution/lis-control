@@ -27,7 +27,7 @@ Two facts frame the scope:
    substrate**, not a pilot deployment — exactly as Stage 2's bidirectional ASTM (Q-record /
    NAK-retransmit) stays **simulator-driven** until a bidirectional unit is on hand
    (ADR-0009, plan §1 Stage 2). Building the QRD/QRF correlation now de-risks the later rollout
-   and yields a conformance fixture.
+   and yields a provisional protocol-substrate fixture (validated against a real capture later).
 2. **The result-normalization pipeline already exists** (S1.2 / ADR-0011): the `ORF^R04`
    response's `OBR`/`OBX` records are the same result content an `ORU^R01` carries, so the
    returned result reuses the tolerant ORU parser + LOINC/UCUM normalizer unchanged.
@@ -49,11 +49,13 @@ simulator:
 3. **`correlates(query, response)`** — the answer is accepted iff it echoes the request's query id,
    `MSA-1 = AA`, and returns the queried subject (specimen ids match). This is the bidirectional
    guarantee: a requester binds an answer to *its* request, not to a stray response.
-4. **Fixture + reuse.** One new conformance fixture — the `QRY^R02` host-query
-   (`edan-h60s-host-query-qry-r02`, subject `SPEC-0231`, query id `Q0231-01`). The host **answers
-   it from the existing EDAN H60S result fixture** (`edan-h60s-oru-r01`, S1.5): the host has a
-   result for the sample and returns it. The returned result normalizes through the S1.2 pipeline.
-   The `edge-sim query <qry-fixture>` CLI is the demo path.
+4. **Fixture + reuse.** One new fixture — the `QRY^R02` host-query
+   (`edan-h60s-host-query-qry-r02`, subject `SPEC-0231` in QRD-8, query id `Q0231-01`). The host
+   **answers it from the existing EDAN H60S result fixture** (`edan-h60s-oru-r01`, S1.5): the host
+   has a result for the sample and returns it (the answer data is the querier's own prior upload —
+   it proves the QRD/QRF + serialization mechanics, not a realistic data path). The returned
+   result normalizes through the S1.2 pipeline. The `edge-sim query <qry-fixture>` CLI is the demo
+   path, and exits non-zero unless the answer correlates and returns at least one normalized row.
 
 **Verifiable output (S1.6 exit):** `test_query.py` proves, on the captured query fixture, that the
 host-query is parsed (QRD/QRF), `build_query` round-trips, the host answers (`ORF^R04`, `MSA-1=AA`,
@@ -88,7 +90,14 @@ mismatched query id or a non-accept ACK.
   - **Live deployment** of bidirectional host-query is post-pilot under change control (ADR-0008);
     this slice is the simulator substrate, not a pilot capability.
   - **Synthetic fixture** — a real EDAN H60S query/response capture replaces it at bench
-    conformance (LIS-74).
+    conformance (LIS-74). The fixture is a **provisional protocol substrate**, not a validated
+    conformance artifact: the synthetic `ORF^R04` omits the `PID`/`QRF` segments a fuller
+    `ORF_R04` group carries (so the returned `patient_id` is empty), and the subject (sample id)
+    is placed in **QRD-8**; whether the real H60S keys its query that way (vs QRF / QRD-9) and
+    whether it host-queries for **results** at all (vs an **order/worklist download** — by far
+    the more common analyzer "host query") can only be confirmed from a wire capture. If the
+    capture shows order-download, that direction is added under S4.2 reusing this QRD/QRF +
+    correlation substrate.
   - **Order-download / worklist query** (the analyzer requesting a test selection) is Stage 4
     (S4.2); only the results-query direction is built here.
   - **Deferred-response and enhanced query acknowledgement** (QRD-3 = `D`, QAK) are not modelled.

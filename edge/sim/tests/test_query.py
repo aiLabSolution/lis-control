@@ -13,15 +13,34 @@ import pytest
 from edge_sim.fixtures import load_fixture
 from edge_sim.mllp import MllpDecoder, frame
 from edge_sim.normalize import STATUS_NORMALIZED, Normalizer
-from edge_sim.oru import parse_oru_r01
+from edge_sim.oru import OruReport, parse_oru_r01
 from edge_sim.query import (
     QueryError,
+    QueryRecord,
+    QueryResponse,
     build_query,
     build_query_response,
     correlates,
     parse_query,
     parse_query_response,
 )
+
+
+def _query_record(query_id="Q0231-01", subject_id="SPEC-0231"):
+    return QueryRecord(
+        query_datetime="", format_code="R", priority="I", query_id=query_id,
+        subject_id=subject_id, what_subject="RES", control_id="C1",
+        sending_app="H60S", sending_facility="EDAN",
+    )
+
+
+def _response(ack_code="AA", query_id="Q0231-01", specimen="SPEC-0231"):
+    report = OruReport(
+        message_type="ORF^R04", sending_app="", sending_facility="",
+        message_control_id="", patient_id="", patient_name="",
+        specimen_id=specimen, order_code="", observations=(),
+    )
+    return QueryResponse(ack_code=ack_code, query_id=query_id, report=report)
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 QRY = FIXTURES_ROOT / "edan-h60s-host-query-qry-r02"
@@ -137,3 +156,58 @@ def test_response_re_escapes_reserved_chars_in_units():
     assert b"10\\S\\9/L" in orf  # escaped on the wire
     resp = parse_query_response(orf)
     assert resp.report.observations[0].raw_unit == "10^9/L"  # unescaped on parse
+
+
+def test_response_msa2_echoes_query_control_id():
+    """MSA-2 of the answer echoes the query's MSH-10 (the message it acknowledges)."""
+    q = parse_query(load_fixture(QRY).message_bytes)
+    orf = build_query_response(q, _edan_result(), response_datetime=WHEN_R, control_id="LISR0231")
+    msa = next(s for s in orf.split(b"\r") if s.startswith(b"MSA"))
+    assert msa.decode("ascii").split("|")[2] == q.control_id  # "H60SQ0231"
+
+
+# --- correlation logic (unit-level, incl. the empty-id/subject guards) -------
+
+
+def test_correlates_accepts_matching_answer():
+    assert correlates(_query_record(), _response()) is True
+
+
+def test_correlates_rejects_empty_subject():
+    """An empty subject must not vacuously match an empty specimen echo."""
+    assert correlates(_query_record(subject_id=""), _response(specimen="")) is False
+
+
+def test_correlates_rejects_empty_query_id():
+    assert correlates(_query_record(query_id=""), _response(query_id="")) is False
+
+
+def test_correlates_rejects_specimen_mismatch():
+    assert correlates(_query_record(subject_id="SPEC-0231"), _response(specimen="SPEC-9999")) is False
+
+
+def test_correlates_rejects_non_accept_ack():
+    assert correlates(_query_record(), _response(ack_code="AE")) is False
+
+
+# --- tolerant parsing of a malformed/partial query response ------------------
+
+
+def test_parse_query_response_tolerates_missing_msa_and_qrd():
+    """A response without MSA/QRD parses (tolerant) with empty ack/query id — which
+    then correctly fails correlation rather than crashing."""
+    msg = (
+        "MSH|^~\\&|LIS|LAB|H60S|EDAN|20260628093501||ORF^R04|R1|P|2.4\r"
+        "OBR|1||SPEC-0231|CBC\r"
+        "OBX|1|NM|WBC^Leukocytes^99EDAN||6.8|10\\S\\9/L|||||F"
+    ).encode("ascii")
+    resp = parse_query_response(msg)
+    assert resp.ack_code == ""
+    assert resp.query_id == ""
+    assert resp.report.specimen_id == "SPEC-0231"
+    assert correlates(_query_record(), resp) is False  # no echoed id -> no correlation
+
+
+def test_parse_query_response_requires_msh():
+    with pytest.raises(QueryError):
+        parse_query_response(b"OBR|1||SPEC-0231|CBC")
