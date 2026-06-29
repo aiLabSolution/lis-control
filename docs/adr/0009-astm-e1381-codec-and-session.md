@@ -4,7 +4,7 @@
 - **Date:** 2026-06-26
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the umbrella-side analyzer harness; CONTEXT-MAP marks the `edge/drivers` submodule "planned")
-- **Relates to:** ADR-0004 (analyzer simulator harness + conformance fixtures, LIS-9); ADR-0005 (MLLP framing + ACK modes, LIS-13 — the framed-transport pattern this mirrors); LIS-22 (Stage 2 PRD); LIS-23 (S2.1); plan §2 (ASTM/serial edge — "Low level (ASTM E1381): ENQ/ACK/NAK/EOT contention; framing; modulo-256 checksum"); forward to S2.2 / LIS-24 (ASTM E1394 record parser) and S2.4 / LIS-26 (DiaSys R920 channel → normalized Result)
+- **Relates to:** ADR-0004 (analyzer simulator harness + conformance fixtures, LIS-9); ADR-0005 (MLLP framing + ACK modes, LIS-13 — the framed-transport pattern this mirrors); LIS-22 (Stage 2 PRD); LIS-23 (S2.1); plan §2 (ASTM/serial edge — "Low level (ASTM E1381): ENQ/ACK/NAK/EOT contention; framing; modulo-256 checksum"); forward to S2.2 / LIS-24 (ASTM E1394 record parser) and S2.4 / LIS-26 (DiaSys R920 channel → normalized Result); **LIS-74 (2026-06 availability re-scope / bench-capture access checklist)**
 
 ## Context
 
@@ -15,6 +15,17 @@ protects it with a **modulo-256 checksum**, and recovers from line errors by
 **NAK + retransmit** — the exit-gate behaviour: *"captured frame validates + ACKs,
 corrupted frame NAKs + retransmits"* (plan §2). E1394 record parsing (H→P→O→R→L)
 is the next slice (S2.2 / LIS-24); normalizing a DiaSys result is S2.4 / LIS-26.
+
+> **Vehicle re-scope (2026-06; LIS-74).** The Stage-2 bench vehicle was re-scoped from
+> the DiaSys R920 to the **ERBA EC90** (the sole available ASTM unit — ASTM E1381/E1394,
+> RS-232 or Ethernet, **upload-only**). The **E1381 protocol contract here is unchanged**,
+> so the `diasys-r920-astm-result` fixture stays a valid simulator substrate (a real EC90
+> ASTM-HOST capture replaces it at bench conformance). Per the **SD-0 ruling**
+> (`docs/compliance/decisions-register.md`, 2026-06-29) the ASTM stack is **built now** but
+> EC90 stays **bench-validated, post-pilot for go-live** (*build-now ≠ pilot-gating*); and
+> because EC90 is **upload-only**, the bidirectional `ENQ`-contention path this codec leaves
+> deferred stays simulator-driven until a bidirectional ASTM unit is on hand. See the
+> [access checklist](../testing/stage-1-3-machine-access-checklist.md) / LIS-74.
 
 Facts that shape the decision:
 
@@ -94,5 +105,7 @@ proves the byte-faithful round-trip (incl. multi-frame) and the DiaSys fixture r
     bidirectional contention (both ends raise `ENQ`) is a later concern (S2.5 query).
   - **Built-in retry limit (6)** and no timeouts — timeouts/inter-character timing
     belong to the live serial channel, not the codec.
-  - The synthetic fixture is `synthetic: true`; a real DiaSys R920 ASTM-HOST capture
-    replaces it in LIS-30 (bench conformance).
+  - The synthetic fixture is `synthetic: true`; a real **ERBA EC90** ASTM-HOST capture
+    replaces it at bench conformance (LIS-30 / LIS-74) — the Stage-2 vehicle was
+    re-scoped from DiaSys R920 to EC90 (see Context); the DiaSys fixture remains a valid
+    simulator substrate as the E1381 contract is unchanged.

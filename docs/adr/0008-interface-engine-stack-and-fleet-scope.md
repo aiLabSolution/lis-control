@@ -108,6 +108,19 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    > SD1 protocol ✅ confirmed — HL7 v2.3.1 / MLLP, vendor LIS manual on file; bench port/framing
    > capture still pending.)*
 
+   > **⮕ SD-0 reconciliation note (2026-06-29) — does NOT change DEC-06.** The 2026-06-26 **LIS-74
+   > availability re-scope** (plan / `docs/testing/stage-1-3-machine-access-checklist.md`) names the
+   > **ERBA EC90** the Stage-2 ASTM **bench/build vehicle**, which appears to conflict with DEC-06
+   > deferring EC90 "post-pilot." It does not. The conflict was ruled (M. Uy, 2026-06-29; recorded in
+   > `docs/compliance/decisions-register.md`, "UPDATE 2026-06-29"): *build-now ≠ pilot-gating* — the
+   > **ASTM/serial stack is built and bench-validated now** (Stage-2 slices LIS-23…30 are active dev,
+   > validated against the ASTM simulator + the EC90 bench), **but the M1 go-live pilot scope stays
+   > exactly as DEC-06 pins it** — EC90, HETO AU120 and the bidirectional path remain
+   > bench-validated yet **post-pilot (v1.1)** under change control. So DEC-06's "deferred under
+   > change control" means **deferred for go-live, not deferred for development**. The fleet pin and
+   > the TB-1 / REQ-CONF-01 pilot surface are unchanged. (The ASTM ADRs 0009/0010 carry the matching
+   > vehicle-re-scope note.)
+
 ## Consequences
 
 **Positive**

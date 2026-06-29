@@ -4,7 +4,7 @@
 - **Date:** 2026-06-26
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the umbrella-side analyzer harness; the `edge/drivers` submodule is "planned")
-- **Relates to:** ADR-0004 (simulator harness + fixtures, LIS-9); ADR-0009 (ASTM E1381 codec + session, LIS-23 — the framing this parses out of); ADR-0011 (HL7 ORU parser, LIS-14 — the HL7 analog one layer up); LIS-22 (Stage 2 PRD); LIS-24 (S2.2); plan §2 ("High level (ASTM E1394): records H→P→O→R→C/Q/L"); forward to S2.4 / LIS-26 (DiaSys result → normalized Result row)
+- **Relates to:** ADR-0004 (simulator harness + fixtures, LIS-9); ADR-0009 (ASTM E1381 codec + session, LIS-23 — the framing this parses out of); ADR-0011 (HL7 ORU parser, LIS-14 — the HL7 analog one layer up); LIS-22 (Stage 2 PRD); LIS-24 (S2.2); plan §2 ("High level (ASTM E1394): records H→P→O→R→C/Q/L"); forward to S2.4 / LIS-26 (DiaSys result → normalized Result row); **LIS-74 (2026-06 availability re-scope / bench-capture access checklist)**
 
 ## Context
 
@@ -14,6 +14,15 @@ S2.2 (LIS-24) is the **record layer** of the ASTM stack: once the E1381 codec
 parse into a typed tree the rest of the pipeline can consume, *tolerant of spec
 deviation* (plan §2 exit gate: "H→P→O→R→L parsed"). Normalizing a parsed result to
 a LOINC/UCUM Result row is the next slice (S2.4 / LIS-26).
+
+> **Vehicle re-scope (2026-06; LIS-74).** The Stage-2 bench vehicle was re-scoped from
+> the DiaSys R920 to the **ERBA EC90** (the sole available ASTM unit — ASTM E1381/E1394,
+> RS-232 or Ethernet, **upload-only**). The **E1394 record grammar parsed here is
+> unchanged**, so the `diasys-r920-astm-result` fixture stays a valid simulator substrate
+> (a real EC90 record capture replaces it at bench conformance). Per the **SD-0 ruling**
+> (`docs/compliance/decisions-register.md`, 2026-06-29) the ASTM stack is **built now** but
+> EC90 stays **bench-validated, post-pilot for go-live** (*build-now ≠ pilot-gating*). See
+> the [access checklist](../testing/stage-1-3-machine-access-checklist.md) / LIS-74.
 
 Facts that shape the decision:
 
@@ -89,6 +98,11 @@ records, blank input).
     is S2.5 (LIS-27).
   - **Delimiters are read once from the first `H`** — a (non-conformant) mid-stream
     delimiter change is not handled.
+  - **Synthetic vehicle fixture** — the `diasys-r920-astm-result` fixture is
+    `synthetic: true`; a real **ERBA EC90** record capture replaces it at bench
+    conformance (LIS-74; the Stage-2 vehicle was re-scoped from DiaSys R920 to EC90 —
+    see Context). The fixture is a provisional substrate, not a validated conformance
+    artifact, until that capture lands.
   - This slice is **stacked on S2.1 (LIS-23, PR #10)** to reuse the codec context and the
     DiaSys fixture; it merges after it. Code coupling is limited to the shared fixture and
     the optional de-frame-then-parse integration test.
