@@ -24,21 +24,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .ack import AckCode, build_ack, parse_msh
+from .ack import (
+    AckCode,
+    Hl7ErrorCondition,
+    build_ack,
+    build_nak,
+    parse_msh,
+)
 from .ingest import to_ingest_payload
 from .mllp import frame
 from .normalize import NormalizedObservation, Normalizer
-from .oru import OruReport, parse_oru_r01
+from .oru import OruParseError, OruReport, parse_oru_r01
 from .transport import MllpTransport
 
 __all__ = [
     "MilestoneOutcome",
     "run_milestone",
+    "acknowledge",
+    "ListenerDecision",
+    "SUPPORTED_RESULT_TYPES",
     "result_status",
     "RESULT_STATUS_FINAL",
 ]
 
 RESULT_STATUS_FINAL = "final"
+
+# The Stage-1 MLLP listener ingests HL7 v2 result messages (``ORU^R01``). Anything
+# else arriving on the result port is an unsupported message type and is rejected
+# (``AR``) — e.g. a query (``QRY^R02``) or admit (``ADT``) message mis-routed here.
+SUPPORTED_RESULT_TYPES = frozenset({("ORU", "R01")})
 
 # HL7 Table 0085 (OBX-11 observation result status) → a stable lowercase lifecycle
 # label. The milestone asserts the captured result is *final* (``F``); the other
@@ -109,6 +123,78 @@ class MilestoneOutcome:
         )
 
 
+@dataclass(frozen=True)
+class ListenerDecision:
+    """The Stage-1 result-ingestion listener's accept/reject verdict for one inbound
+    application message (post-MLLP-de-frame): the ACK/NAK it returns and why."""
+
+    ack: bytes  # the ACK/NAK application payload (MSH + MSA [+ ERR on a NAK])
+    ack_wire: bytes  # the same, MLLP-framed (SB … EB CR)
+    code: str  # MSA-1: AA (accept) / AE (error) / AR (reject)
+    accepted: bool  # True only for MSA-1 = AA
+    error_condition: str  # HL7 Table 0357 code on a NAK; "" when accepted
+
+
+def acknowledge(message: bytes, *, ack_timestamp: str | None = None) -> ListenerDecision:
+    """Decide and build the listener's acknowledgment for an inbound ``message``.
+
+    The Stage-1 MLLP listener ingests ``ORU^R01`` results (LIS-13 / S1.1). It returns:
+
+    * **AA** — a supported ``ORU^R01`` carrying ≥1 ``OBX`` result observation;
+    * **AR** + a populated ``ERR`` — an *unsupported message type* (anything but
+      ``ORU^R01``), e.g. a ``QRY^R02`` query or an ``ADT`` mis-routed to the result
+      port (HL7 0357 = 200);
+    * **AE** + a populated ``ERR`` — a supported type that **cannot be processed**:
+      the body fails to parse (0357 = 102), or an ``ORU^R01`` carries no ``OBX``
+      result rows (0357 = 101).
+
+    Raises :class:`~edge_sim.ack.Hl7AckError` when the message has no ``MSH`` — there
+    is nothing to acknowledge (no control id to echo, no routing to swap). A real
+    listener lets such a frame time out; the MLLP de-framer resynchronises rather
+    than surfacing un-de-frameable bytes here (see ADR-0005)."""
+    msh = parse_msh(message)  # Hl7AckError if no MSH (nothing to acknowledge)
+
+    if (msh.message_code, msh.trigger_event) not in SUPPORTED_RESULT_TYPES:
+        nak = build_nak(
+            message,
+            reject=True,
+            condition=Hl7ErrorCondition.UNSUPPORTED_MESSAGE_TYPE,
+            text=(
+                f"unsupported message type {msh.message_code}^{msh.trigger_event}; "
+                "this listener ingests ORU^R01 results"
+            ),
+            timestamp=ack_timestamp,
+        )
+        return ListenerDecision(
+            nak, frame(nak), AckCode.AR.value, False,
+            Hl7ErrorCondition.UNSUPPORTED_MESSAGE_TYPE.code,
+        )
+
+    try:
+        report = parse_oru_r01(message)
+    except OruParseError as exc:
+        nak = build_nak(
+            message, reject=False, condition=Hl7ErrorCondition.DATA_TYPE_ERROR,
+            text=str(exc), timestamp=ack_timestamp,
+        )
+        return ListenerDecision(
+            nak, frame(nak), AckCode.AE.value, False, Hl7ErrorCondition.DATA_TYPE_ERROR.code
+        )
+
+    if not report.observations:
+        nak = build_nak(
+            message, reject=False, condition=Hl7ErrorCondition.REQUIRED_FIELD_MISSING,
+            text="ORU^R01 carries no OBX result observations", timestamp=ack_timestamp,
+        )
+        return ListenerDecision(
+            nak, frame(nak), AckCode.AE.value, False,
+            Hl7ErrorCondition.REQUIRED_FIELD_MISSING.code,
+        )
+
+    ack = build_ack(message, code=AckCode.AA, timestamp=ack_timestamp)
+    return ListenerDecision(ack, frame(ack), AckCode.AA.value, True, "")
+
+
 def run_milestone(
     message: bytes,
     *,
@@ -129,10 +215,9 @@ def run_milestone(
     transport.send(sent)
     received = transport.receive()
 
-    # Acknowledge (original-mode AA) and frame the ACK back onto the wire.
-    ack = build_ack(received, code=AckCode.AA, timestamp=ack_timestamp)
-    ack_wire = frame(ack)
-    ack_msh = parse_msh(ack)
+    # Listener accept/reject decision (AA, or AE/AR + ERR), framed back on the wire.
+    decision = acknowledge(received, ack_timestamp=ack_timestamp)
+    ack_msh = parse_msh(decision.ack)
 
     # Parse + normalize the received result.
     report = parse_oru_r01(received)
@@ -142,9 +227,9 @@ def run_milestone(
     return MilestoneOutcome(
         received=received,
         round_trip_ok=(received == sent),
-        ack=ack,
-        ack_wire=ack_wire,
-        ack_code=AckCode.AA.value,
+        ack=decision.ack,
+        ack_wire=decision.ack_wire,
+        ack_code=decision.code,
         ack_message_code=ack_msh.message_code,
         ack_trigger_event=ack_msh.trigger_event,
         report=report,

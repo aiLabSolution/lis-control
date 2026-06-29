@@ -11,10 +11,17 @@ acknowledge it. HL7 v2 defines two acknowledgment modes:
   acknowledgment type): ``AL`` always, ``NE`` never, ``SU`` on success, ``ER``
   on error.
 
+A positive ACK is ``MSA-1`` = ``AA`` (or commit ``CA``). A **negative** ACK —
+``AE`` (application error) or ``AR`` (application reject) — additionally carries a
+populated HL7 ``ERR`` segment naming the error condition (HL7 Table 0357);
+:func:`build_nak` builds it.
+
 This module knows only as much of the inbound message as acknowledgment
 requires — the ``MSH`` segment. The full, tolerant ``ORU^R01`` parser and
 LOINC/UCUM normalization are a separate slice (S1.2 / LIS-14); nothing here
-inspects ``PID``/``OBR``/``OBX``.
+inspects ``PID``/``OBR``/``OBX``. *Deciding* whether a message is rejected (and
+with which condition) is the listener's job (:func:`edge_sim.milestone.acknowledge`);
+this module only builds the ACK/NAK once that verdict is reached.
 """
 
 from __future__ import annotations
@@ -27,9 +34,11 @@ __all__ = [
     "AckCode",
     "AckMode",
     "Hl7AckError",
+    "Hl7ErrorCondition",
     "Msh",
     "parse_msh",
     "build_ack",
+    "build_nak",
     "wants_accept_ack",
 ]
 
@@ -62,6 +71,27 @@ class AckCode(Enum):
 
 _ORIGINAL_CODES = {AckCode.AA, AckCode.AE, AckCode.AR}
 _ENHANCED_CODES = {AckCode.CA, AckCode.CE, AckCode.CR}
+
+
+class Hl7ErrorCondition(Enum):
+    """HL7 Table 0357 (message error condition) codes carried in the ``ERR`` segment
+    of a negative acknowledgment. ``.code`` is the table value, ``.text`` its
+    human-readable meaning."""
+
+    SEGMENT_SEQUENCE_ERROR = ("100", "Segment sequence error")
+    REQUIRED_FIELD_MISSING = ("101", "Required field missing")
+    DATA_TYPE_ERROR = ("102", "Data type error")
+    UNSUPPORTED_MESSAGE_TYPE = ("200", "Unsupported message type")
+    UNSUPPORTED_EVENT_CODE = ("201", "Unsupported event code")
+    APPLICATION_ERROR = ("207", "Application internal error")
+
+    @property
+    def code(self) -> str:
+        return self.value[0]
+
+    @property
+    def text(self) -> str:
+        return self.value[1]
 
 
 @dataclass(frozen=True)
@@ -176,24 +206,19 @@ def _ack_message_type(msh: Msh, comp: str) -> str:
     return msg_type
 
 
-def build_ack(
+def _ack_segments(
     message: bytes,
     *,
-    code: AckCode | None = None,
-    mode: AckMode = AckMode.ORIGINAL,
-    control_id: str | None = None,
-    timestamp: str | None = None,
-    text: str = "",
-) -> bytes:
-    """Build an ``ACK`` for the inbound ``message``.
-
-    The response echoes the inbound trigger event (``ACK^R01`` for an
-    ``ORU^R01``), swaps the sending/receiving routing, and sets ``MSA-2`` to the
-    inbound message control id. ``code`` defaults to ``AA`` (original) or ``CA``
-    (enhanced); ``control_id`` defaults to the inbound control id; ``timestamp``
-    defaults to the current UTC time (pass an explicit value for deterministic
-    output). Returns the ACK application payload — caller applies MLLP framing.
-    """
+    code: AckCode | None,
+    mode: AckMode,
+    control_id: str | None,
+    timestamp: str | None,
+    text: str,
+) -> tuple[list[str], Msh]:
+    """Build the shared ``MSH`` + ``MSA`` segments of an acknowledgment and return
+    them alongside the parsed inbound :class:`Msh`, so :func:`build_ack` and
+    :func:`build_nak` produce an identical header/MSA and differ only in whether an
+    ``ERR`` segment is appended."""
     msh = parse_msh(message)
 
     if code is None:
@@ -225,4 +250,83 @@ def build_ack(
         ]
     )
     msa_seg = sep.join(["MSA", code.value, msh.control_id, text])
-    return _SEGMENT_SEP.join([msh_seg, msa_seg]).encode("latin-1")
+    return [msh_seg, msa_seg], msh
+
+
+def build_ack(
+    message: bytes,
+    *,
+    code: AckCode | None = None,
+    mode: AckMode = AckMode.ORIGINAL,
+    control_id: str | None = None,
+    timestamp: str | None = None,
+    text: str = "",
+) -> bytes:
+    """Build an ``ACK`` for the inbound ``message``.
+
+    The response echoes the inbound trigger event (``ACK^R01`` for an
+    ``ORU^R01``), swaps the sending/receiving routing, and sets ``MSA-2`` to the
+    inbound message control id. ``code`` defaults to ``AA`` (original) or ``CA``
+    (enhanced); ``control_id`` defaults to the inbound control id; ``timestamp``
+    defaults to the current UTC time (pass an explicit value for deterministic
+    output). Returns the ACK application payload — caller applies MLLP framing.
+
+    For a *negative* acknowledgment that carries a populated ``ERR`` segment, use
+    :func:`build_nak`.
+    """
+    segments, _msh = _ack_segments(
+        message, code=code, mode=mode, control_id=control_id, timestamp=timestamp, text=text
+    )
+    return _SEGMENT_SEP.join(segments).encode("latin-1")
+
+
+def _err_segment(msh: Msh, condition: Hl7ErrorCondition, text: str) -> str:
+    """Build a populated HL7 ``ERR`` segment for a negative acknowledgment.
+
+    Targets the pre-v2.5 ``ERR-1`` form — the whole v1 fleet is HL7 v2.3.1–v2.4
+    (EDAN H60S = v2.4, Seamaty SD1 = v2.3.1). ``ERR-1`` is the *Error Code and
+    Location* (CM): its 4th component is the error code as a ``CE``
+    ``<code>&<text>&HL70357`` keyed to HL7 Table 0357. The location components
+    (1–3) are left empty because the reject is message-level, not field-level."""
+    sep = msh.field_sep
+    comp = msh.component_sep
+    sub = msh.encoding_chars[3] if len(msh.encoding_chars) > 3 else "&"
+    code_ce = sub.join([condition.code, text or condition.text, "HL70357"])
+    err1 = comp.join(["", "", "", code_ce])  # ^^^<code&text&HL70357>
+    return sep.join(["ERR", err1])
+
+
+def build_nak(
+    message: bytes,
+    *,
+    reject: bool = False,
+    condition: Hl7ErrorCondition = Hl7ErrorCondition.APPLICATION_ERROR,
+    text: str = "",
+    control_id: str | None = None,
+    timestamp: str | None = None,
+) -> bytes:
+    """Build a **negative** acknowledgment carrying a populated HL7 ``ERR`` segment.
+
+    ``MSA-1`` is ``AE`` (application error) by default, or ``AR`` (application
+    reject) when ``reject=True``. By convention here ``AE`` means *the message was
+    received but could not be processed* (e.g. an ``ORU^R01`` with no result
+    observations) and ``AR`` means *the message is refused* (e.g. an unsupported
+    message type). The ``ERR`` segment names the HL7 Table 0357 ``condition``;
+    ``text`` overrides the human-readable reason in both ``MSA-3`` and the ``ERR``
+    code (defaulting to the condition's standard text).
+
+    Like :func:`build_ack`, this reads only the inbound ``MSH`` (the reject
+    *reason* is the listener's decision, not this builder's). Returns the NAK
+    application payload — the caller applies MLLP framing.
+    """
+    code = AckCode.AR if reject else AckCode.AE
+    segments, msh = _ack_segments(
+        message,
+        code=code,
+        mode=AckMode.ORIGINAL,
+        control_id=control_id,
+        timestamp=timestamp,
+        text=text or condition.text,
+    )
+    segments.append(_err_segment(msh, condition, text))
+    return _SEGMENT_SEP.join(segments).encode("latin-1")

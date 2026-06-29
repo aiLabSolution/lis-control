@@ -64,6 +64,14 @@ Stage 1 analyzers (RAYTO RAC-050, Mindray labXpert). Three questions shaped how:
      honouring `MSH-15` (`AL` always, `NE` never, `SU` on success, `ER` on error).
    A code that does not match the requested mode is rejected (`Hl7AckError`). The
    tolerant ORU^R01 parser is **out of scope** — `ack.py` knows only `MSH`.
+   - **Negative acknowledgment (`build_nak`, LIS-13 AC).** A negative ACK — `AE`
+     (application error) or `AR` (application reject) — additionally carries a
+     **populated HL7 `ERR` segment** (not merely `MSA-3` free text). `ack.py` builds
+     the `ERR` from the inbound `MSH` separators + a caller-supplied HL7 **Table
+     0357** condition (`Hl7ErrorCondition`); it does **not** decide *whether* a
+     message is rejected (that needs the body, which `ack.py` does not read). The
+     accept/reject **decision** is the listener's, in
+     `edge_sim.milestone.acknowledge()` (see Note below).
 
 4. **Determinism is caller-controllable.** `build_ack` takes optional `timestamp`
    (`MSH-7`) and `control_id` (`MSH-10`); both default to live values (UTC now /
@@ -103,3 +111,26 @@ Stage 1 analyzers (RAYTO RAC-050, Mindray labXpert). Three questions shaped how:
   only** — so the implemented enhanced path stays simulator-tested but hardware-unproven
   until a unit that requests it is on hand. See
   `docs/testing/stage-1-3-machine-access-checklist.md`.
+- **AE/AR + `ERR` scope (LIS-13 AC, added 2026-06-29).** The LIS-13 acceptance
+  criterion "malformed envelope → AE/AR ACK with a populated `ERR` segment" applies
+  **per layer**, because a *negative ACK can only exist when there is a recoverable
+  `MSH`** to echo (`MSA-2`) and route (swapped `MSH-3..6`):
+  - **Un-de-frameable bytes** (no complete `SB … EB CR`): there is no payload and no
+    `MSH`. The `MllpDecoder` **silently resynchronises** (bumping `resync_count`),
+    matching production receivers (HAPI/Mirth) — *no ACK is emitted*. Nothing changes.
+  - **De-framed payload with no `MSH`**: still nothing to acknowledge (`parse_msh`
+    raises `Hl7AckError`); the listener does not fabricate an ACK.
+  - **`MSH`-parseable but rejected**: this is the implementable AE/AR+`ERR` case.
+    `acknowledge()` returns **AR** + `ERR` for an *unsupported message type*
+    (anything but `ORU^R01` on the result port; 0357 = 200) and **AE** + `ERR` for a
+    supported type that **cannot be processed** (unparseable body 0357 = 102; an
+    `ORU^R01` with no `OBX` results 0357 = 101).
+
+  So the literal phrase "malformed *envelope*" is **re-scoped** to "`MSH`-parseable
+  message the listener rejects." The `ERR` segment targets the **pre-v2.5 `ERR-1`**
+  ("Error Code and Location"; the 4th component is the `CE` `<code>&<text>&HL70357`)
+  because the whole v1 fleet is **HL7 v2.3.1–v2.4** (EDAN H60S = v2.4, Seamaty SD1 =
+  v2.3.1); a v2.5+ unit would move the code to `ERR-3`/`ERR-4`, a change-control delta
+  if one is ever added. This crosses the original "`ack.py` knows only `MSH`" boundary
+  only in the *listener* (`milestone.acknowledge()`), which owns the reject decision;
+  `ack.py` stays `MSH`-only (it just builds the `ERR` it is told to).
