@@ -69,12 +69,13 @@ toc = "".join(f"<li>{t}</li>" for t in [
     "3 — Stage-2 decisions (SD-2/4/5/7/9b)",
     "4 — Suggested decision order",
     "5 — Context: non-decision Stage 1–2 slices",
+    "6 — Decisions taken (2026-06-29) — outcomes + Plane states applied",
 ])
 cover = f"""<div class="cover">
-  <span class="badge">FOR REVIEW · PENDING DECISIONS</span>
+  <span class="badge" style="background:#dcfce7;color:#166534;border-color:#22c55e;">DECISIONS RULED · 2026-06-29</span>
   <h1>LabSolution LIS — Stage 1 &amp; 2 Slice Decision Dossier</h1>
-  <div class="sub">Human-in-the-loop review package — slices blocked on a decision or action</div>
-  <div class="meta">Branch <code>docs/stage-1-2-decision-dossier</code> · PR #25 · drafted 2026-06-29<br>
+  <div class="sub">Human-in-the-loop decision package — ruled by M. Uy (system/technical owner); see §6</div>
+  <div class="meta">Ruled 2026-06-29 · the original review draft landed via PR #25 · this record supersedes it<br>
   Source of truth: <code>docs/decisions/stage-1-2-slice-decision-dossier.md</code><br>
   Owners: M. Uy (system/technical) · A. L. Pinote (QA/regulatory) — ADR-0007</div>
   <ol class="toc">{toc}</ol>

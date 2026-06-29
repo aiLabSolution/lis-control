@@ -97,6 +97,16 @@ are the middleware**, not the instrument.
 
 ## 3. Action items / gaps to close
 
+> **⮕ Decisions taken (2026-06-29, M. Uy — see the [slice decision dossier §6](../decisions/stage-1-2-slice-decision-dossier.md)).**
+> Bench-conformance for **EDAN H60S, EDAN H99S and Seamaty SD1** is scheduled **this week**. **H60S is retrieved**
+> from the warehouse (closes the H60S half of Action #1); **H99S** goes nameplate-first (Action #3); **Seamaty SD1**'s
+> protocol is confirmed and the bench captures its operator-set port + MLLP framing (Action #4). **Action #7
+> (Stage-2 breadth) is RULED (SD-0 / SD-2): ERBA EC90 alone satisfies Stage 2 for the pilot** — the bidirectional /
+> NAK-retransmit negatives are proven against the ASTM simulator (LIS-25), and a live bidirectional ASTM unit
+> (e.g. DiaSys RESPONS) is **not** acquired unless a pilot site actually operates one; EC90 + bidirectional stay
+> **post-pilot v1.1** under change control (DEC-06). **Action #5** (HETO AU120 on arrival) and the EC90 bench
+> (retrieval + RS-232 capture) remain open, sequenced after the pilot anchors.
+
 1. **Retrieve from warehouse:** EDAN H60S (Stage 1) and ERBA EC90 (Stage 2) are the two
    primary vehicles and are both in the warehouse — pull them first.
 2. **Stage 3 unblock (critical path):** source a **SnibeLis PC**, get the **vendor license**

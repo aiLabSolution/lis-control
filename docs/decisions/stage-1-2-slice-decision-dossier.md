@@ -10,8 +10,9 @@
 > **Scope.** Stages 1–2 only. The *fully-specified agent work* (`ready-for-agent`) and the
 > *Done / In-Progress* slices are listed in §5 for context but need no decision.
 >
-> **Status:** drafted by an agent **2026-06-29**, **pending human review** (M. Uy = system/technical
-> owner; A. L. Pinote = QA/regulatory owner, per [ADR-0007](../adr/0007-regulatory-ownership-and-responsibility-allocation.md)).
+> **Status:** drafted by an agent **2026-06-29**; **RULED 2026-06-29** by M. Uy (system/technical owner) —
+> see **[§6 Decisions taken](#6-decisions-taken--2026-06-29)** for the per-slice outcomes and the Plane states
+> applied. (A. L. Pinote = QA/regulatory owner, per [ADR-0007](../adr/0007-regulatory-ownership-and-responsibility-allocation.md).)
 >
 > **Sources:** [`LIS_IMPLEMENTATION_PLAN.md`](../../LIS_IMPLEMENTATION_PLAN.md) §3 (Stage 1–2),
 > [`docs/testing/stage-1-3-machine-access-checklist.md`](../testing/stage-1-3-machine-access-checklist.md)
@@ -253,6 +254,31 @@ SD1 ingestion slice (PID-2 fallback + biochem maps).
 | LIS-25 / S2.3 — ASTM simulator harness | `ready-for-agent` | drives the bidirectional/NAK negatives for **SD-2** |
 | LIS-26 / S2.4 — ERBA EC90 channel thread | `ready-for-agent` | depends on LIS-24 (**SD-5**) |
 | LIS-28 / S2.6 — EC90 branched channel → electrolyte Result | `ready-for-agent` | |
+
+---
+
+## 6. Decisions taken — 2026-06-29
+
+Ruled by **M. Uy** (system/technical owner). The same day, each slice's **Plane state** was set and a
+**decision comment** posted (the auditable `LIS-NN` ↔ decision link). **SD-0…SD-5 = "go with the
+recommendation"; SD-6 / SD-9a / SD-9b = bench this week.** Two recommendations were *overtaken by events*
+(noted below) and adjusted to current reality rather than applied blindly.
+
+| ID | Slice(s) | Ruling | Plane action applied |
+|---|---|---|---|
+| **SD-0** | scope (ADR-0008 ↔ LIS-74) | **Build the ASTM/serial stack now** — Stage-2 slices are active development, validated against the ASTM simulator (LIS-25) + the EC90 bench — **but go-live scope stays as DEC-06 pins it**: EC90, HETO AU120 and the bidirectional path are **bench-validated yet post-pilot v1.1** under change control, *not* on the M1 pilot critical path. "Deferred under change control" = **deferred for go-live, not for development.** | — *(reconciliation recorded in the [decisions register](../compliance/decisions-register.md) + [machine-access checklist](../testing/stage-1-3-machine-access-checklist.md))* |
+| **SD-1** | LIS-12 | Rec. (a): engine choice **superseded by ADR-0008**; **rescoped** to the transport-substrate ADR (how MLLP / serial / file transports attach to the analyzer-bridge). | retitled · **ready-for-human → ready-for-agent** |
+| **SD-2** | LIS-27 | Rec. (a): **simulator-only** for the pilot; live bidirectional deferred to v1.1. | needs-info → **ready-for-agent** (simulator-scoped) |
+| **SD-3** | LIS-19 | Rec. (a): **defer, not wontfix** — no file-mode unit in the fleet; parked under change control. | needs-info → **Backlog** |
+| **SD-4** | LIS-29 | **Defer + reclassify** — HORRON is HL7/TCP, not ASTM; re-files under Stage 1 when acquired; source-PDF re-verification gate retained. | needs-info → **Backlog** |
+| **SD-5** | LIS-24 | ⚠ **Overtaken by completion** — the ASTM E1394 parser already shipped (PR #17) and the slice is **Done**; the recommendation's intent (build vs a synthesized fixture, don't block on hardware) is already satisfied. The captured-EC90-frame back-fill is gated on the EC90 bench (SD-7), tracked there. | — *(left **Done**; no re-triage)* |
+| **SD-6** | LIS-20 | **ACT — H60S retrieved from the warehouse; bench this week.** | stays **ready-for-human** · retrieval + schedule logged |
+| **SD-9a** | LIS-78 | **ACT — bench this week**, nameplate-first (v1 anchor, DEC-06). | stays **ready-for-human** · schedule logged |
+| **SD-9b** | LIS-79 | **ACT — bench this week.** ⚠ Protocol already **confirmed** (HL7 v2.3.1/MLLP, upload-only, vendor manual on file — PR #28), so "request the spec" is satisfied; the bench captures the operator-set port + MLLP framing. | stays **ready-for-human** · schedule logged |
+
+**This week's bench list:** **EDAN H60S** (LIS-20) · **EDAN H99S** (LIS-78) · **Seamaty SD1** (LIS-79).
+
+**Left open (not ruled here):** **SD-7** (ERBA EC90 bench — *bench-validated but post-pilot* per SD-0; retrieve + capture the RS-232 baud/pinout when sequenced) and **SD-8** (HETO AU120 second-vendor confirm on arrival). Both stay `ready-for-human`.
 
 ---
 
