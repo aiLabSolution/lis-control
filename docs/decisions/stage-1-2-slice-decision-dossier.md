@@ -59,7 +59,7 @@ this dossier is.
 | **SD-6** | **LIS-20** (S1.8) | **EDAN H60S** signed bench-conformance | 🔴 | Act | **Schedule the bench session** — retrieve H60S from warehouse; gates the Stage-1 "supported" milestone. |
 | **SD-7** | **LIS-30** (S2.8) | **ERBA EC90** signed bench-conformance | 🟠 | Act | Retrieve EC90; capture the undocumented RS-232 baud/pinout; sign. (Urgency follows SD-0.) |
 | **SD-8** | **LIS-21 + LIS-77** (S1.9/S1.10) | **HETO AU120** second-vendor confirm + bench | 🟠 | Act | On arrival (~now): confirm HL7/MLLP screen, pin port + listener role, resolve 2.3.1-vs-2.5, then bench. |
-| **SD-9** | **LIS-78 + LIS-79** (S1.11/S2.9) | **EDAN H99S** + **Seamaty SD1** missing specs | 🟠/🟡 | Act | **H99S: read nameplate first, then chase EDAN — it's a *v1 anchor*** (DEC-06), so it's on the pilot path. **SD1: request the spec, keep provisional.** |
+| **SD-9** | **LIS-78 + LIS-79** (S1.11/S2.9) | **EDAN H99S** + **Seamaty SD1** missing specs | 🟠/✅ | Act | **H99S: read nameplate first, then chase EDAN — it's a *v1 anchor*** (DEC-06), so it's on the pilot path. **SD1: ✅ spec obtained** (HL7 v2.3.1/MLLP; vendor LIS manual on file) — now a **v1 fleet** member (DEC-06, 2026-06-29), seed fixture landed (PR #28); only the bench capture remains. |
 
 ---
 
@@ -214,15 +214,18 @@ inherits from **SD-0** (pilot vs post-pilot).
 ---
 
 ### SD-9b · LIS-79 [S2.9] — Seamaty SD1 LIS spec · `ready-for-human`
-**Action.** Request an **SD1-specific** LIS/communication spec from Seamaty (the KB has only the **SG1**, a
-*different* instrument — handheld blood-gas/ISE); meanwhile photograph the SD1's LIS screen + capture a frame.
+**Action.** ✅ **Done — the SD1-specific LIS Interface Manual is on file** (`manuals-and-lis-protocol/RAYTO/SEAMATY/lis-protocol.pdf`,
+Ed. B/0). Remaining: a real-instrument bench capture (operator-set TCP port + MLLP framing + ASCII-vs-UTF-8 encoding).
 
-**Context.** Unlike H99S, **SD1 is *not* a pinned v1 anchor** — DEC-06 lists it as "pending protocol / confirm
-before placing." So it stays **provisional** (Stage-1 *iff* it turns out HL7) and must **not block the pilot**.
+**Context.** Protocol **confirmed**: HL7 v2.3.1 / MLLP over TCP/IP (RS-232 also) / upload-only (ORU^R01 + ACK, no worklist).
+SD1 is now a **pinned v1 fleet member** (DEC-06, added 2026-06-29) — a Stage-1 second-vendor (dry-chem) vehicle, no longer
+provisional. Two ingestion quirks to handle in the SD1 slice: MRN rides in **PID-2** (parser reads PID-3 → empty until a
+fallback), and the biochem codes + `U/L` unit need LOINC/UCUM maps. Seed conformance fixture `seamaty-sd1-oru-r01` landed (PR #28).
 
-**Recommendation.** Open the vendor request for lead-time, keep SD1 out of the pilot critical path until its protocol is known.
+**Recommendation.** Proceed: schedule the SD1 bench-conformance (one REQ-CONF-01 report, like the H60S/EC90 sessions) and the
+SD1 ingestion slice (PID-2 fallback + biochem maps).
 
-**Owner.** Pinote (vendor liaison) + M. Uy · **Gates.** nothing on the pilot path (provisional unit).
+**Owner.** Pinote (vendor liaison) + M. Uy · **Gates.** SD1 now on the pilot path (v1); bench capture + ingestion slice remain.
 
 ---
 
