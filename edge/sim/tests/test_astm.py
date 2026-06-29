@@ -9,6 +9,7 @@ import pytest
 
 from edge_sim.astm import (
     ACK,
+    ENQ,
     EOT,
     ETB,
     ETX,
@@ -134,3 +135,56 @@ def test_session_aborts_after_max_retries_on_persistent_corruption():
     assert result.aborted is True
     assert result.complete is False
     assert result.naks == 1 + 3  # initial NAK + one per retry
+
+
+# --- frame-number rotation: 1..7 -> 0 -> 1 wrap (LIS-23) --------------------
+
+
+def test_session_wraps_frame_numbers_past_seven_through_zero():
+    """A session of >8 records exercises the E1381 frame-number cycle 1..7 -> 0 -> 1.
+    All records are collected in order with no NAKs — a broken modulo would put the
+    8th+ frame out of sequence and NAK/abort. (No existing test drove >3 records.)"""
+    records = [f"R|{i}|^^^A{i}|{i}.0|U||N||F" for i in range(1, 11)]  # 10 > 8 frames
+    result = run_session(records)
+    assert result.complete is True
+    assert result.records == records
+    assert len(result.records) == 10
+    assert result.naks == 0
+    assert result.retransmits == 0
+    assert result.aborted is False
+
+
+def test_receiver_frame_numbers_cycle_1_through_7_then_0():
+    """The receiver expects FN 1,2,…,7,0,1,… — exercise the explicit wrap and assert
+    each in-sequence frame is ACKed and collected across the 7 -> 0 boundary."""
+    rx = AstmReceiver()
+    assert rx.feed(bytes([ENQ])) == bytes([ACK])
+    fns = [1, 2, 3, 4, 5, 6, 7, 0, 1, 2]  # crosses the wrap twice
+    for n in fns:
+        assert rx.feed(build_frame(n, f"R|{n}")) == bytes([ACK])
+    assert len(rx.records) == len(fns)
+    assert rx.nak_count == 0
+
+
+def test_receiver_idempotently_re_acks_a_duplicate_frame_across_the_wrap():
+    """A verbatim retransmit of the last-accepted frame is re-ACKed without
+    re-collecting its record — including across the 7 -> 0 frame-number wrap (a lost
+    ACK makes the sender resend FN 0; the receiver must not double-count it)."""
+    rx = AstmReceiver()
+    rx.feed(bytes([ENQ]))
+    # advance through FN 1..7 so the next expected frame number is 0 (the wrap point).
+    for n in [1, 2, 3, 4, 5, 6, 7]:
+        rx.feed(build_frame(n, f"R|{n}"))
+    assert len(rx.records) == 7
+
+    # accept FN 0 (the wrap), then resend the SAME FN-0 frame: idempotent re-ACK.
+    f0 = build_frame(0, "R|0")
+    assert rx.feed(f0) == bytes([ACK])
+    assert len(rx.records) == 8
+    assert rx.feed(f0) == bytes([ACK])  # duplicate -> still ACK
+    assert len(rx.records) == 8  # but NOT re-collected
+    assert rx.nak_count == 0
+
+    # the next in-sequence frame after the wrap (FN 1) is accepted normally.
+    assert rx.feed(build_frame(1, "R|next")) == bytes([ACK])
+    assert rx.records[-1] == "R|next"
