@@ -1,0 +1,18 @@
+{
+  "id": "seamaty-sd1-oru-r01",
+  "description": "Synthetic HL7 v2.3.1 ORU^R01 dry-chemistry result from a Seamaty SD1 biochemistry analyzer (MLLP over TCP/IP; the analyzer is the client, our edge listens). Models the vendor 'LIS Interface Manual' §4.1.1 worked example: a biochem panel (GLU/BUN/CREA/AST/ALT/TP) as final NM results (OBX-11 = F) plus one in-band ST 'Alarm' warning OBX. The Stage-1 second-vendor vehicle for LIS-79 / S2.9. NOT a real instrument capture.",
+  "analyzer": { "vendor": "Seamaty", "model": "SD1" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed modeled on the Seamaty 'LIS Interface Manual' (Edition B/0), §4.1.1 Sample Test Results (covers SD1 / SMT-120 / SMT-680). On file: manuals-and-lis-protocol/RAYTO/SEAMATY/lis-protocol.pdf",
+    "note": "Application payload only (no MLLP framing; the transport applies <SB>=0x0B ... <EB>=0x1C <CR>=0x0D per manual §1.6/§1.7). Confirmed-from-doc protocol: HL7 v2.3.1, MLLP over TCP/IP (RS-232 also supported), upload-only (ORU up + ACK back, no orders/worklist), MSH-16=0 patient sample. TWO SD1 quirks this fixture deliberately surfaces for the SD1 ingestion slice: (1) the medical-record number rides in PID-2 (manual §3.3), not PID-3 — the current tolerant ORU parser reads PID-3, so patient_id parses EMPTY for the SD1 until a PID-2 fallback lands; (2) the dry-chem codes (BUN/CREA/AST/ALT/TP/...) and the U/L unit are not yet in normalize.py, so only GLU normalizes (code 2345-7 + mg/dL) while the rest read UNMAPPED/PARTIAL until biochem LOINC/UCUM maps are added. Also note the SD1 emits instrument warnings in-band as an ST OBX (OBX-3='Alarm', warning code in OBX-4); ingestion should route these as flags/notes, not numeric results. Encoding wrinkle: MSH-18 and §1.6 say ASCII/ISO-8859-1, while the manual's p4 remark says UTF-8 — pin at real-instrument capture (LIS-79). A real SD1 bench capture replaces this seed at conformance: set synthetic:false with a capture reference."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "specimen_id": "SD1-SPEC-0007"
+  }
+}

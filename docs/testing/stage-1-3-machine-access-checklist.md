@@ -28,8 +28,8 @@
 Stage 1 (proves the parser isn't EDAN-specific); **RAYTO RT-7600** is a second
 proprietary-TCP tail for Stage-3 reverse-mapping practice.
 
-**The good news:** we can now exercise Stage 1 across **three vendors** (EDAN confirmed,
-HETO likely, Seamaty/RAYTO provisional) — better vendor-tolerance proof than the
+**The good news:** we can now exercise Stage 1 across **three vendors** (EDAN + Seamaty SD1
+confirmed, HETO likely, RAYTO provisional) — better vendor-tolerance proof than the
 original RAC-050-only plan. **The gap:** Stage 2 rests on a **single, upload-only ASTM
 unit** (ERBA EC90); the richest ASTM spec (DiaSys 920) is not available.
 
@@ -46,7 +46,7 @@ Availability tiers from your 2026-06-26 status: **on hand** · **in warehouse** 
 | **SNIBE MAGLUMI X3** | On hand | Immunoassay (CLIA) | **ASTM E1394 via SnibeLis** middleware; bidirectional + **QC upload** ✅ | **3** | 🟡 **Needs SnibeLis PC + vendor license (machine-code→Reg-Code); SnibeLis→OpenELIS relay undocumented.** |
 | **HETO AU120** | Incoming (~next wk) | Clinical chemistry | **HL7 v2.3.1 (doc also says v2.5) over MLLP/TCP**, bidirectional. ⚠️ **family doc only** — examples use **AU400**, no AU120-specific doc. | **1** | 🟡 Confirm on arrival the AU120 exposes this same HETO HL7 screen; port/listener-role undocumented. |
 | **RAYTO RT-7600** | On hand | Hematology (CBC) | ❌ **No HL7/ASTM in docs.** Proprietary **TCP "Netport"** record stream (vendor LIS-sim, port configurable) **or** RS232 (115200/8/N/1). Bidirectional-capable. | **3** (prov.) | 🟡 **Byte-capture a "Send" to identify the wire format** before staging. Moves to St.1 if HL7, St.2 if serial/ASTM. |
-| **Seamaty SD1** | On hand | Dry/whole-blood biochem | ⚠️ **No SD1 doc in KB** — only the **SG1** (a *different* instrument: handheld blood-gas/ISE). SG1 = HL7 "v2.1.3" over TCP/serial, upload-only. | **1** (prov.) | 🔴 **Obtain an SD1-specific LIS spec from Seamaty;** photograph the SD1's own LIS screen + wire-capture. |
+| **Seamaty SD1** | On hand | Dry/whole-blood biochem | ✅ **SD1 LIS Interface Manual on file** (`SEAMATY/lis-protocol.pdf`, Ed. B/0) — **HL7 v2.3.1**, **MLLP over TCP/IP** (RS-232 also), **upload-only** (ORU^R01 + ACK, no worklist). Quirks: MRN in **PID-2** (not PID-3); biochem codes + `U/L` unit need LOINC/UCUM maps. | **1** | 🟡 **Real-instrument capture** to lock the operator-set **TCP port** + confirm MLLP framing/encoding; seed fixture `seamaty-sd1-oru-r01` already lands the parse path. |
 | **EDAN H99S** | On hand | Unknown (likely hematology by name) | ❌ **Not in KB at all** — no EDAN/H99S, not a recognizable EDAN catalog model. (Documented EDAN siblings: H60S hematology, I15 blood-gas, M16 immunoassay.) | ? | 🔴 **Read the unit nameplate/SN to disambiguate** (H60S? M16?); obtain protocol doc from EDAN. |
 
 ---
@@ -63,8 +63,10 @@ ORU^R01 instead of a coagulation one, but the pipe is identical.
 - **Stretch (same stage, second vendor):** **HETO AU120** on arrival → prove the parser
   ingests a different vendor's HL7/MLLP without code changes. (Confirm AU120 = the AU-series
   HL7 screen; pin the port.)
-- Provisional thirds: **Seamaty SD1** and **RAYTO RT-7600** *iff* their wire format turns
-  out HL7 (both need a capture/vendor doc first).
+- **Second vendor (confirmed): Seamaty SD1** — HL7 v2.3.1 / MLLP / upload-only per the vendor
+  LIS manual; a clean Stage-1 vehicle, with the seed fixture `seamaty-sd1-oru-r01` already
+  landing the parse path. Remaining: real-instrument port/framing capture.
+- Provisional third: **RAYTO RT-7600** *iff* its wire format turns out HL7 (needs a capture first).
 - 📄 [EDAN H60S LIS-Communication-Protocol p.7 (MLLP, TCP client, ACK)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/EDAN/H60S/LIS/LIS-Communication-Protocol-h60.pdf#page=7) · [LIS Connection Training p.4 (port 7999)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/EDAN/H60S/LIS/PX-HA-0075-V1.0-H60%26H60-Vet-Series-LIS-Connection-Training.pdf#page=4)
 
 ### Stage 2 — ASTM / serial → **ERBA EC90**
@@ -103,9 +105,11 @@ are the middleware**, not the instrument.
 3. **EDAN H99S — disambiguate:** read the physical **nameplate / serial** (it's not a
    documented EDAN model). If it's really an H60S/M16/I15, we already have docs; otherwise
    request the LIS spec from EDAN.
-4. **Seamaty SD1 — get the doc:** the KB only has the **SG1** (different instrument).
-   Obtain an **SD1-specific LIS/communication spec** from Seamaty; meanwhile photograph the
-   SD1's LIS setup screen + capture a frame.
+4. **Seamaty SD1 — ✅ doc obtained:** the SD1 **LIS Interface Manual** (HL7 v2.3.1 / MLLP over
+   TCP/IP / upload-only) is on file (`SEAMATY/lis-protocol.pdf`) and the seed fixture
+   `edge/sim/fixtures/seamaty-sd1-oru-r01` is in. Remaining: a **real-instrument capture** to
+   lock the operator-set **TCP port**, confirm **MLLP framing** + ASCII-vs-UTF-8 encoding, and
+   verify the **PID-2 MRN** quirk on the wire.
 5. **HETO AU120 — confirm on arrival:** verify the AU120 exposes the same **HETO AU-series
    HL7/MLLP** interface (docs only show AU400); pin the **TCP port + listener role** (the
    manual omits them); confirm the **2.3.1-vs-2.5** wire version.
