@@ -1,8 +1,21 @@
 # ADR-0003 (core/openelis) — Result ingest contract (edge → append-only Result store)
 
-- **Status:** Proposed (pending review — LIS-15)
-- **Date:** 2026-06-28
+- **Status:** **Accepted** (ratified 2026-06-29 per the LIS-15 review; was *Proposed*)
+- **Date:** 2026-06-28 (ratified 2026-06-29)
 - **Deciders:** Marloe Uy (aiLabSolution)
+
+> **Ratification (2026-06-29).** Reviewed against the 2026-06-29 Done-issues audit,
+> which flagged that LIS-15 was marked *Done* while the insert-only ingest carries no
+> order/specimen/analyte linkage and no "corrected re-send → new linked version" path.
+> **Decision: accept the insert-only scope as LIS-15's shipped boundary** (the deferrals
+> below were the right call) **and split the deferred behaviour into its own open
+> slices** so the tracker matches what shipped rather than leaving LIS-15 carrying unmet
+> ACs:
+> - **Order/specimen/analyte linkage** → **LIS-84** (S4.2 follow-on; depends on LIS-42).
+> - **Corrected re-send → new linked version** (+ the re-ingest idempotency key it needs)
+>   → **LIS-85**.
+>
+> LIS-15 is **Done for the persistence seam**; LIS-84/LIS-85 carry the remaining ACs.
 - **Scope:** `core/openelis` component (clinical core — result persistence seam)
 - **Relates to:** ADR-0001 (umbrella topology — component-scoped decisions live here); core ADR-0001 (result shape + append-only `result_version`, S0.5 / LIS-7 — the store this writes to); core ADR-0002 (LOINC/UCUM vendor-code seed, S0.6 / LIS-8); umbrella ADR-0006 (edge ORU parse + LOINC/UCUM normalization, S1.2 / LIS-14 — produces the in-memory normalized row this persists); LIS-11 (Stage 1 PRD); plan §1 ("Normalization service … persist raw + normalized"); forward to LIS-17 / S1.5 (milestone E2E wiring edge replay → ingest → Result + ACK)
 
@@ -85,15 +98,18 @@ partially-normalized observation (unmapped code, no LOINC, status `PARTIAL`) sti
   append-only store; no schema change (reuses S0.5 / S0.6); append-only versioning is proven
   on the real service write path; tolerant of partial normalization; the milestone E2E (S1.5)
   now has its persistence half.
-- **Costs / deferred (flagged for review):**
+- **Costs / deferred** (ratified 2026-06-29 — now tracked as their own open slices, not
+  silent gaps):
   - **Insert-only, no order-linkage** — one observation → one new `result` row with null
     `analysis` / `analyte` / `testResult`; matching to an OpenELIS order/analysis is Stage 4
-    (S4.2). Until then, ingested results are unlinked rows.
+    (S4.2). Until then, ingested results are unlinked rows. → **tracked as LIS-84** (S4.2
+    follow-on; depends on LIS-42).
+  - **No re-ingest idempotency / dedupe + no correction path** — re-ingesting the same
+    observation inserts another `result` row; "corrected re-send → new linked version" is
+    unimplemented. The append-only version spine already appends version N+1 on UPDATE, so
+    only an idempotency key + the update-existing path are missing. → **tracked as LIS-85**.
   - **System-user attribution** (`"1"`) — a configurable ingest service-account is deferred
     (as S0.5 deferred the user-aware version-write `changed_by`).
   - **`status` is free text** carried from the edge (`NORMALIZED` / `PARTIAL` / `UNMAPPED`)
     onto `result.status` (which S0.5 also documents as `RAW` / `NORMALIZED` / `RECONCILED`);
     a documented enum/lookup is deferred (S0.5 already flagged tightening `result.status`).
-  - **No re-ingest idempotency / dedupe** — re-ingesting the same observation inserts another
-    `result` row; idempotency keys are later work once the edge carries stable
-    message/observation ids.

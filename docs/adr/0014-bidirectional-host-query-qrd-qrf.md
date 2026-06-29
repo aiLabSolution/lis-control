@@ -101,3 +101,13 @@ mismatched query id or a non-accept ACK.
   - **Order-download / worklist query** (the analyzer requesting a test selection) is Stage 4
     (S4.2); only the results-query direction is built here.
   - **Deferred-response and enhanced query acknowledgement** (QRD-3 = `D`, QAK) are not modelled.
+  - **Base64-decoded OBX (LIS-18 AC2) — re-scoped out (2026-06-29).** LIS-18's "AC2:
+    Base64-decoded OBX" targeted the **Mindray labXpert** urine line, whose protocol carries
+    Base64 OBX payloads (`LIS_BUILD_AND_INTEGRATION_RESEARCH.md` §3). labXpert is **deferred and
+    is middleware, not an analyzer** (`LIS_IMPLEMENTATION_PLAN.md`; dossier **SD-3 / LIS-19 =
+    Defer**), and the actual LIS-18 vehicle — **EDAN H60S** — sends **plaintext HL7 v2.4 OBX**
+    (no Base64). AC2 is therefore **out of scope for LIS-18** and rolls forward to the labXpert
+    file-mode slice (**LIS-19**) — or is wontfix until a Base64-emitting unit joins the fleet. No
+    Base64 decode is added here; the query path normalizes the returned `OBX` verbatim (it does
+    not persist — persistence is not a LIS-18 AC). *(Re-scope ruled by M. Uy, 2026-06-29
+    Done-issues review.)*
