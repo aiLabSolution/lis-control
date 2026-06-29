@@ -127,6 +127,13 @@ or under-normalized result.
   H60S vehicle; the edge↔core ingest correspondence (core ADR-0003) is a tested, auditable
   artifact; a second vendor's terminology is normalized; a CLI demo path exists; no new
   dependencies (the harness stays dependency-free).
+- **Archive-traceability automated (added 2026-06-29).** The LIS-17 AC's *"traceable to the
+  archived raw message"* clause is now proven edge-side: `test_milestone_archive.py` archives
+  the captured message (content-addressed, LIS-16), runs the milestone, and asserts the
+  milestone Result is **byte-for-byte reproducible from the archived bytes** (same
+  `result_digest`, re-derived over the real MLLP wire). So the Result is auditable back to its
+  stored evidence by digest. The earlier review (2026-06-29) flagged that the milestone path
+  did not touch the archive; this closes that gap without the cross-process leg.
 - **Costs / deferred (flagged for review):**
   - **Live cross-process leg** — handing the DTO to a running/Testcontainers core over a wire
     waits on the **S1.0 substrate decision** (core ADR-0003). Until then the seam is proven by
