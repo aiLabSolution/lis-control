@@ -12,7 +12,9 @@ from edge_sim.ack import (
     AckCode,
     AckMode,
     Hl7AckError,
+    Hl7ErrorCondition,
     build_ack,
+    build_nak,
     parse_msh,
     wants_accept_ack,
 )
@@ -132,6 +134,55 @@ def test_build_ack_rejects_code_mode_mismatch():
         build_ack(ORU, mode=AckMode.ENHANCED, code=AckCode.AA, timestamp="x")
     with pytest.raises(Hl7AckError):
         build_ack(ORU, mode=AckMode.ORIGINAL, code=AckCode.CA, timestamp="x")
+
+
+# --- LIS-13: negative acknowledgment (AE/AR) with a populated ERR segment ----
+
+
+def test_build_nak_ae_appends_a_populated_err_segment():
+    """AE (application error): MSA-1=AE *and* a real ERR segment — not just MSA-3
+    free text — carrying the HL7 Table 0357 code + text + coding system."""
+    nak = build_nak(ORU, condition=Hl7ErrorCondition.DATA_TYPE_ERROR, text="boom", timestamp="x")
+    segs = nak.decode("ascii").split("\r")
+    # MSH is built exactly like a positive ACK: routing swapped, ACK^R01 echoed.
+    msh = segs[0].split("|")
+    assert msh[2] == "LIS" and msh[4] == "RAC-050"
+    assert msh[8] == "ACK^R01"
+    # MSA-1 = AE; MSA-2 echoes the inbound control id; MSA-3 carries the reason.
+    msa = segs[1].split("|")
+    assert msa[1] == "AE"
+    assert msa[2] == "MSG00042"
+    assert msa[3] == "boom"
+    # the ERR segment (the AC's "populated ERR segment"): ERR-1 component 4 is the
+    # CE error code ``<code>&<text>&HL70357``.
+    assert segs[2].startswith("ERR|")
+    assert segs[2].split("|")[1].split("^")[3] == "102&boom&HL70357"
+
+
+def test_build_nak_ar_reject_defaults_text_to_condition():
+    nak = build_nak(
+        ORU, reject=True, condition=Hl7ErrorCondition.UNSUPPORTED_MESSAGE_TYPE, timestamp="x"
+    )
+    segs = nak.decode("ascii").split("\r")
+    assert segs[1].split("|")[1] == "AR"
+    assert segs[1].split("|")[3] == "Unsupported message type"  # MSA-3 default
+    assert "200&Unsupported message type&HL70357" in segs[2]
+
+
+def test_build_nak_err_honours_inbound_separators():
+    """The ERR segment is built with the inbound message's own field/component/
+    subcomponent separators, not hard-coded ``|^&``."""
+    inbound = b"MSH#@~\\!#A#B#C#D#20260625120000##ORU@R01#MSG#P#2.3"
+    nak = build_nak(inbound, condition=Hl7ErrorCondition.APPLICATION_ERROR, timestamp="x")
+    segs = nak.decode("ascii").split("\r")
+    assert segs[1].split("#")[1] == "AE"
+    assert segs[2].startswith("ERR#")
+    assert "207!Application internal error!HL70357" in segs[2]
+
+
+def test_hl7_error_condition_code_and_text():
+    assert Hl7ErrorCondition.UNSUPPORTED_MESSAGE_TYPE.code == "200"
+    assert Hl7ErrorCondition.REQUIRED_FIELD_MISSING.text == "Required field missing"
 
 
 @pytest.mark.parametrize(

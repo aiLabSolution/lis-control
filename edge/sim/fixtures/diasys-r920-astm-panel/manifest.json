@@ -1,0 +1,19 @@
+{
+  "id": "diasys-r920-astm-panel",
+  "description": "Synthetic ASTM E1394 record set (H->P->O->R->R->R->R->L) for one DiaSys R920 basic metabolic panel: four analytes (GLU, BUN, CREA, K) reported as four R records under a single O. Exercises the multi-R-per-O path (LIS-24 / S2.2) — one AstmResult node per analyte, raw code/unit preserved. NOT a real instrument capture.",
+  "analyzer": { "vendor": "DiaSys", "model": "R920" },
+  "protocol": "astm-e1381",
+  "transport": "serial-rs232",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-24 / S2.2 — multi-analyte panel)",
+    "note": "Application payload only (CR-separated E1394 records); the E1381 transport applies the STX FN text ETX C1 C2 CR LF envelope + modulo-256 checksum at replay time. A real DiaSys R920 multi-analyte ASTM-HOST capture replaces this in LIS-30 (bench conformance): set synthetic:false with a capture reference."
+  },
+  "synthetic": true,
+  "expected": {
+    "round_trip": true,
+    "records": 8,
+    "frames": 1
+  }
+}
