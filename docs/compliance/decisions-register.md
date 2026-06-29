@@ -30,6 +30,19 @@
 >   **Reuse `openelis-analyzer-bridge`** as the interface engine; its license is **MPL-2.0 (+ Healthcare Disclaimer)** — HOLD-001 was a GitHub `NOASSERTION` false-negative, now **lifted**, and REQ-LIC-02 folds into the REQ-LIC-01 MPL-2.0 inventory; **polyglot stack** — Java validated *production* runtime (core + bridge), **Python** for the analyzer/edge simulator + conformance harness (LIS-9) and tooling; **minimal HL7-v2.x/MLLP-first v1 fleet** — **pinned 2026-06-27 (Seamaty SD1 added 2026-06-29):** anchor **EDAN H60S** (HL7 V2.4/MLLP) + H99S + RAYTO RT-7600 + **Seamaty SD1** (HL7 v2.3.1/MLLP, upload-only — vendor LIS manual on file); **MAGLUMI X3 = v1.1** (ASTM/TCP + SnibeLis DPA); ERBA EC90 (serial) + HETO AU120 (incoming) deferred under change control; 3 protocol confirms still pending (RT-7600 format, H99S driver, AU120).
 > - **The 🟡 consistency rows DEC-14 / DEC-22 / DEC-23 / DEC-24 / DEC-25 are stale defect descriptions** — the editorial fixes they call for are **already implemented in the artifacts** (verified 2026-06-25; see each row). Only **owner-ratification** remains, now assignable to the named DEC-01 owner (Pinote).
 > - **Still genuinely open / `[NEEDS-HUMAN]`:** the counsel-confirmation and clause-currency items (DEC-12/13/15/16/17/18/19/20/21/26) and the named-person *paperwork* (DPO appointment letter + charter, VMP signatures, counsel sign-off) — none of which an agent can produce.
+>
+> **⮕ UPDATE 2026-06-29 — Stage-1/2 slice decisions RULED (M. Uy, system owner) + SD-0 scope reconciliation.**
+> The HITL [Stage-1 & 2 slice decision dossier](../decisions/stage-1-2-slice-decision-dossier.md) was ruled
+> (its **§6** records the per-slice outcomes + the Plane states applied). The headline **SD-0** reconciles the
+> apparent conflict between **DEC-06 / ADR-0008** — which defers **ERBA EC90 + HETO AU120 + the bidirectional /
+> order-download path to post-pilot v1.1** under change control — and the **2026-06-26 LIS-74 availability
+> re-scope**, which makes EC90 the Stage-2 vehicle: **build the ASTM/serial stack now** (Stage-2 slices are
+> active development, validated against the ASTM simulator (LIS-25) + the EC90 bench), **but the go-live pilot
+> scope stays as DEC-06 pins it** — EC90, HETO AU120 and bidirectional are **bench-validated yet post-pilot**,
+> not on the M1 pilot critical path. I.e. *build-now ≠ pilot-gating*. **This does not change DEC-06**; it
+> clarifies that its "deferred under change control" means **deferred for go-live, not deferred for
+> development.** Bench-conformance for the v1 anchors **EDAN H60S, EDAN H99S and Seamaty SD1** is scheduled the
+> week of 2026-06-29.
 
 | ID | Decision needed | Why it matters / what it blocks | Options | Recommendation | Owner | Related artifact(s) | Source decision |
 |---|---|---|---|---|---|---|---|
