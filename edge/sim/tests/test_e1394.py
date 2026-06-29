@@ -16,6 +16,7 @@ from edge_sim.transport import AstmTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 DIASYS = FIXTURES_ROOT / "diasys-r920-astm-result"
+PANEL = FIXTURES_ROOT / "diasys-r920-astm-panel"
 
 
 # --- delimiters + record access --------------------------------------------
@@ -83,6 +84,44 @@ def test_parse_after_deframing_through_astm_transport():
     assert msg.results[0].value == "5.2"
 
 
+# --- multi-R per O: one AstmResult node per analyte (LIS-24 AC) -------------
+
+
+def test_multiple_results_under_one_order_each_become_a_node():
+    """A panel with N ``R`` records under a single ``O`` yields N ``AstmResult``
+    nodes on that one order — one per analyte — raw code/unit preserved (LIS-24 AC).
+    The prior single-R fixture never exercised this."""
+    msg = parse_e1394(
+        "H|\\^&\rP|1||PID-1\rO|1|S1||^^^BMP|R\r"
+        "R|1|^^^GLU|5.2|mmol/L||N||F\r"
+        "R|2|^^^BUN|6.0|mmol/L||N||F\r"
+        "R|3|^^^CREA|88|umol/L||H||F\rL|1|N"
+    )
+    assert len(msg.patients) == 1
+    assert len(msg.patients[0].orders) == 1
+    results = msg.patients[0].orders[0].results
+    assert len(results) == 3  # three analytes -> three result nodes on one order
+    assert [r.test_code for r in results] == ["GLU", "BUN", "CREA"]
+    assert [r.value for r in results] == ["5.2", "6.0", "88"]
+    assert [r.units for r in results] == ["mmol/L", "mmol/L", "umol/L"]
+    assert [r.abnormal_flags for r in results] == ["N", "N", "H"]
+    # the flattened convenience view lists every analyte in record order.
+    assert [r.test_code for r in msg.results] == ["GLU", "BUN", "CREA"]
+
+
+def test_parse_diasys_panel_fixture_multi_analyte():
+    """The multi-analyte panel fixture parses to one order carrying four R nodes,
+    and round-trips byte-faithfully through the E1381 transport (LIS-23 + LIS-24)."""
+    fx = load_fixture(PANEL)
+    msg = parse_e1394(fx.message_bytes)
+    assert len(msg.patients[0].orders) == 1
+    order = msg.patients[0].orders[0]
+    assert len(order.results) == 4
+    assert [r.test_code for r in order.results] == ["GLU", "BUN", "CREA", "K"]
+    assert [r.units for r in order.results] == ["mmol/L", "mmol/L", "umol/L", "mmol/L"]
+    assert AstmTransport().roundtrip(fx.message_bytes) == fx.message_bytes
+
+
 # --- tolerant of spec deviation (plan §2) ----------------------------------
 
 
@@ -120,6 +159,36 @@ def test_short_records_do_not_crash():
     msg = parse_e1394("H|\\^&\rR|1\rL|1")
     assert msg.results[0].value == ""  # absent field -> ""
     assert msg.results[0].test_code == ""
+
+
+def test_non_default_delimiters_declared_in_header():
+    """Delimiters are taken from the ``H`` record: a message declaring ``!`` as the
+    field delimiter and ``*`` as the component delimiter parses with those, not the
+    conventional ``|``/``^``."""
+    msg = parse_e1394(
+        "H!\\*&!!!DiaSys*R920\rO!1!S1!!*GLU!R\rR!1!*GLU!5.2!mmol/L!!N!!F\rL!1!N"
+    )
+    assert msg.header is not None
+    assert msg.header.sender_name == "DiaSys"
+    assert msg.header.sender_model == "R920"  # component split on '*'
+    assert msg.results[0].test_code == "GLU"
+    assert msg.results[0].value == "5.2"
+    assert msg.results[0].units == "mmol/L"
+
+
+def test_trailing_empty_components_resolve_to_the_code():
+    """A universal-test-id with *trailing* empty components (``GLU^^^``) resolves to
+    the code, just like the leading-empty form (``^^^GLU``)."""
+    msg = parse_e1394("H|\\^&\rR|1|GLU^^^|5.2|mmol/L||N||F\rL|1|N")
+    assert msg.results[0].test_code == "GLU"
+
+
+def test_trailing_empty_component_yields_empty_field():
+    """A trailing empty component (``H``-5 ``DiaSys^``) yields an empty
+    ``sender_model`` rather than crashing."""
+    msg = parse_e1394("H|\\^&|||DiaSys^\rL|1|N")
+    assert msg.header.sender_name == "DiaSys"
+    assert msg.header.sender_model == ""
 
 
 def test_blank_input_raises():
