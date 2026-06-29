@@ -93,11 +93,11 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    | **EDAN H99S** | HL7 (EDAN family) | **v1** — ⚠ confirm H99S = same driver |
    | **RAYTO RT-7600** (hematology) | ✅ TCP (Netport), bidirectional; ⚠ message format unconfirmed | **v1** — confirm HL7 vs vendor format |
    | **SNIBE MAGLUMI X3** | ✅ ASTM E1394 / TCP (via SnibeLis) | **v1.1** — bridge-native ASTM, but +SnibeLis middleware → REQ-PRIV-09 DPA flow-down |
-   | **Seamaty SD1** | ✅ HL7 v2.3.1 / MLLP (TCP); RS-232 also; upload-only (ORU+ACK) — vendor LIS manual on file | protocol confirmed → Stage-1-capable; **placement under change control** (REQ-QMS-03) |
+   | **Seamaty SD1** | ✅ HL7 v2.3.1 / MLLP (TCP); RS-232 also; upload-only (ORU+ACK) — vendor LIS manual on file | **v1** (HL7/MLLP result-ingestion) — added 2026-06-29; bench port/framing capture pending |
    | **ERBA EC90** (warehouse) | ✅ RS-232 serial (ASTM-ish) | **deferred** (serial group) |
    | **HETO AU120** (arriving next) | ⚠ "Konig LIS Protocol V2.1" (manual is Konig AP300; AU120 may differ) | **deferred** — confirm on arrival |
 
-   **v1 = EDAN H60S/H99S + RAYTO RT-7600** (HL7/MLLP, result-ingestion). **v1.1 = MAGLUMI X3** (pull
+   **v1 = EDAN H60S/H99S + RAYTO RT-7600 + Seamaty SD1** (HL7/MLLP, result-ingestion; SD1 added 2026-06-29). **v1.1 = MAGLUMI X3** (pull
    into v1 only if immunoassay is pilot-critical, accepting the SnibeLis middleware + DPA cost).
    **Deferred post-pilot under change control (REQ-QMS-03):** ERBA EC90 (RS-232 serial) and HETO
    AU120 (incoming), plus **bidirectional host-query / order-download** (add in v1.1). Each

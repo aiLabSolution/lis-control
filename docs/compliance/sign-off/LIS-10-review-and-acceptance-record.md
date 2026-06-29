@@ -58,7 +58,7 @@ By signing, the reviewers confirm these decisions are taken and correctly record
 | **DEC-08** analyzer-bridge license | **MPL-2.0** (+ Healthcare Disclaimer); HOLD-001 lifted; folds into REQ-LIC-01 | ADR-0008 |
 | **DEC-04** Interface engine | Reuse `openelis-analyzer-bridge` | ADR-0008 |
 | **DEC-05** Stack | Polyglot — Java validated *production* runtime (core + bridge); Python for the edge simulator + conformance harness (LIS-9) + tooling | ADR-0008 |
-| **DEC-06** v1 fleet | **Pinned 2026-06-27:** v1 = EDAN H60S (anchor, HL7/MLLP) + H99S + RAYTO RT-7600; v1.1 = MAGLUMI X3 (ASTM/TCP + SnibeLis DPA); deferred = ERBA EC90 (serial) + HETO AU120 (incoming); Seamaty SD1 + 3 protocol confirms pending | ADR-0008 |
+| **DEC-06** v1 fleet | **Pinned 2026-06-27 (SD1 added 2026-06-29):** v1 = EDAN H60S (anchor, HL7/MLLP) + H99S + RAYTO RT-7600 + Seamaty SD1 (HL7 v2.3.1/MLLP, upload-only); v1.1 = MAGLUMI X3 (ASTM/TCP + SnibeLis DPA); deferred = ERBA EC90 (serial) + HETO AU120 (incoming); confirms pending: RT-7600 format, H99S driver, AU120 | ADR-0008 |
 | **DEC-03** Topology | M1 pilot / M3 post-pilot spoke / M2 parked | ADR-0006 |
 
 ## 4. Residual `[NEEDS-HUMAN]` items acknowledged
