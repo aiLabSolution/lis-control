@@ -1,5 +1,5 @@
-"""``edge-sim`` command line: list, validate, replay, archive, roundtrip, ack, and
-normalize fixtures."""
+"""``edge-sim`` command line: list, validate, replay, archive, roundtrip, ack,
+normalize, milestone, query, parse-astm fixtures."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .ack import Hl7AckError, build_ack
 from .archive import RawMessageArchive, archive_fixture
+from .e1394 import parse_e1394
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .milestone import run_milestone
 from .normalize import Normalizer
@@ -230,6 +231,21 @@ def _cmd_query(args: argparse.Namespace) -> int:
     return 0 if correlated and all_normalized else 1
 
 
+def _cmd_parse_astm(args: argparse.Namespace) -> int:
+    """Parse a fixture's ASTM E1394 records and print the typed record tree."""
+    fx = _resolve(args.root, args.fixture)
+    msg = parse_e1394(fx.message_bytes)
+    sender = f"{msg.header.sender_name}/{msg.header.sender_model}" if msg.header else "(no header)"
+    print(f"{fx.id}\t{sender}\tpatients={len(msg.patients)}\tterminator={msg.terminator_code or '-'}")
+    for p in msg.patients:
+        print(f"  P {p.patient_id or '-'} {p.name or ''}".rstrip())
+        for o in p.orders:
+            print(f"    O {o.specimen_id or '-'} test={o.test_code or '-'}")
+            for r in o.results:
+                print(f"      R {r.test_code} {r.value} {r.units}\t[{r.abnormal_flags or '-'}/{r.status or '-'}]")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="edge-sim",
@@ -300,6 +316,11 @@ def main(argv: list[str] | None = None) -> int:
         help="result fixture the host answers with (default: edan-h60s-oru-r01)",
     )
     query_parser.set_defaults(func=_cmd_query)
+    parse_astm_parser = sub.add_parser(
+        "parse-astm", help="parse a fixture's ASTM E1394 records and print the record tree"
+    )
+    parse_astm_parser.add_argument("fixture", help="fixture id or directory path")
+    parse_astm_parser.set_defaults(func=_cmd_parse_astm)
 
     args = parser.parse_args(argv)
     try:
