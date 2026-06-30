@@ -1,6 +1,6 @@
 # ADR-0015 — Edge transport substrate: direct attachment of analyzer transports to the analyzer-bridge
 
-- **Status:** Proposed (pending sign-off — LIS-12 / S1.0; the integration-lead sign-off is the AC)
+- **Status:** Accepted (signed off 2026-06-30, M. Uy — integration lead; §Decision 5 ratified)
 - **Date:** 2026-06-30
 - **Deciders:** Marloe Uy (System / technical owner — integration lead)
 - **Slice:** LIS-12 / S1.0 (Stage 1 — *settle the edge transport substrate before the framer thread*)
@@ -103,18 +103,18 @@ REQ-SEC-03 ("a bad driver cannot corrupt the core") and TB-2 ("the interface eng
 
   **Decision:** accept Tier-2 as-is for the **pilot** (single-anchor, MLLP-only, smallest surface — ADR-0006/0008), and record the residuals as **change-controlled hardening** to be proven at the **L5 chaos test in Stage 5** (REQ-SEC-03 is L5-verified per the traceability matrix). The "bad driver cannot corrupt the core" claim is carried by **Tier 1** (structural), which the chaos test fault-injects across TB-2; the intra-bridge "one channel cannot starve another" claim is explicitly the *weaker, residual* one. (Wording delta proposed to threat-model TB-2 / traceability REQ-SEC-03 row — flagged for review, see Consequences.)
 
-### 5. Northbound contract reconciliation — FHIR is the production wire; `NormalizedObservation` (core ADR-0003) is its semantic contract. **[NEEDS-HUMAN — primary sign-off point]**
+### 5. Northbound contract reconciliation — FHIR is the production wire; `NormalizedObservation` (core ADR-0003) is its semantic contract. **[RATIFIED 2026-06-30 — M. Uy]**
 
 Two northbound contracts exist in the codebase and must be reconciled by this ADR, because "the ingest contract" is one of the module boundaries S1.0 fixes:
 
 - **Production data-path (this substrate):** the Java bridge emits a **FHIR R4 transaction Bundle** (`FhirBundleBuilder`: Device + Specimen + DiagnosticReport + Observation[]) to `/analyzer/fhir` — wired, and OpenELIS already ingests FHIR.
 - **Core ADR-0003 / edge-sim ADR-0013:** define a language-neutral **`NormalizedObservation` DTO** (`value` + analyzer-native `rawCode`/`rawUnit` beside `loinc`/`ucumValue` + `status`) with a committed JSON-Schema, persisted by `ResultIngestService.ingest`, and the Python simulator emits **that DTO**.
 
-These are **not the same wire.** The reconciliation this ADR records (recommended for sign-off):
+These are **not the same wire.** The reconciliation this ADR records (**ratified 2026-06-30, M. Uy**):
 
 > **FHIR-over-HTTP (`/analyzer/fhir`) is the production edge→core ingest contract.** `NormalizedObservation` (ADR-0003) is the **semantic contract** — the field-level correspondence (value · raw code/unit · LOINC/UCUM · status) every normalized result carries — and is the contract the **Python simulator** speaks. The two are reconciled because a FHIR `Observation` *is* the production serialization of a `NormalizedObservation`: `Observation.code.coding` carries the LOINC **and** the analyzer-native code, `Observation.valueQuantity` carries the UCUM value/unit, and `Observation.status` carries lifecycle. ADR-0003's "the edge maps to this contract over whatever transport S1.0 picks" is hereby answered: **S1.0 picks FHIR-over-HTTP for the production bridge; the DTO is the simulator's analog and the semantic invariant both sides honor.**
 
-Why this is the recommendation and not "make the bridge emit the DTO": the bridge's FHIR path is field-proven and already accepted by core; re-plumbing it to a bespoke DTO endpoint would discard a working, OpenELIS-native ingest for a contract whose *purpose* (ADR-0003) was correspondence, not a specific wire. The **action this implies** (follow-up, not this docs-only slice): annotate core ADR-0003 to state the FHIR `Observation` is the production serialization, and add a thin conformance check that the bridge's FHIR Observation and the simulator's `NormalizedObservation` carry the same fields (the analog of ADR-0013's shared JSON-Schema, one level up). **This is the substantive call the integration-lead sign-off must ratify or redirect.**
+Why this was the recommendation and not "make the bridge emit the DTO": the bridge's FHIR path is field-proven and already accepted by core; re-plumbing it to a bespoke DTO endpoint would discard a working, OpenELIS-native ingest for a contract whose *purpose* (ADR-0003) was correspondence, not a specific wire. **Ratified 2026-06-30 (M. Uy).** The actions this implies: (a) **annotate core ADR-0003** to state the FHIR `Observation` is the production serialization of a `NormalizedObservation` — **done in this PR**; (b) add a thin **cross-contract conformance check** that the bridge's FHIR Observation and the simulator's `NormalizedObservation` carry the same fields (the analog of ADR-0013's shared JSON-Schema, one level up) — **tracked as a follow-up implementation slice** (not this docs-only slice).
 
 ## Consequences
 
@@ -129,7 +129,7 @@ Why this is the recommendation and not "make the bridge emit the DTO": the bridg
 - **Tier-2 isolation is thread-level, not process-level** (shared JVM); rate-limiting is MLLP-only; the filesystem DLQ (`DeadLetterWriter`) is inert; the source allow-list is advisory (unknown sources forwarded — a TB-1 spoofing gap). Recorded as change-controlled hardening, L5-proven in Stage 5.
 - **FILE deviates from the shared pipeline** — `FileMessageHandler` parses and POSTs the FHIR bundle itself, **bypassing `MessageNormalizer`/`HttpForwardingRouter`** (same payload + same `/analyzer/fhir` endpoint, but a parallel code path). It honors the *ingest contract* but breaks the "identical module boundary" principle of §Decision 2. Flagged for a follow-up to route FILE through the common normalizer (Stage-3 prep).
 - **ASTM E1381-95 listener config key is mismatched** (`configuration.yml` sets `org.itech.ahb.listen-astm-e1381-95-server.port` but the binding prefix is `org.itech.ahb.listen-astm-server.e1381-95`), so the YAML is ignored and the default 12011 is used. A Stage-2 bench trap; flagged for a bridge-config fix before Stage-2 bench.
-- **Northbound reconciliation (§Decision 5) is [NEEDS-HUMAN]** — accepting FHIR as the production contract (vs. converging on the DTO) is the sign-off decision; the ADR-0003 annotation + cross-contract conformance check are follow-up work.
+- **Northbound reconciliation (§Decision 5) — ratified 2026-06-30 (M. Uy).** FHIR-over-HTTP is the production ingest contract; core ADR-0003 is annotated in this PR; the cross-contract conformance check is tracked as a follow-up implementation slice.
 - Adopting the bridge's transports commits us to the bridge's framing/ACK implementations (HAPI for MLLP, `astm-http-lib` for ASTM); swapping them later is a change-control / revalidation delta (REQ-QMS-03) — deliberate, per ADR-0008.
 
 ## Alternatives considered

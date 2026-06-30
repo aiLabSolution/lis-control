@@ -17,7 +17,23 @@
 >
 > LIS-15 is **Done for the persistence seam**; LIS-84/LIS-85 carry the remaining ACs.
 - **Scope:** `core/openelis` component (clinical core — result persistence seam)
-- **Relates to:** ADR-0001 (umbrella topology — component-scoped decisions live here); core ADR-0001 (result shape + append-only `result_version`, S0.5 / LIS-7 — the store this writes to); core ADR-0002 (LOINC/UCUM vendor-code seed, S0.6 / LIS-8); umbrella ADR-0006 (edge ORU parse + LOINC/UCUM normalization, S1.2 / LIS-14 — produces the in-memory normalized row this persists); LIS-11 (Stage 1 PRD); plan §1 ("Normalization service … persist raw + normalized"); forward to LIS-17 / S1.5 (milestone E2E wiring edge replay → ingest → Result + ACK)
+- **Relates to:** ADR-0001 (umbrella topology — component-scoped decisions live here); core ADR-0001 (result shape + append-only `result_version`, S0.5 / LIS-7 — the store this writes to); core ADR-0002 (LOINC/UCUM vendor-code seed, S0.6 / LIS-8); umbrella ADR-0006 (edge ORU parse + LOINC/UCUM normalization, S1.2 / LIS-14 — produces the in-memory normalized row this persists); LIS-11 (Stage 1 PRD); plan §1 ("Normalization service … persist raw + normalized"); forward to LIS-17 / S1.5 (milestone E2E wiring edge replay → ingest → Result + ACK); umbrella ADR-0015 (edge transport substrate — settles the S1.0 wire this contract is reconciled against, see note)
+
+> **Northbound reconciliation (2026-06-30 — ratified by M. Uy; umbrella ADR-0015 §Decision 5).**
+> S1.0 is now settled, which answers this ADR's "the edge maps to this contract **over whatever
+> transport S1.0 picks**." The **production** edge→core wire is **not** this `NormalizedObservation`
+> DTO — it is the reused `openelis-analyzer-bridge`'s **FHIR R4 transaction Bundle POSTed to
+> `/analyzer/fhir`** (the bridge already emits it via `FhirBundleBuilder`; OpenELIS already ingests
+> FHIR). This `NormalizedObservation` DTO remains the **semantic contract** — the field-level
+> invariant every normalized result carries (`value` · analyzer-native `rawCode`/`rawUnit` beside
+> `loinc`/`ucumValue` · `status`) — and is the **Python simulator's** wire (umbrella ADR-0013). The
+> two are reconciled because a FHIR `Observation` *is* the production serialization of a
+> `NormalizedObservation`: the LOINC **and** the analyzer-native code live in `Observation.code.coding`,
+> the UCUM value/unit in `Observation.valueQuantity`, and the normalization/lifecycle in
+> `Observation.status`. The Testcontainers `ResultIngestContractIntegrationTest` below still proves
+> core persistence via this typed contract; a thin **cross-contract conformance check** (the bridge's
+> FHIR Observation ↔ the simulator's DTO carry the same fields — the one-level-up analog of ADR-0013's
+> shared JSON-Schema) is **tracked as a follow-up implementation slice**, not built here.
 
 ## Context
 
