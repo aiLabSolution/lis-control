@@ -8,7 +8,7 @@ edge **bridge** -> **OpenELIS** core, then **graduate** the synthetic fixture
 This is the field execution of **Action #4** in
 [`docs/testing/stage-1-3-machine-access-checklist.md`](../testing/stage-1-3-machine-access-checklist.md):
 > *Real-instrument capture to lock the operator-set **TCP port**, confirm **MLLP framing** +
-> ASCII-vs-UTF-8 encoding, and verify the **PID-2 MRN** quirk on the wire.*
+> ASCII-vs-UTF-8 encoding, and verify the patient/sample identifier layout on the wire.*
 
 Related: the SD1 parser quirks (PID-2 fallback, in-band `Alarm` routing) already landed in the
 bridge — **LIS-86**, pin `a98db88`. Unit→UCUM + full code→LOINC core seed is **LIS-87** (open).
@@ -21,7 +21,7 @@ bridge — **LIS-86**, pin `a98db88`. Unit→UCUM + full code→LOINC core seed 
 |---|---|---|---|
 | **0** | **Oracle** | Run `edge-sim` to print the known-good expected output you will diff against. | 17 SD1 tests green |
 | **1** | **Link** | Same Wi-Fi LAN, firewall, SD1 LIS Server / Host IP -> this PC's Wi-Fi IP:port. | SD1 can reach the listener |
-| **2** | **Raw capture (FIRST)** | Point SD1 at a *dumb* TCP listener; lock the operator-set port; confirm MLLP framing + encoding + PID-2 on the wire. | `0x0B …0x1C 0x0D` frame saved |
+| **2** | **Raw capture (FIRST)** | Point SD1 at a *dumb* TCP listener; lock the operator-set port; confirm MLLP framing + encoding + identifier fields on the wire. | `0x0B …0x1C 0x0D` frame saved |
 | **3** | **Bridge** | Build the bridge **from the pinned source** (LIS-86), enable MLLP on 2575, point it at OpenELIS. | `/actuator/health/mllp` = UP |
 | **4** | **Core** | Bring up OpenELIS, register the SD1 analyzer. | UI login + analyzer ACTIVE |
 | **5** | **Live E2E** | SD1 → bridge (ACK) → FHIR `/analyzer/fhir` → results stage in OpenELIS. | result row visible in UI |
@@ -32,8 +32,8 @@ bridge — **LIS-86**, pin `a98db88`. Unit→UCUM + full code→LOINC core seed 
 > well-formed MLLP frame; if the SD1 frames differently you want to see that raw.
 
 **What this proves today vs. what is a known follow-up** — read §1 "Expectation setting" before you
-judge results. In short: connectivity, framing, ACK, the PID-2 + Alarm quirks, and *results
-staging* are deterministic today; **full LOINC/UCUM normalization of the whole panel is not**
+judge results. In short: connectivity, framing, ACK, OBR/PID identifier routing, Alarm routing,
+and *results staging* are deterministic today; **full LOINC/UCUM normalization of the whole panel is not**
 (only `GLU` is seeded in core; the rest are LIS-87) — results will still arrive, just flagged
 unmapped.
 
@@ -74,6 +74,11 @@ Facts that drive every step below (all verified against the pin):
      **never** a numeric Observation. *(`HL7ResultParser.java:173`, `FhirBundleBuilder.java:127-235`)*
   3. Dry-chem codes/units recognized (seeded in the *sim's* `normalize.py`; see the core caveat below).
 
+2026-06-30 bench finding: the first real Wi-Fi capture had valid MLLP framing and `MSH-18=ASCII`,
+but **PID-2 and PID-3 were both blank**. The bridge should use the OBR accession path first
+(`OBR-3`, then `OBR-2`) rather than the PID fallback for that message. Do not treat a blank
+PID-2 as a capture failure; treat it as the real SD1 identifier layout for this sample mode.
+
 ### Expectation setting — what a real run shows *today*
 
 The bridge pulls each analyzer's `codeToLoinc` map from OpenELIS on startup
@@ -83,7 +88,8 @@ produced bundle is only as complete as what OpenELIS has seeded.**
 | Behaviour | Today | Source |
 |---|---|---|
 | SD1 connects, MLLP frame parsed, **ACK returned** | ✅ deterministic | bridge |
-| **PID-2 fallback** + **Alarm → conclusion** | ✅ deterministic (parser-side, no core dep) | LIS-86 |
+| OBR accession parsing + PID-3/PID-2 fallback | ✅ deterministic (parser-side, no core dep) | LIS-86 |
+| **Alarm → conclusion** when an `Alarm` OBX is present | ✅ deterministic (parser-side, no core dep) | LIS-86 |
 | Results **forwarded & staged** in OpenELIS (even if unmapped) | ✅ never dropped | core |
 | `GLU` → LOINC `2345-7` | ✅ seeded in our `lis-8` core build | core `vendor_code_mapping` |
 | `BUN/CREA/AST/ALT/TP` → LOINC, `U/L`→UCUM | ❌ **not yet** → stage as `read_only` unmapped | **LIS-87** |
@@ -219,7 +225,7 @@ replaced by real bench bytes.
 
 ---
 
-## 5. Phase 2 — Raw capture **first** (lock port, framing, encoding, PID-2)
+## 5. Phase 2 — Raw capture **first** (lock port, framing, encoding, identifiers)
 
 The de-risking step. Stand up a *dumb* TCP listener on the port, trigger one SD1 send, and read
 the bytes. This is what closes **Action #4**.
@@ -251,13 +257,16 @@ the bytes. This is what closes **Action #4**.
    - [ ] **Encoding** — `file sd1-raw.bin` (ASCII vs UTF-8). The manual conflicts (§1.6 ASCII vs a
          p4 UTF-8 remark); **this capture is the tie-breaker.** Record the answer.
    - [ ] **The operator-set port actually used** (you set it; confirm the SD1 connected to it).
-   - [ ] **PID-2 MRN** — strip the framing and eyeball the segments:
+   - [ ] **Identifier layout** — strip the framing and eyeball the segments:
          ```bash
          # drop 0x0B prefix and 0x1C 0x0D suffix, show segments one per line
          sed 's/^\x0b//; s/\x1c\x0d$//' sd1-raw.bin | tr '\r' '\n'
          ```
-         Confirm the patient/MRN rides in **`PID-2`** (the SD1 quirk), and capture `MSH-17`
-         (character set token), the `OBX` codes/units, and the `Alarm` OBX.
+        Record whether **`PID-2`** or **`PID-3`** carries an identifier. In the 2026-06-30 Wi-Fi
+        capture both were blank, with patient demographics in `PID-5`/`PID-7`/`PID-8` and the
+        analyzer/order identifiers in `OBR`. Capture `MSH-18` (character set token), the `OBX`
+        codes/units, and whether an `Alarm` OBX is present. Do not paste patient-identifying
+        values into repo docs, tickets, or PR comments.
 4. **Keep `sd1-raw.bin` and `sd1-flow.pcap`** — these are your evidence *and* the seed for the
    Phase-6 fixture.
 
@@ -402,10 +411,14 @@ once — stop the `ncat`/`socat` listener first).
        "select accession_number, test_name, result, read_only, import_issue_reason \
         from clinlims.analyzer_results order by id desc limit 10;"
      ```
-6. **Verify the two SD1 quirks landed:**
-   - **PID-2** — the patient/accession resolved (no dropped message because the MRN was in PID-2).
-   - **Alarm** — the `W3001` "Reagent rotor…" warning is **not** a result row; it rode through as a
-     report **conclusion** (FHIR `DiagnosticReport.conclusion`/`conclusionCode`), never an analyte.
+6. **Verify the SD1 parser behaviours landed:**
+   - **Identifier routing** — confirm the bridge used the expected accession/source field. For the
+     2026-06-30 Wi-Fi capture, PID-2/PID-3 were blank and the bridge should resolve from OBR before
+     considering the PID fallback.
+   - **Alarm** — if this run includes an `Alarm` OBX, confirm it is **not** a result row; it should
+     ride through as a report **conclusion** (FHIR `DiagnosticReport.conclusion`/`conclusionCode`),
+     never an analyte. If the run has no `Alarm` OBX, record that Alarm handling was not exercised
+     by this particular bench upload.
 7. **Accept** the mapped results in the UI (checkbox → **Save**, `POST /rest/AnalyzerResults`) to push
    them into the analysis/result tables.
 
@@ -422,11 +435,15 @@ Edge slices are **two-level** — land in both the sim mirror *and*, if the wire
      > edge/sim/fixtures/seamaty-sd1-oru-r01/message.hl7
    ```
    *(The fixture stores payload only — framing is applied by the transport at replay time.)*
+   If the captured payload contains patient-identifying values, de-identify it before committing:
+   preserve the field layout, timestamp shape, code/unit/value shape, blank PID-2/PID-3 state,
+   and OBR/OBX structure, but replace names and other direct identifiers with safe fixture values.
 2. **Flip the manifest to captured** — `edge/sim/fixtures/seamaty-sd1-oru-r01/manifest.json`:
    - `"synthetic": false`
    - `message.encoding`: the value you **confirmed** in Phase 2 (`ascii` or `utf-8`).
    - `source.reference`: the bench session id (e.g. `bench-2026-07-01T0930Z`) + instrument SN/firmware.
-   - Add a capture note: operator, date, sample id, the confirmed port, framing, encoding, PID-2.
+   - Add a capture note: operator, date, sample id, the confirmed port, framing, encoding, and
+     identifier layout (`PID-2`/`PID-3` present or blank; OBR accession fields observed).
    - Update `expected.*` only if the real values legitimately differ from the seed.
 3. **Re-validate against the oracle** (the digest *will* change — that's the point):
    ```bash
@@ -452,12 +469,13 @@ Bench is **done** when:
 - [ ] **Phase 1** Wi-Fi link verified: SD1 connection is Wi-Fi/WLAN, and SD1 `LIS Server` /
       `Host IP` equals this PC's current Wi-Fi IP (`192.168.1.128` on the 2026-06-30 check).
 - [ ] **Phase 2** raw frame captured: starts `0x0B`, ends `0x1C 0x0D`; **encoding recorded**;
-      **operator-set port recorded**; **PID-2 MRN confirmed** on the wire. *(Action #4 closed.)*
+      **operator-set port recorded**; **identifier layout recorded** (`PID-2`/`PID-3` present
+      or blank, OBR accession fields observed). *(Action #4 closed.)*
 - [ ] **Phase 3** bridge built **from source** (LIS-86), `/actuator/health/mllp` = UP, `2575` mapped.
 - [ ] **Phase 4** OpenELIS up, SD1 analyzer registered (ACTIVE).
 - [ ] **Phase 5** live `ORU^R01` → **ACK `MSA|AA`** → results **staged** in `analyzer_results`.
-- [ ] **Phase 5** quirks verified: message accepted via **PID-2**; **Alarm** routed to conclusion,
-      not a result.
+- [ ] **Phase 5** parser behaviours verified: message accepted via OBR/PID identifier routing;
+      if an `Alarm` OBX is present, **Alarm** routed to conclusion, not a result.
 - [ ] **Phase 6** fixture graduated (`synthetic:false` + real `message.hl7`), oracle re-validated,
       PR open, **LIS-79** updated.
 
@@ -492,7 +510,7 @@ Save under `~/bench-runs/<ISO8601>/`:
 - Screenshot of the SD1 network + LIS settings (Wi-Fi connection, LIS Server/Host IP, port,
   protocol) and of the OpenELIS Analyzer Results row.
 - Operator notes: instrument SN + firmware, sample id(s), confirmed **port / framing / encoding /
-  PID-2**, timestamp, anyone present.
+  identifier layout**, timestamp, anyone present.
 
 These become the `source.reference`/`note` on the graduated fixture and the LIS-79 audit trail.
 
