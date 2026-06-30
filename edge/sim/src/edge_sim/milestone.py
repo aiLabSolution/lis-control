@@ -96,10 +96,18 @@ class MilestoneOutcome:
 
     @property
     def all_final(self) -> bool:
-        """True when every observation is a final result (OBX-11 = F)."""
-        return bool(self.result_statuses) and all(
-            s == RESULT_STATUS_FINAL for s in self.result_statuses
-        )
+        """True when every analyte **result** is final (OBX-11 = F).
+
+        Kind-aware, mirroring :meth:`ingest_payload`: in-band warnings
+        (``KIND_WARNING``, e.g. the SD1 'Alarm' OBX) are not results, so they do not
+        gate result finality — an alarm carries no OBX-11 finality of its own and must
+        not drag an otherwise-final result set to non-final (LIS-86 / S2.10)."""
+        finals = [
+            finality
+            for obs, finality in zip(self.observations, self.result_statuses)
+            if obs.kind == KIND_RESULT
+        ]
+        return bool(finals) and all(s == RESULT_STATUS_FINAL for s in finals)
 
     @property
     def accepted(self) -> bool:

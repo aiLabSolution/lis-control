@@ -99,10 +99,13 @@ def _patient_id(pid) -> str:
 
     PID-3.1 (the CX patient identifier list) is the canonical id for most
     analyzers. The Seamaty SD1 instead carries the MRN in PID-2 (manual §3.3), so
-    we fall back to PID-2.1 only when PID-3 is absent/empty — a present PID-3 always
+    we fall back to PID-2.1 only when PID-3 is absent/blank — a present PID-3 always
     wins, leaving PID-3 analyzers (e.g. the EDAN H60S) unaffected (LIS-86 / S2.10).
+    Emptiness is tested on the stripped value so a whitespace-only PID-3 does not
+    shadow a real PID-2 MRN (the very identifier this fallback exists to preserve).
     """
-    return pid.component(3, 1) or pid.component(2, 1)
+    pid3 = pid.component(3, 1)
+    return pid3 if pid3.strip() else pid.component(2, 1)
 
 
 def _observation(seg, u) -> RawObservation:

@@ -17,6 +17,7 @@ fixture ``seamaty-sd1-oru-r01`` (PR #28) — no hardware:
 
 from pathlib import Path
 
+from edge_sim.cli import main as cli_main
 from edge_sim.fixtures import load_fixture
 from edge_sim.milestone import run_milestone
 from edge_sim.normalize import (
@@ -27,6 +28,8 @@ from edge_sim.normalize import (
     STATUS_UNMAPPED,
 )
 from edge_sim.oru import parse_oru_r01
+from edge_sim.replay import check_against_expected, replay_normalized
+from edge_sim.transport import LoopbackTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 SD1 = FIXTURES_ROOT / "seamaty-sd1-oru-r01"
@@ -180,3 +183,89 @@ def test_milestone_excludes_alarm_from_ingest_result_rows():
     assert {dto["rawCode"] for dto in payload} == {"GLU", "BUN", "CREA", "AST", "ALT", "TP"}
     # the warning is still surfaced as a note, just not as a result.
     assert any(w.raw_code == "Alarm" for w in out.warnings)
+
+
+def test_final_alarm_excluded_by_kind_filter_not_just_finality():
+    """Isolates the load-bearing guard. In the shipped SD1 fixture the alarm's trailing
+    F lands in OBX-10, so its finality is 'unknown' and the finality filter alone would
+    exclude it. Here the alarm is *final* (OBX-11=F) — so only the ``kind == RESULT``
+    filter keeps it out of the ingest result stream. Deleting that filter would let a
+    well-formed alarm masquerade as a numeric patient result; this test bites that."""
+    msg = (
+        "MSH|^~\\&|SMT|SD1|||20201207||ORU^R01|1|P|2.3.1\r"
+        "PID|1|SD1-0042\r"
+        "OBX|1|NM|GLU|GLU|95|mg/dL|70-110|N|||F\r"
+        "OBX|2|ST|Alarm|W3001|Reagent rotor warning||||||F"  # 6 trailing fields -> OBX-11=F
+    ).encode("ascii")
+    out = run_milestone(msg)
+    assert out.result_statuses[1] == "final"            # the alarm IS final here
+    payload = out.ingest_payload()
+    assert [dto["rawCode"] for dto in payload] == ["GLU"]  # alarm excluded despite being final
+    assert any(w.raw_code == "Alarm" for w in out.warnings)
+    assert out.all_final is True                         # a warning does not gate result finality
+
+
+def test_sd1_milestone_passes_exit_gate(capsys):
+    """The Stage-1 milestone exit gate must PASS for the SD1 fixture this slice adds:
+    the in-band alarm must not drag the (final, fully-normalized) result set to
+    non-final (all_final is kind-aware), and the CLI must exit 0."""
+    out = run_milestone(load_fixture(SD1).message_bytes)
+    assert out.accepted is True
+    assert out.all_final is True
+    assert cli_main(["milestone", "seamaty-sd1-oru-r01"]) == 0
+
+
+# --- conformance-path + CLI coverage (review hardening) ---------------------
+
+
+def test_check_against_expected_validates_sd1_result_rows():
+    """The reusable conformance path (replay.check_against_expected) actually checks
+    the SD1's normalized result rows against ``expected.results`` — not a silent pass —
+    and a wrong asserted LOINC is caught."""
+    fx = load_fixture(SD1)
+    res = replay_normalized(fx.message_bytes, LoopbackTransport())
+    assert check_against_expected(res, fx.expected) == []
+
+    bad = dict(fx.expected)
+    bad["results"] = [dict(r) for r in fx.expected["results"]]
+    bad["results"][0] = {**bad["results"][0], "loinc": "0000-0"}
+    problems = check_against_expected(res, bad)
+    assert any("results[0].loinc" in p for p in problems)
+
+
+def test_check_against_expected_validates_sd1_warning_row():
+    """The routed warning is validated against ``expected.warnings`` (count + identity),
+    so an alarm silently turning into a result — or vanishing — is caught."""
+    fx = load_fixture(SD1)
+    res = replay_normalized(fx.message_bytes, LoopbackTransport())
+    bad = dict(fx.expected)
+    bad["warnings"] = [{**fx.expected["warnings"][0], "raw_code": "NotAnAlarm"}]
+    problems = check_against_expected(res, bad)
+    assert any("warning[0].raw_code" in p for p in problems)
+
+
+def test_sd1_warning_matches_manifest_expected():
+    """Bind the manifest's ``expected.warnings`` row to the parsed warning (set_id,
+    raw_code, the OBX-4 warning code, and the note text) so they cannot drift."""
+    report = parse_oru_r01(load_fixture(SD1).message_bytes)
+    alarm = next(o for o in report.observations if o.raw_code == "Alarm")
+    exp = load_fixture(SD1).expected["warnings"][0]
+    assert alarm.set_id == exp["set_id"]
+    assert alarm.raw_code == exp["raw_code"]
+    assert alarm.sub_id == exp["code"]   # OBX-4 warning code, e.g. W3001
+    assert alarm.value == exp["text"]
+
+
+def test_cli_normalize_renders_sd1_alarm_as_warning_note(capsys):
+    """The operator-facing CLI surfaces the alarm as a [WARNING note], with PID-2 as
+    the patient id, the six analytes NORMALIZED, and the alarm never on a result line."""
+    rc = cli_main(["normalize", "seamaty-sd1-oru-r01"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "patient=SD1-0042" in out
+    assert "[WARNING note]" in out
+    assert "Reagent rotor" in out
+    assert out.count("[NORMALIZED]") == 6
+    for line in out.splitlines():
+        if "Alarm" in line:
+            assert "LOINC" not in line   # the alarm is never rendered as a normalized result row
