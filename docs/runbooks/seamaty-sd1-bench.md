@@ -228,8 +228,11 @@ the bytes. This is what closes **Action #4**.
    ```bash
    mkdir -p ~/bench-runs/$(date -u +%Y%m%dT%H%M%SZ) && cd $_
 
-   # Option A — socat: logs every byte to a file (and to the terminal as hex)
-   socat -x -v TCP-LISTEN:2575,reuseaddr,fork CREATE:sd1-raw.bin
+   # Option A — socat: one-way capture from the SD1 socket to a file.
+   # -u is required because CREATE is write-only; without it socat tries to read
+   # back from sd1-raw.bin and exits with "Bad file descriptor".
+   rm -f sd1-raw.bin
+   socat -u -x -v TCP-LISTEN:2575,reuseaddr,fork CREATE:sd1-raw.bin
 
    # Option B — ncat: one connection, dump to file (if ncat is installed)
    ncat -l 0.0.0.0 2575 > sd1-raw.bin
