@@ -1,8 +1,8 @@
 # Runbook — Seamaty SD1 bench test (LIS-79 / S2.9 · Stage-1 checklist Action #4)
 
-Bring a **physical Seamaty SD1** dry-chemistry analyzer onto the bench, connect it to a PC
-over a single Ethernet cable, and drive one real `ORU^R01` result through the production
-edge **bridge** → **OpenELIS** core, then **graduate** the synthetic fixture
+Bring a **physical Seamaty SD1** dry-chemistry analyzer onto the bench, connect it to the
+same Wi-Fi LAN as the bench PC, and drive one real `ORU^R01` result through the production
+edge **bridge** -> **OpenELIS** core, then **graduate** the synthetic fixture
 `seamaty-sd1-oru-r01` to a real capture.
 
 This is the field execution of **Action #4** in
@@ -20,7 +20,7 @@ bridge — **LIS-86**, pin `a98db88`. Unit→UCUM + full code→LOINC core seed 
 | # | Phase | Goal | Gate |
 |---|---|---|---|
 | **0** | **Oracle** | Run `edge-sim` to print the known-good expected output you will diff against. | 17 SD1 tests green |
-| **1** | **Link** | Direct Ethernet, static IPs, firewall, SD1 LIS menu → host IP:port. | `ping` both ways |
+| **1** | **Link** | Same Wi-Fi LAN, firewall, SD1 LIS Server / Host IP -> this PC's Wi-Fi IP:port. | SD1 can reach the listener |
 | **2** | **Raw capture (FIRST)** | Point SD1 at a *dumb* TCP listener; lock the operator-set port; confirm MLLP framing + encoding + PID-2 on the wire. | `0x0B …0x1C 0x0D` frame saved |
 | **3** | **Bridge** | Build the bridge **from the pinned source** (LIS-86), enable MLLP on 2575, point it at OpenELIS. | `/actuator/health/mllp` = UP |
 | **4** | **Core** | Bring up OpenELIS, register the SD1 analyzer. | UI login + analyzer ACTIVE |
@@ -42,7 +42,7 @@ unmapped.
 ## 1. The mental model (read this first)
 
 ```
-  Seamaty SD1                direct Ethernet            Bench PC
+  Seamaty SD1                same Wi-Fi LAN             Bench PC
  (TCP CLIENT)  ─────── MLLP / HL7 v2.3.1 ───────▶  [ bridge :2575 ]  (LISTENS)
   upload-only        <SB>0x0B … payload … 0x1C 0x0D       │ parse + build FHIR R4 bundle
   ORU^R01  ◀── ACK^R01 (MSA-1=AA) ──────────────          ▼
@@ -58,6 +58,8 @@ Facts that drive every step below (all verified against the pin):
 - **The SD1 is the TCP *client*.** It *dials out* to a host IP:port you set in its LIS menu.
   Your PC **listens**. Upload-only: it sends `ORU^R01`, expects an `ACK` back. No worklist/host-query.
   *(`edge/sim/fixtures/seamaty-sd1-oru-r01/manifest.json`)*
+- **On the Wi-Fi bench, the SD1's `LIS Server` / `Host IP` is the bench PC's Wi-Fi IP.**
+  Current verified bench value (2026-06-30): `wlan0` = `192.168.1.128/24`.
 - **HL7 v2.3.1 over MLLP.** Frame = `SB(0x0B)` + payload + `EB(0x1C)` + `CR(0x0D)`.
   *(`edge/drivers/src/main/java/org/itech/ahb/mllp/MLLPConfig.java`)*
 - **Bridge MLLP listener: port `2575`**, but `org.itech.ahb.mllp.enabled` defaults to **false**
@@ -100,9 +102,8 @@ and graduate the fixture — the core LOINC seed is a separate PR (LIS-87).
 
 **Hardware**
 - Seamaty SD1, powered, with a tested sample loaded (so you can trigger a real result send).
-- One Ethernet (RJ45) cable. Modern NICs auto-sense (auto-MDIX); a crossover cable is only
-  needed for old hardware. A small switch also works if you prefer not to go point-to-point.
-- The bench PC (this box) with a free Ethernet NIC.
+- Wi-Fi access for the SD1 on the same LAN used by the bench PC.
+- The bench PC (this box), already joined to the bench Wi-Fi.
 
 **Software (already on this box)**
 - Docker Engine + Compose v2 (`docker compose version`).
@@ -111,7 +112,7 @@ and graduate the fixture — the core LOINC seed is a separate PR (LIS-87).
   cd /home/marloeu/projects/lis-control
   git submodule update --init edge/drivers core/openelis
   ```
-- `ncat`/`socat` and `tcpdump`/`hexdump` for the raw capture (Phase 2).
+- `socat` and `tcpdump`/`hexdump` for the raw capture (Phase 2). `ncat` is optional if installed.
 - Python venv for the oracle is pre-built at `edge/sim/.venv` (Phase 0).
 
 **Docs**
@@ -174,36 +175,47 @@ replaced by real bench bytes.
 
 ---
 
-## 4. Phase 1 — Link bring-up (direct Ethernet)
+## 4. Phase 1 — Link bring-up (Wi-Fi/LAN)
 
-> Replace placeholders: `<NIC>` = your Ethernet interface (`ip -br link` to find it, e.g. `enp3s0`),
-> `<PC_IP>`/`<SD1_IP>` = static IPs on a private /24, `<PORT>` = the listener port (target **2575**).
+> Current bench snapshot (checked 2026-06-30): `wlan0` is UP at `192.168.1.128/24`,
+> with the default route via `192.168.1.1`. `192.168.1.155` also replies on the Wi-Fi
+> LAN, but it is not this host in the current routing table. If the address changes,
+> use `ip -br addr show wlan0` as the source of truth.
 
-1. **Plug** the cable between the SD1 and the PC NIC.
-2. **Give the PC a static IP** (no DHCP on a point-to-point link):
+1. **Join the SD1 to the same Wi-Fi LAN as the bench PC.**
+   In the SD1 network / communication settings, set the connection type to **Wi-Fi/WLAN**
+   rather than Ethernet or RS-232.
+2. **Verify the PC's Wi-Fi IP before touching the SD1 LIS menu:**
    ```bash
-   sudo ip addr add 192.168.50.10/24 dev <NIC>
-   sudo ip link set <NIC> up
-   ip -br addr show <NIC>          # expect: <NIC> UP 192.168.50.10/24
+   ip -br addr show wlan0           # current bench: wlan0 UP 192.168.1.128/24
+   ip route                         # expect default route via wlan0
    ```
-   *(Make it persistent later via netplan/NetworkManager if you keep the rig.)*
-3. **Configure the SD1's LIS menu** (Settings → LIS / Communication; SD1 manual §3.x):
-   - **Mode/Protocol:** HL7 (MLLP / TCP-IP). RS-232 is the alternative — we use Ethernet.
-   - **Host IP:** `192.168.50.10` (the PC).
+3. **Configure the SD1's LIS menu** (Settings -> LIS / Communication; SD1 manual §3.x):
+   - **Connection:** Wi-Fi/WLAN.
+   - **Mode/Protocol:** HL7 (MLLP / TCP-IP). RS-232 is the alternative; do not use it for this bench.
+   - **LIS Server / Host IP:** `192.168.1.128` (the bench PC's current Wi-Fi IP). If `wlan0`
+     reports a different address, use that address instead. Do **not** enter `192.168.1.155`
+     unless that is currently the PC's Wi-Fi IP.
    - **Port:** `2575` (match the bridge MLLP port). **Write down whatever the operator field
      actually allows** — this *operator-set port is one of the things this bench locks (Action #4).*
    - **Patient sample mode** (`MSH-16=0`).
-   - Set the SD1's own IP to `192.168.50.20/24` if it asks.
+   - Record the SD1's own Wi-Fi IP as `<SD1_WIFI_IP>`; DHCP is fine as long as it stays on
+     `192.168.1.0/24`.
 4. **Open the firewall** on the listener port:
    ```bash
    sudo ufw allow 2575/tcp        # UFW
    # or: sudo firewall-cmd --add-port=2575/tcp && sudo firewall-cmd --reload
    ```
-5. **Prove the link** (from the PC):
+5. **Prove the Wi-Fi path** (from the PC):
    ```bash
-   ping -c3 192.168.50.20         # the SD1 — expect replies (some SD1 firmware won't answer ICMP;
-                                  # if so, rely on the Phase-2 capture to confirm reachability)
+   ping -c3 <SD1_WIFI_IP>         # the SD1; some firmware will not answer ICMP
+
+   # TCP 2575 succeeds only while the Phase-2 raw listener or Phase-3 bridge is running.
+   timeout 3 bash -c '</dev/tcp/192.168.1.128/2575'
    ```
+
+   If the TCP check returns `Connection refused` before Phase 2/3, the route is fine but no
+   LIS listener is up yet. Start the raw `socat` listener or the bridge before testing SD1 upload.
 
 ---
 
@@ -219,11 +231,11 @@ the bytes. This is what closes **Action #4**.
    # Option A — socat: logs every byte to a file (and to the terminal as hex)
    socat -x -v TCP-LISTEN:2575,reuseaddr,fork CREATE:sd1-raw.bin
 
-   # Option B — ncat: one connection, dump to file
+   # Option B — ncat: one connection, dump to file (if ncat is installed)
    ncat -l 0.0.0.0 2575 > sd1-raw.bin
 
    # Option C — packet-level pcap (run alongside A/B, full evidence)
-   sudo tcpdump -i <NIC> -w sd1-flow.pcap tcp port 2575
+   sudo tcpdump -i wlan0 -w sd1-flow.pcap tcp port 2575
    ```
 2. **On the SD1, send a result** (re-print / re-transmit the loaded sample to LIS).
 3. **Inspect the frame:**
@@ -281,7 +293,7 @@ org:
     ahb:
       forward-http-server:
         # was http://localhost:8080/...  — localhost won't reach OE from inside the container.
-        uri: http://<HOST_IP>:8080/api/OpenELIS-Global/analyzer   # <HOST_IP> = this box's IP
+        uri: http://<HOST_IP>:8080/api/OpenELIS-Global/analyzer   # current Wi-Fi bench: 192.168.1.128
       mllp:
         enabled: true     # belt-and-suspenders; dev profile sets this too
         port: 2575
@@ -297,7 +309,7 @@ analyzer is identified from `MSH-3/MSH-4`):
 # edge/drivers/configuration.yml — bridge.analyzers
 bridge:
   analyzers:
-    "192.168.50.20":
+    "<SD1_WIFI_IP>":
       id: SEAMATY-SD1-001
       name: "Seamaty SD1"
       expectedProtocol: HL7
@@ -341,6 +353,8 @@ bash deploy/ci/healthcheck.sh        # waits: db healthy + webapp running + UI 2
 - **Login:** `admin` / `adminADMIN!`.
 - **Teardown later (keep data):** `docker compose --project-directory core/openelis $C down`
   — **never `-v`** (that wipes the `openelis_db-data` volume).
+- **Current Wi-Fi LAN check:** `https://192.168.1.128` should reach the same OpenELIS proxy
+  while this box keeps that `wlan0` address.
 
 > To exercise the **full LOINC seed** beyond `GLU`, run the from-source `openelis-dev` build
 > (`lis-8`) per the bring-up note — but for *this* bench, the prebuilt webapp is fine; treat the
@@ -364,13 +378,13 @@ Now point the real SD1 at the **bridge** (Phase 2 used a dumb listener; both can
 once — stop the `ncat`/`socat` listener first).
 
 1. Keep a `tcpdump` running for evidence:
-   `sudo tcpdump -i <NIC> -w sd1-e2e.pcap tcp port 2575`
+   `sudo tcpdump -i wlan0 -w sd1-e2e.pcap tcp port 2575`
 2. On the SD1, **send the sample result** again (now the bridge is the listener).
 3. **Watch the bridge** ingest and forward:
    ```bash
    docker logs -f openelis-analyzer-bridge | grep -Ei "mllp|processing|fhir|routed|MSA"
    ```
-   Expect: message received from `192.168.50.20` → FHIR bundle built → `POST …/analyzer/fhir`
+   Expect: message received from `<SD1_WIFI_IP>` -> FHIR bundle built -> `POST …/analyzer/fhir`
    → `ACK` returned (`MSA|AA`).
 4. **Confirm the ACK on the wire** (the SD1 should report a successful upload; or read the pcap):
    ```bash
@@ -432,6 +446,8 @@ Edge slices are **two-level** — land in both the sim mirror *and*, if the wire
 Bench is **done** when:
 
 - [ ] **Phase 0** oracle green: `pytest tests/test_seamaty_sd1.py` = 17 passed.
+- [ ] **Phase 1** Wi-Fi link verified: SD1 connection is Wi-Fi/WLAN, and SD1 `LIS Server` /
+      `Host IP` equals this PC's current Wi-Fi IP (`192.168.1.128` on the 2026-06-30 check).
 - [ ] **Phase 2** raw frame captured: starts `0x0B`, ends `0x1C 0x0D`; **encoding recorded**;
       **operator-set port recorded**; **PID-2 MRN confirmed** on the wire. *(Action #4 closed.)*
 - [ ] **Phase 3** bridge built **from source** (LIS-86), `/actuator/health/mllp` = UP, `2575` mapped.
@@ -451,7 +467,8 @@ until the core seed lands. That is *not* a bench failure.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| SD1 won't connect / no bytes in Phase 2 | Wrong host IP/port on the SD1; firewall; link down | Re-check SD1 LIS menu host=`<PC_IP>` port=`2575`; `ufw allow 2575/tcp`; `ip -br addr` shows NIC UP |
+| SD1 says `LIS Server disconnected` after switching to Wi-Fi | Correct IP but no listener on `2575`, or the SD1 points at another LAN host | Verify `ip -br addr show wlan0`; set SD1 `LIS Server` / `Host IP` to this PC's Wi-Fi IP (current check: `192.168.1.128`); start Phase-2 `socat` or the Phase-3 bridge; verify `ss -ltnp | grep :2575` |
+| SD1 won't connect / no bytes in Phase 2 | Wrong host IP/port on the SD1; firewall; Wi-Fi isolation; SD1 not on the same subnet | Re-check SD1 LIS menu host=`<PC_WIFI_IP>` port=`2575`; `ufw allow 2575/tcp`; `ip -br addr show wlan0`; confirm SD1 Wi-Fi IP is on `192.168.1.0/24` |
 | Captured bytes don't start with `0x0B` | SD1 in a non-MLLP mode, or raw HL7/serial | Check SD1 LIS mode = HL7/MLLP-TCP; note the actual framing (a real finding) |
 | `file sd1-raw.bin` says UTF-8, manifest says ASCII | The §1.6-vs-p4 encoding conflict | Record UTF-8 in the captured manifest; flag to LIS-87 (bridge encoding handling) |
 | Bridge `health/mllp` = DOWN | MLLP not enabled, or port not mapped | Confirm `mllp.enabled=true` (dev profile), and `2575:2575` is in `docker-compose-dev.yml` |
@@ -469,7 +486,8 @@ Save under `~/bench-runs/<ISO8601>/`:
 - `sd1-raw.bin` (raw MLLP frame) and the extracted `message.hl7`.
 - `sd1-flow.pcap` / `sd1-e2e.pcap` (full wire, Wireshark-readable).
 - `bridge.log` (`docker logs openelis-analyzer-bridge > bridge.log`).
-- Screenshot of the SD1 LIS settings (host/port/protocol) and of the OpenELIS Analyzer Results row.
+- Screenshot of the SD1 network + LIS settings (Wi-Fi connection, LIS Server/Host IP, port,
+  protocol) and of the OpenELIS Analyzer Results row.
 - Operator notes: instrument SN + firmware, sample id(s), confirmed **port / framing / encoding /
   PID-2**, timestamp, anyone present.
 
@@ -491,4 +509,3 @@ These become the `source.reference`/`note` on the graduated fixture and the LIS-
   `docs/testing/stage-1-3-machine-access-checklist.md` (Action #4), ADR-0005 (MLLP/ACK), ADR-0008.
 - **Plane:** **LIS-79** (graduate SD1 fixture), **LIS-86** (SD1 quirks — done), **LIS-87** (UCUM/LOINC seed).
 - **Bring-up:** `docs/runbooks/core-bootstrap.md`, and the `local-openelis-bringup` ops note.
-```
