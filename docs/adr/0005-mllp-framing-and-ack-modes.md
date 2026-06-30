@@ -134,3 +134,9 @@ Stage 1 analyzers (RAYTO RAC-050, Mindray labXpert). Three questions shaped how:
   if one is ever added. This crosses the original "`ack.py` knows only `MSH`" boundary
   only in the *listener* (`milestone.acknowledge()`), which owns the reject decision;
   `ack.py` stays `MSH`-only (it just builds the `ERR` it is told to).
+- **Channel-config schema (S1.0 / ADR-0015).** This slice's MLLP transport (port + original-mode
+  ACK + the `MSH`-routed sending/receiving identities) is the **Stage-1 instance of the
+  per-analyzer channel-config schema** recorded in
+  [ADR-0015 §Decision 3](0015-edge-transport-substrate-and-channel-attachment.md). The production
+  substrate runs this framing in the reused analyzer-bridge's native MLLP listener
+  (`org.itech.ahb.mllp.*`); the simulator codec here is the conformance twin of that listener.
