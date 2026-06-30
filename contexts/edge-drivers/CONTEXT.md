@@ -17,9 +17,10 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** `8cd3249` (develop HEAD at vesting; describes `2.3.5-87-g8cd3249`). Release tags
-  (`3.0.x`) exist — a tagged pin under change control may be preferred for the production
-  data-path; revisit in review / a follow-up.
+- **Pin:** release tag **`3.0.4`** (`53b6acb`). The `3.0.x` tags are cut from `develop`
+  (3.0.4 is a direct ancestor of develop HEAD, 2 commits behind); a tagged pin is preferred
+  for the production data-path. ADR-0015 / LIS-86 facts verified identical at the tag.
+  Move the pin under change control.
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
   (ADR-0001 / CLAUDE.md).
