@@ -43,6 +43,8 @@ from .e1394 import (
 from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
+    KIND_RESULT,
+    KIND_WARNING,
     STATUS_NORMALIZED,
     STATUS_PARTIAL,
     STATUS_UNMAPPED,
@@ -103,6 +105,8 @@ __all__ = [
     "STATUS_NORMALIZED",
     "STATUS_PARTIAL",
     "STATUS_UNMAPPED",
+    "KIND_RESULT",
+    "KIND_WARNING",
     # ASTM E1381 codec + session (LIS-23 / S2.1)
     "ENQ",
     "ACK",

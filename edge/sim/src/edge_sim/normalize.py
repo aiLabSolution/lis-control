@@ -28,11 +28,23 @@ __all__ = [
     "STATUS_NORMALIZED",
     "STATUS_PARTIAL",
     "STATUS_UNMAPPED",
+    "KIND_RESULT",
+    "KIND_WARNING",
 ]
 
 STATUS_NORMALIZED = "NORMALIZED"  # both code and unit resolved
 STATUS_PARTIAL = "PARTIAL"  # exactly one of code/unit resolved
 STATUS_UNMAPPED = "UNMAPPED"  # neither resolved
+
+# Whether an OBX is a patient analyte result or an in-band instrument flag/note.
+KIND_RESULT = "RESULT"  # a numeric/analyte patient result row
+KIND_WARNING = "WARNING"  # an in-band instrument warning (e.g. SD1 'Alarm' OBX) — a note, not a result
+
+# In-band warning sentinel: the Seamaty SD1 emits instrument warnings in-band as an
+# ST OBX whose OBX-3 observation identifier is the literal 'Alarm' (warning code in
+# OBX-4, e.g. W3001; manual §4.1.1) — an instrument flag, not a patient analyte. Such
+# an OBX is routed as KIND_WARNING so it never lands as a numeric result (LIS-86 / S2.10).
+_INBAND_WARNING_CODE = "ALARM"
 
 
 @dataclass(frozen=True)
@@ -47,6 +59,7 @@ class NormalizedObservation:
     loinc: str  # normalized LOINC ("" if unmapped)
     ucum_value: str  # normalized UCUM unit ("" if unmapped)
     status: str  # NORMALIZED | PARTIAL | UNMAPPED
+    kind: str = KIND_RESULT  # RESULT (analyte) | WARNING (in-band instrument flag/note)
 
 
 # --- default RAYTO RAC-050 CBC terminology seed (LIS-14 / S1.2) -------------
@@ -60,6 +73,12 @@ _DEFAULT_CODES: dict[str, str] = {
     "RBC": "789-8",  # Erythrocytes [#/volume] in Blood by Automated count
     "MCV": "787-2",  # MCV [Entitic volume] by Automated count
     "GLU": "2345-7",  # Glucose [Mass/volume] in Serum or Plasma (aligns with LIS-8 seed)
+    # Seamaty SD1 dry-chemistry biochem panel — serum/plasma LOINCs (LIS-86 / S2.10).
+    "BUN": "3094-0",  # Urea nitrogen [Mass/volume] in Serum or Plasma
+    "CREA": "2160-0",  # Creatinine [Mass/volume] in Serum or Plasma
+    "AST": "1920-8",  # Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma
+    "ALT": "1742-6",  # Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma
+    "TP": "2885-2",  # Protein [Mass/volume] in Serum or Plasma (total protein)
 }
 
 # raw vendor unit string -> UCUM unit
@@ -80,6 +99,7 @@ _DEFAULT_UNITS: dict[str, str] = {
     "pg": "pg",
     "mg/dL": "mg/dL",
     "mmol/L": "mmol/L",
+    "U/L": "U/L",  # enzyme catalytic activity (Seamaty SD1 AST/ALT); UCUM unit "U" per litre (LIS-86)
 }
 
 
@@ -130,7 +150,14 @@ class Normalizer:
             loinc=loinc,
             ucum_value=ucum,
             status=status,
+            kind=KIND_WARNING if _is_inband_warning(obs) else KIND_RESULT,
         )
 
     def normalize_report(self, report: OruReport) -> list[NormalizedObservation]:
         return [self.normalize_observation(obs) for obs in report.observations]
+
+
+def _is_inband_warning(obs: RawObservation) -> bool:
+    """True for an in-band instrument-warning OBX (OBX-3 = 'Alarm'), routed as a
+    flag/note rather than a patient result — see :data:`_INBAND_WARNING_CODE`."""
+    return (obs.raw_code or "").strip().upper() == _INBAND_WARNING_CODE

@@ -13,7 +13,7 @@ from .archive import RawMessageArchive, archive_fixture
 from .e1394 import parse_e1394
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .milestone import run_milestone
-from .normalize import Normalizer
+from .normalize import KIND_WARNING, Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .query import (
     QueryError,
@@ -150,6 +150,10 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     rows = Normalizer().normalize_report(report)
     print(f"{fx.id}\t{report.message_type}\tpatient={report.patient_id}\tspecimen={report.specimen_id}")
     for r in rows:
+        if r.kind == KIND_WARNING:
+            # In-band instrument warning routed as a note, not a result (LIS-86).
+            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [WARNING note] {r.value}")
+            continue
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
             f"\t-> LOINC {r.loinc or '-'} / UCUM {r.ucum_value or '-'}\t[{r.status}]"
@@ -180,6 +184,10 @@ def _cmd_milestone(args: argparse.Namespace) -> int:
     )
     all_normalized = True
     for o, fin in zip(out.observations, out.result_statuses):
+        if o.kind == KIND_WARNING:
+            # Routed as a note, not a result — does not count toward result normalization.
+            print(f"  OBX-{o.set_id}\t{o.raw_code}\t-> [WARNING note] {o.value}")
+            continue
         all_normalized = all_normalized and bool(o.loinc and o.ucum_value)
         print(
             f"  OBX-{o.set_id}\t{o.raw_code} {o.value} {o.raw_unit}"

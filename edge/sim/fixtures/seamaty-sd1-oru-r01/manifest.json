@@ -13,6 +13,19 @@
   "synthetic": true,
   "expected": {
     "message_type": "ORU^R01",
-    "specimen_id": "SD1-SPEC-0007"
+    "patient_id": "SD1-0042",
+    "patient_id_source": "PID-2",
+    "specimen_id": "SD1-SPEC-0007",
+    "results": [
+      { "set_id": "1", "raw_code": "GLU", "value": "95", "raw_unit": "mg/dL", "loinc": "2345-7", "ucum_value": "mg/dL", "status": "NORMALIZED" },
+      { "set_id": "2", "raw_code": "BUN", "value": "14", "raw_unit": "mg/dL", "loinc": "3094-0", "ucum_value": "mg/dL", "status": "NORMALIZED" },
+      { "set_id": "3", "raw_code": "CREA", "value": "0.9", "raw_unit": "mg/dL", "loinc": "2160-0", "ucum_value": "mg/dL", "status": "NORMALIZED" },
+      { "set_id": "4", "raw_code": "AST", "value": "28", "raw_unit": "U/L", "loinc": "1920-8", "ucum_value": "U/L", "status": "NORMALIZED" },
+      { "set_id": "5", "raw_code": "ALT", "value": "33", "raw_unit": "U/L", "loinc": "1742-6", "ucum_value": "U/L", "status": "NORMALIZED" },
+      { "set_id": "6", "raw_code": "TP", "value": "7.2", "raw_unit": "g/dL", "loinc": "2885-2", "ucum_value": "g/dL", "status": "NORMALIZED" }
+    ],
+    "warnings": [
+      { "set_id": "7", "raw_code": "Alarm", "code": "W3001", "kind": "WARNING", "text": "Reagent rotor is not allowed to be re-used. Please re-test with a new one." }
+    ]
   }
 }
