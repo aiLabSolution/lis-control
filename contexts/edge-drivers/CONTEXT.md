@@ -17,10 +17,11 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release tag **`3.0.4`** (`53b6acb`). The `3.0.x` tags are cut from `develop`
-  (3.0.4 is a direct ancestor of develop HEAD, 2 commits behind); a tagged pin is preferred
-  for the production data-path. ADR-0015 / LIS-86 facts verified identical at the tag.
-  Move the pin under change control.
+- **Pin:** `develop` HEAD **`a98db88`** — the merge of the LIS-86 bridge change (PR
+  `openelis-analyzer-bridge#2`: SD1 PID-2 fallback + in-band 'Alarm' routing) on top of
+  `3.0.4` (`53b6acb`). A tagged pin is preferred for the production data-path; cutting a
+  `3.0.5` release tag from this commit and repinning to it is the change-control follow-up
+  (as with the `3.0.4` repin after the initial develop-HEAD vesting).
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
   (ADR-0001 / CLAUDE.md).
@@ -70,4 +71,9 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
   **LIS-88** (fix before Stage-2 bench).
 - Cross-contract conformance (bridge FHIR `Observation` ↔ sim `NormalizedObservation`) —
   **LIS-87**.
-- Per-analyzer SD1 ingestion (registry maps + PID-2 + alarm-OBX) — **LIS-86**.
+- Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN fallback +
+  in-band 'Alarm' OBX → `DiagnosticReport` conclusion, not a result) are **landed** (PR #2,
+  pin `a98db88`). Remaining for full closure: the production code→LOINC seed is OE-core
+  `AnalyzerTestMapping`/`Test.loinc` (a separate **core PR**, not bridge code), and the
+  U/L→UCUM `Quantity` mapping + Patient/MRN channel + OBX-11 finality + bridge↔sim
+  cross-contract are **LIS-87**.
