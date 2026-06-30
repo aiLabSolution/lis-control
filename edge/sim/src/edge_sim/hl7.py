@@ -138,6 +138,13 @@ def parse_message(raw: bytes | str) -> Message:
     so non-MSH-led fragments still parse. Raises :class:`Hl7Error` only if there
     is no parseable segment at all.
     """
+    # latin-1 (ISO-8859-1) is a deliberate, lossless byte→codepoint decode: it never
+    # raises, is a strict superset of ASCII, and matches an analyzer's declared
+    # character set where that is ASCII/ISO-8859-1 (e.g. the Seamaty SD1, manual §1.6;
+    # its fixture carries an 'ASCII' token in the MSH character-set area). A per-analyzer
+    # encoding that is actually UTF-8 (the SD1 manual's p4 remark conflicts) is confirmed
+    # at the bench capture (LIS-79) and applied there; until then this superset decode is
+    # safe for the ASCII-only synthetic fixtures (LIS-86 / S2.10).
     text = raw.decode("latin-1") if isinstance(raw, (bytes, bytearray)) else raw
     raw_segments = _split_segments(text)
     if not raw_segments:

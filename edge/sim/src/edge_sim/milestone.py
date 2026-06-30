@@ -33,7 +33,7 @@ from .ack import (
 )
 from .ingest import to_ingest_payload
 from .mllp import frame
-from .normalize import NormalizedObservation, Normalizer
+from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
 from .oru import OruParseError, OruReport, parse_oru_r01
 from .transport import MllpTransport
 
@@ -96,30 +96,47 @@ class MilestoneOutcome:
 
     @property
     def all_final(self) -> bool:
-        """True when every observation is a final result (OBX-11 = F)."""
-        return bool(self.result_statuses) and all(
-            s == RESULT_STATUS_FINAL for s in self.result_statuses
-        )
+        """True when every analyte **result** is final (OBX-11 = F).
+
+        Kind-aware, mirroring :meth:`ingest_payload`: in-band warnings
+        (``KIND_WARNING``, e.g. the SD1 'Alarm' OBX) are not results, so they do not
+        gate result finality — an alarm carries no OBX-11 finality of its own and must
+        not drag an otherwise-final result set to non-final (LIS-86 / S2.10)."""
+        finals = [
+            finality
+            for obs, finality in zip(self.observations, self.result_statuses)
+            if obs.kind == KIND_RESULT
+        ]
+        return bool(finals) and all(s == RESULT_STATUS_FINAL for s in finals)
 
     @property
     def accepted(self) -> bool:
         """True when the listener accepted the message (ACK MSA-1 = AA)."""
         return self.ack_code == AckCode.AA.value
 
-    def ingest_payload(self) -> list[dict]:
-        """The core ingest contract DTOs (core ADR-0003) for the **final**
-        observations only — what the edge hands the core persistence seam.
+    @property
+    def warnings(self) -> tuple[NormalizedObservation, ...]:
+        """The in-band instrument warnings (e.g. the SD1 'Alarm' OBX) routed out of
+        the result stream — surfaced here as notes so a flag is visible without ever
+        masquerading as a patient analyte result (LIS-86 / S2.10)."""
+        return tuple(o for o in self.observations if o.kind == KIND_WARNING)
 
-        Non-final observations (preliminary / corrected / cancelled / …, OBX-11 ≠
-        F/U) are **held back**: the edge does not land a non-final result in the
-        append-only Result store as if authoritative — persisting a preliminary
-        result indistinguishably from a final one is a clinical hazard. Carrying
-        finality onto the row (so a later preliminary→final reconciliation can
-        supersede it) is deferred (ADR-0013); until then, only final results flow."""
+    def ingest_payload(self) -> list[dict]:
+        """The core ingest contract DTOs (core ADR-0003) for the **final analyte
+        results** only — what the edge hands the core persistence seam.
+
+        Two classes are held back. Non-final observations (preliminary / corrected /
+        cancelled / …, OBX-11 ≠ F/U) are not landed in the append-only Result store
+        as if authoritative — persisting a preliminary result indistinguishably from
+        a final one is a clinical hazard (carrying finality onto the row for a later
+        preliminary→final reconciliation is deferred, ADR-0013). In-band instrument
+        warnings (``KIND_WARNING``, e.g. the SD1 'Alarm' OBX) are routed out entirely
+        — an alarm is a note, not a numeric result, and must never enter the result
+        stream (LIS-86 / S2.10). Until then, only final analyte results flow."""
         return to_ingest_payload(
             obs
             for obs, finality in zip(self.observations, self.result_statuses)
-            if finality == RESULT_STATUS_FINAL
+            if finality == RESULT_STATUS_FINAL and obs.kind == KIND_RESULT
         )
 
 

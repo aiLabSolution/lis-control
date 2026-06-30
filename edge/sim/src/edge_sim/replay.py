@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from .archive import RawMessageArchive, archive_fixture
 from .fixtures import Fixture
-from .normalize import NormalizedObservation, Normalizer
+from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
 from .oru import parse_oru_r01
 from .transport import Transport
 
@@ -160,19 +160,45 @@ def check_against_expected(replay: NormalizedReplay, expected: dict) -> list[str
         if key in expected and expected[key] != actual:
             problems.append(f"{key}: expected {expected[key]!r}, got {actual!r}")
 
-    exp_obs = expected.get("observations")
-    if exp_obs is not None:
-        if len(exp_obs) != len(replay.observations):
-            problems.append(
-                f"observations: expected {len(exp_obs)}, got {len(replay.observations)}"
-            )
-        for i, (want, got) in enumerate(zip(exp_obs, replay.observations)):
-            for field in ("set_id", "value", "raw_code", "raw_unit", "loinc", "ucum_value", "status"):
+    # A manifest asserts its rows under either the flat ``observations`` key (a
+    # result-only message — the RAYTO/EDAN shape) or, when the analyzer interleaves
+    # in-band warnings, the routed ``results`` key (only the analyte result rows,
+    # KIND_RESULT). Either is validated against the corresponding subset so a
+    # warning-bearing fixture (e.g. the Seamaty SD1) still gets full row-level
+    # conformance checking, not a silent pass (LIS-86 / S2.10).
+    problems += _check_rows("observations", expected.get("observations"), replay.observations)
+    results = tuple(o for o in replay.observations if o.kind == KIND_RESULT)
+    problems += _check_rows("results", expected.get("results"), results)
+
+    exp_warn = expected.get("warnings")
+    if exp_warn is not None:
+        warnings = tuple(o for o in replay.observations if o.kind == KIND_WARNING)
+        if len(exp_warn) != len(warnings):
+            problems.append(f"warnings: expected {len(exp_warn)}, got {len(warnings)}")
+        for i, (want, got) in enumerate(zip(exp_warn, warnings)):
+            for field in ("set_id", "value", "raw_code"):
                 if field in want and want[field] != getattr(got, field):
                     problems.append(
-                        f"obs[{i}].{field}: expected {want[field]!r}, "
-                        f"got {getattr(got, field)!r}"
+                        f"warning[{i}].{field}: expected {want[field]!r}, got {getattr(got, field)!r}"
                     )
+    return problems
+
+
+def _check_rows(key: str, expected_rows, got_rows) -> list[str]:
+    """Compare an asserted list of normalized rows to the produced rows (by the
+    fields the contract pins). Returns the mismatch descriptions; empty if the
+    ``expected`` key is absent (a manifest may assert a subset)."""
+    if expected_rows is None:
+        return []
+    problems: list[str] = []
+    if len(expected_rows) != len(got_rows):
+        problems.append(f"{key}: expected {len(expected_rows)}, got {len(got_rows)}")
+    for i, (want, got) in enumerate(zip(expected_rows, got_rows)):
+        for field in ("set_id", "value", "raw_code", "raw_unit", "loinc", "ucum_value", "status"):
+            if field in want and want[field] != getattr(got, field):
+                problems.append(
+                    f"{key}[{i}].{field}: expected {want[field]!r}, got {getattr(got, field)!r}"
+                )
     return problems
 
 
