@@ -2,3 +2,7 @@
 	path = core/openelis
 	url = https://github.com/aiLabSolution/OpenELIS-Global-2.git
 	branch = main
+[submodule "edge/drivers"]
+	path = edge/drivers
+	url = https://github.com/aiLabSolution/openelis-analyzer-bridge.git
+	branch = develop
