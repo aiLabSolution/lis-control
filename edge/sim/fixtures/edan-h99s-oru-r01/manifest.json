@@ -52,6 +52,14 @@
         "field": "PID-2 vs PID-3",
         "kb": "§5.2",
         "detail": "EDAN carries the patient number in PID-2 (PID-3 = Age^unit). Parsers prefer PID-3.1 then fall back to PID-2.1, so a populated PID-3 age (e.g. 35^Year) would be mistaken for the patient id. This seed leaves PID-3 age empty (^0), so the PID-2 fallback resolves H99S-PT-01 correctly; confirm the real bench message's PID-3 at capture."
+      },
+      {
+        "id": "EDAN-OBX11-FINALITY",
+        "severity": "harness-only",
+        "unconditional": true,
+        "field": "OBX-11",
+        "kb": "§5.4",
+        "detail": "EDAN uses OBX-11 as a 'modified?' flag (empty = not modified), NOT HL7 Table-0085 result-lifecycle finality (F/P/C). So EDAN rows carry no 'F', and the edge/sim milestone's finality-gated ingest (only OBX-11=F rows stage) holds every EDAN result back. This is an edge/sim ORACLE nuance only — the production bridge -> OpenELIS path is not finality-gated this way (results stage regardless, read_only if unmapped). Closing EDAN OBX-11 finality (treat completed EDAN uploads as final) is a separate profile step."
       }
     ]
   }

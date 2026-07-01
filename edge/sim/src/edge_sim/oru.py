@@ -55,9 +55,9 @@ class OruReport:
     sending_app: str  # MSH-3 (analyzer)
     sending_facility: str  # MSH-4
     message_control_id: str  # MSH-10
-    patient_id: str  # PID-3.1, falling back to PID-2.1 (the SD1's MRN field; see _patient_id)
+    patient_id: str  # PID-3.1 -> PID-2.1 (SD1 MRN); EDAN H90-series uses PID-2 (see _patient_id)
     patient_name: str  # PID-5 (raw)
-    specimen_id: str  # OBR-3 filler order / specimen id
+    specimen_id: str  # OBR-3 filler order; EDAN H90-series uses OBR-2 (see _specimen_id)
     order_code: str  # OBR-4.1
     observations: tuple[RawObservation, ...]
 
@@ -79,22 +79,43 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
     pid = msg.first("PID")
     obr = msg.first("OBR")
 
-    observations = tuple(_observation(seg, u) for seg in msg.all("OBX"))
+    edan = _is_edan_h90(msh)
+
+    observations = tuple(_observation(seg, u, edan) for seg in msg.all("OBX"))
 
     return OruReport(
         message_type=u(msh.field(9)),
         sending_app=u(msh.field(3)),
         sending_facility=u(msh.field(4)),
         message_control_id=u(msh.field(10)),
-        patient_id=u(_patient_id(pid)) if pid else "",
+        patient_id=u(_patient_id(pid, edan)) if pid else "",
         patient_name=u(pid.field(5)) if pid else "",
-        specimen_id=u(obr.field(3)) if obr else "",
+        specimen_id=u(_specimen_id(obr, edan)) if obr else "",
         order_code=u(obr.component(4, 1)) if obr else "",
         observations=observations,
     )
 
 
-def _patient_id(pid) -> str:
+def _is_edan_h90(msh) -> bool:
+    """True when the message is an EDAN **H90-series** upload (H90/H90S/H95/H95S/
+    H96/H96S/H98S/**H99S**).
+
+    The H90-series repurposes standard HL7 field positions (KB
+    ``EDAN\\WI\\82-01.54.460907`` §5): the analyte code rides in **OBX-4** (OBX-3 is
+    a suspect flag), the sample id in **OBR-2** (OBR-3 is the reviewing doctor), and
+    the patient number in **PID-2** (PID-3 is ``Age^unit``). Every H90-series device
+    announces type ``H90`` in ``MSH-3.1`` (model code in ``MSH-3.3`` — e.g.
+    ``H90^^507`` = H99S, §7) and ``EDANLAB`` in ``MSH-4`` (§5.1). Detecting on either
+    lets us apply the EDAN field profile without disturbing standard-HL7 analyzers —
+    including the EDAN *H60S* seed, which uses a standard OBX-3 code with MSH-3
+    ``H60S`` / MSH-4 ``EDAN`` (LIS-78 readiness finding)."""
+    return (
+        msh.component(3, 1).strip().upper() == "H90"
+        or msh.field(4).strip().upper() == "EDANLAB"
+    )
+
+
+def _patient_id(pid, edan: bool = False) -> str:
     """The patient/medical-record identifier from a ``PID`` segment.
 
     PID-3.1 (the CX patient identifier list) is the canonical id for most
@@ -103,16 +124,41 @@ def _patient_id(pid) -> str:
     wins, leaving PID-3 analyzers (e.g. the EDAN H60S) unaffected (LIS-86 / S2.10).
     Emptiness is tested on the stripped value so a whitespace-only PID-3 does not
     shadow a real PID-2 MRN (the very identifier this fallback exists to preserve).
+
+    The EDAN H90-series (``edan=True``) is the inverse: the patient number is in
+    PID-2 and PID-3 is ``Age^unit`` (KB §5.2), so PID-2 is preferred and the PID-3
+    age is never used as an identifier.
     """
+    if edan:
+        pid2 = pid.component(2, 1)
+        return pid2 if pid2.strip() else ""
     pid3 = pid.component(3, 1)
     return pid3 if pid3.strip() else pid.component(2, 1)
 
 
-def _observation(seg, u) -> RawObservation:
+def _specimen_id(obr, edan: bool = False) -> str:
+    """The specimen/sample identifier from an ``OBR`` segment.
+
+    Standard analyzers carry it in OBR-3 (filler order number). The EDAN H90-series
+    (``edan=True``) carries the sample id in **OBR-2** (OBR-3 is the reviewing
+    doctor, KB §5.3a), so OBR-2 is preferred there — matching the OBR-2 fallback the
+    edge/drivers bridge parser already applies.
+    """
+    if edan:
+        obr2 = obr.field(2)
+        return obr2 if obr2.strip() else ""
+    return obr.field(3)
+
+
+def _observation(seg, u, edan: bool = False) -> RawObservation:
+    # EDAN H90-series: the analyte code/name rides in OBX-4 (OBX-3 is a suspect
+    # flag, KB §5.4). Read the code from OBX-4 there; standard analyzers (and the
+    # EDAN H60S seed) keep the OBX-3.1 observation identifier.
+    raw_code = u(seg.field(4)) if edan else u(seg.component(3, 1))
     return RawObservation(
         set_id=u(seg.field(1)),
         value_type=u(seg.field(2)),
-        raw_code=u(seg.component(3, 1)),
+        raw_code=raw_code,
         raw_text=u(seg.component(3, 2)),
         raw_system=u(seg.component(3, 3)),
         sub_id=u(seg.field(4)),
