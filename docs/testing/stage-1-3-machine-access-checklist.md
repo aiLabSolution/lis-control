@@ -47,7 +47,7 @@ Availability tiers from your 2026-06-26 status: **on hand** · **in warehouse** 
 | **HETO AU120** | Incoming (~next wk) | Clinical chemistry | **HL7 v2.3.1 (doc also says v2.5) over MLLP/TCP**, bidirectional. ⚠️ **family doc only** — examples use **AU400**, no AU120-specific doc. | **1** | 🟡 Confirm on arrival the AU120 exposes this same HETO HL7 screen; port/listener-role undocumented. |
 | **RAYTO RT-7600** | On hand | Hematology (CBC) | ❌ **No HL7/ASTM in docs.** Proprietary **TCP "Netport"** record stream (vendor LIS-sim, port configurable) **or** RS232 (115200/8/N/1). Bidirectional-capable. | **3** (prov.) | 🟡 **Byte-capture a "Send" to identify the wire format** before staging. Moves to St.1 if HL7, St.2 if serial/ASTM. |
 | **Seamaty SD1** | On hand | Dry/whole-blood biochem | ✅ **SD1 LIS Interface Manual on file** (`SEAMATY/lis-protocol.pdf`, Ed. B/0) — **HL7 v2.3.1**, **MLLP over TCP/IP** (RS-232 also), **upload-only** (ORU^R01 + ACK, no worklist). Quirks: MRN in **PID-2** (not PID-3); biochem codes + `U/L` unit need LOINC/UCUM maps. | **1** | 🟡 **Real-instrument capture** to lock the operator-set **TCP port** + confirm MLLP framing/encoding; seed fixture `seamaty-sd1-oru-r01` already lands the parse path. |
-| **EDAN H99S** | On hand | Unknown (likely hematology by name) | ❌ **Not in KB at all** — no EDAN/H99S, not a recognizable EDAN catalog model. (Documented EDAN siblings: H60S hematology, I15 blood-gas, M16 immunoassay.) | ? | 🔴 **Read the unit nameplate/SN to disambiguate** (H60S? M16?); obtain protocol doc from EDAN. |
+| **EDAN H99S** | On hand | Hematology (CBC) | ✅ **H90-series LIS Communication Protocol KB on file** (`EDAN\WI\82-01.54.460907`, v1.0, 2025-09-03) — H99S is explicitly covered, **HL7 v2.4+**, **MLLP over TCP/IP** or SOAP, analyzer = TCP client, LIS listens; UTF-8; results/QC upload plus worklist query. H99S device subtype = **507** in `MSH-3` component 3 (`H90^^507`). | **1** | 🟡 **Machine ready for bench.** Run [H99S bench conformance runbook](../runbooks/edan-h99s-bench-conformance.md): capture physical identity/SN, operator-set TCP port, MLLP framing, `ORU^R01` + ACK echo, and seed `edge/sim/fixtures/edan-h99s-oru-r01` from the real capture. |
 
 ---
 
@@ -112,9 +112,12 @@ are the middleware**, not the instrument.
 2. **Stage 3 unblock (critical path):** source a **SnibeLis PC**, get the **vendor license**
    (machine-code→Reg-Code), and ask SNIBE how SnibeLis **forwards results to OpenELIS**.
    Without this, MAGLUMI X3 can't be tested past the SnibeLis boundary.
-3. **EDAN H99S — disambiguate:** read the physical **nameplate / serial** (it's not a
-   documented EDAN model). If it's really an H60S/M16/I15, we already have docs; otherwise
-   request the LIS spec from EDAN.
+3. **EDAN H99S — ✅ doc obtained / bench ready:** H99S is covered by the EDAN
+   H90-series LIS protocol KB (`EDAN\WI\82-01.54.460907`, v1.0). Remaining: run the
+   H99S bench conformance runbook, capture the physical nameplate/SN and firmware, confirm
+   `MSH-3` subtype **507**, record the operator-set TCP port + MLLP framing, prove
+   `ORU^R01` upload with ACK `MSA-2 = MSH-10`, and replace the synthetic EDAN assumption with
+   a real `edan-h99s-oru-r01` fixture.
 4. **Seamaty SD1 — ✅ doc obtained:** the SD1 **LIS Interface Manual** (HL7 v2.3.1 / MLLP over
    TCP/IP / upload-only) is on file (`SEAMATY/lis-protocol.pdf`) and the seed fixture
    `edge/sim/fixtures/seamaty-sd1-oru-r01` is in. Remaining: a **real-instrument capture** to
@@ -187,7 +190,8 @@ HETO and HORRON are actually HL7/Ethernet, and MEDICA EasyStat is a proprietary 
 [RAYTO RT-7600 LIS setup](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/RAYTO/RT-7600/How-to-setup-LIS-connection-on-RT-7600.pdf#page=1) ·
 [RAYTO RT-7600 User Manual V1.4e (115200/8N1)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/RAYTO/RT-7600/RT-7600-User_-manual-V1.4e.pdf#page=41) ·
 [Seamaty SG1 manual (HL7 v2.1.3)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/RAYTO/SEAMATY/SG1-_2023.pdf#page=24) ·
-[EDAN M16 HIS/LIS Interface (HL7 v2.4/MLLP/port 8000)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/EDAN/M16/m16-Manual-20171111.pdf#page=84) *(EDAN H99S has no KB doc)*
+[EDAN H99S H90-series LIS Communication Protocol](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/EDAN/82-01.54.460907-1.0_H90_LIS_Protocol-ES.pdf#page=1) ·
+[EDAN H99S device subtype table](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/EDAN/82-01.54.460907-1.0_H90_LIS_Protocol-ES.pdf#page=39)
 
 **Plan-named units (appendix):** RAC-050, DiaSys 920, GOLDSITE GPP-100, MEDICA EasyStat,
 HORRON EA2000, Mindray BC — see prior revision / KB folders under each vendor.
