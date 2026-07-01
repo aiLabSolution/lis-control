@@ -1,0 +1,58 @@
+{
+  "id": "edan-h99s-oru-r01",
+  "description": "Synthetic HL7 v2.4 ORU^R01 CBC result from an EDAN H99S 5-part hematology analyzer, modelled on the EDAN H90-series LIS Communication Protocol KB (EDAN\\WI\\82-01.54.460907 v1.0) worked example (KB §10.1) — the LIS-78 / S1.11 bench-conformance seed. Unlike the edan-h60s-oru-r01 seed (which uses a standard-HL7 OBX-3 code), this fixture is FAITHFUL to the H90-series field repurposing (KB §5): the analyte name is carried in OBX-4 with OBX-3 as a suspect flag, so it exercises the EDAN parse gap the generic HL7 parser has today. MLLP; analyzer is the TCP client, our edge listens. MSH-16=0 (patient sample). NOT a real instrument capture.",
+  "analyzer": { "vendor": "EDAN", "model": "H99S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "utf-8", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-78 / S1.11 — EDAN H90-series LIS Communication Protocol KB EDAN\\WI\\82-01.54.460907 v1.0, 2025-09-03; ORU^R01 worked example §10.1; device sub-type 507 per §7). Vendor KB staged at /tmp/EDAN_H99S_LIS_Integration_KB.md.",
+    "note": "Application payload only (no MLLP framing). H99S announces itself with device code 507 in MSH-3 component 3 (H90^^507, KB §7), MSH-4=EDANLAB, MSH-12=2.4, MSH-16=0 (patient sample), MSH-18=UTF8. Hematology OBX rows use EDAN-native codes (WBC/RBC/HGB/HCT/MCV/PLT) and default units (HGB g/L, RBC 10^12/L); the 10^9/L and 10^12/L unit carets are HL7-escaped on the wire (10\\S\\9/L) since '^' is the component separator; the tolerant parser unescapes them before normalization. IMPORTANT — this seed is FAITHFUL to the H90-series field repurposing (KB §5), so the current generic parser (edge/sim oru.py + edge/drivers HL7ResultParser) does NOT read it correctly yet: see expected.parser_gaps. A real EDAN H99S bench capture replaces this at conformance (set synthetic:false with the capture reference), per docs/runbooks/edan-h99s-bench-conformance.md."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "device_subtype": "507",
+    "patient_id": "H99S-PT-01",
+    "specimen_id": "H99S-SPEC-01",
+    "observed_current_parse": {
+      "edge_sim": "patient=H99S-PT-01 (PID-2 fallback OK); specimen=BLANK (edge/sim reads OBR-3 only, no OBR-2 fallback); all 6 OBX -> code '0' / LOINC unmapped / PARTIAL (unit resolves, code does not).",
+      "bridge": "accession resolves to H99S-SPEC-01 (OBR-3 blank -> OBR-2 fallback); all 6 OBX -> testCode '0' (extractTestCode(OBX-3)), colliding on one code, none mapping to LOINC."
+    },
+    "observations": [
+      { "obx4_code": "WBC", "value": "12.17", "raw_unit": "10^9/L",  "target_loinc": "6690-2", "target_ucum": "10*9/L" },
+      { "obx4_code": "RBC", "value": "3.06",  "raw_unit": "10^12/L", "target_loinc": "789-8",  "target_ucum": "10*12/L" },
+      { "obx4_code": "HGB", "value": "113",   "raw_unit": "g/L",     "target_loinc": "718-7",  "target_ucum": "g/L" },
+      { "obx4_code": "HCT", "value": "38.5",  "raw_unit": "%",       "target_loinc": "4544-3", "target_ucum": "%" },
+      { "obx4_code": "MCV", "value": "88.0",  "raw_unit": "fL",      "target_loinc": "787-2",  "target_ucum": "fL" },
+      { "obx4_code": "PLT", "value": "193",   "raw_unit": "10^9/L",  "target_loinc": "777-3",  "target_ucum": "10*9/L" }
+    ],
+    "parser_gaps": [
+      {
+        "id": "EDAN-OBX4-CODE",
+        "severity": "blocker",
+        "unconditional": true,
+        "field": "OBX-3 vs OBX-4",
+        "kb": "§5.4",
+        "detail": "EDAN carries the analyte name in OBX-4 (Observation Sub-ID) and puts a suspect flag (0/1) in OBX-3. Both edge/sim oru.py (raw_code = OBX-3.1) and edge/drivers HL7ResultParser.extractTestCode(fields[3] = OBX-3) read OBX-3, so every numeric row resolves to code '0' — none map to LOINC and all rows collide on the same code. A code->LOINC seed alone does NOT fix this; the EDAN family needs an OBX-4 code source."
+      },
+      {
+        "id": "EDAN-OBR2-SAMPLE",
+        "severity": "conditional",
+        "unconditional": false,
+        "field": "OBR-2 vs OBR-3",
+        "kb": "§5.3a",
+        "detail": "EDAN puts the Sample ID in OBR-2 (OBR-3 = reviewing doctor). The two parsers DIVERGE: edge/drivers HL7ResultParser resolves accession OBR-3 -> OBR-2, so with a blank OBR-3 this seed's sample id (H99S-SPEC-01) resolves from OBR-2; edge/sim oru.py reads OBR-3 ONLY (no OBR-2 fallback), so specimen_id comes back BLANK for this seed. Two consequences to fix: (a) a populated OBR-3 (reviewing doctor) would be mistaken for the accession by the bridge; (b) edge/sim needs the same OBR-2 fallback the bridge has. Confirm the real bench message's OBR-2/OBR-3 layout at capture."
+      },
+      {
+        "id": "EDAN-PID3-AGE",
+        "severity": "conditional",
+        "unconditional": false,
+        "field": "PID-2 vs PID-3",
+        "kb": "§5.2",
+        "detail": "EDAN carries the patient number in PID-2 (PID-3 = Age^unit). Parsers prefer PID-3.1 then fall back to PID-2.1, so a populated PID-3 age (e.g. 35^Year) would be mistaken for the patient id. This seed leaves PID-3 age empty (^0), so the PID-2 fallback resolves H99S-PT-01 correctly; confirm the real bench message's PID-3 at capture."
+      }
+    ]
+  }
+}

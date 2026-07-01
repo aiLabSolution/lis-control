@@ -21,6 +21,10 @@ through the Stage-1 pipeline.
   bench capture as the replacement evidence. Mirror that pattern here: capture
   the H99S wire, create `edge/sim/fixtures/edan-h99s-oru-r01`, mark it
   `synthetic: false`, and use the fixture to drive parser/normalization follow-up.
+- Synthetic seed + oracle (already committed for this slice):
+  `edge/sim/fixtures/edan-h99s-oru-r01` — KB-faithful `ORU^R01` (device code `507`,
+  analyte name in OBX-4). Reproduce the parse gaps with
+  `cd edge/sim && uv run edge-sim normalize edan-h99s-oru-r01`.
 
 ## Scope
 
@@ -41,6 +45,43 @@ Characterization only, not a pilot go-live blocker unless explicitly promoted:
   host-query is deferred post-pilot by ADR-0008/ADR-0015 even though the H99S
   protocol supports it.
 - SOAP transport. The pilot edge substrate is MLLP/TCP.
+
+## Readiness and known parser gaps (READ BEFORE THE BENCH)
+
+Transport + ACK are ready; **result staging is not, because the EDAN H90-series
+protocol repurposes standard HL7 field positions** and the generic parser reads the
+standard positions. This is sharper than "a code->LOINC seed is missing": for EDAN
+the analyte code is not even in the field the parser reads. Verified 2026-07-01
+against the pinned bridge (`edge/drivers` @ `a98db88`) and `edge/sim`, and reproduced
+by the synthetic seed `edge/sim/fixtures/edan-h99s-oru-r01` (run
+`uv run edge-sim normalize edan-h99s-oru-r01` — all six rows come back code `0` /
+LOINC unmapped).
+
+| Gap | KB | Standard-HL7 position the parser reads | EDAN H90-series actual position | Effect | Severity |
+|---|---|---|---|---|---|
+| **Analyte code** | §5.4 | OBX-3.1 (`HL7ResultParser.extractTestCode(fields[3])`; `edge/sim oru.py raw_code=OBX-3.1`) | **OBX-4** (name); OBX-3 = suspect flag `0`/`1` | Every numeric OBX resolves to code `0` — nothing maps to LOINC, all rows collide on one code | **Blocker (unconditional)** |
+| Sample ID | §5.3a | accession OBR-3 -> OBR-2 (bridge); OBR-3 only (edge/sim) | **OBR-2** (OBR-3 = reviewing doctor) | Bridge resolves via OBR-2 only when OBR-3 blank; a reviewing doctor in OBR-3 becomes the accession. edge/sim has no OBR-2 fallback -> blank specimen | Conditional |
+| Patient number | §5.2 | PID-3.1 -> PID-2.1 (both parsers) | **PID-2** (PID-3 = Age^unit) | A populated PID-3 age (e.g. `35^Year`) is mistaken for the patient id; only a blank/`^0` PID-3 lets the PID-2 fallback work | Conditional |
+
+**Consequence for the bench:** you can prove transport, framing, and ACK echo today,
+and (for the bridge) the accession resolves as long as OBR-3 is blank. But numeric
+results will stage under test code `0` and never map to LOINC until the EDAN OBX-4
+code source lands. Do **not** read that as a bad capture — it is the expected gap.
+
+**Remediation (a follow-up slice, two-level per ADR-0001 — bridge + `edge/sim`):**
+
+- Read the analyte code from **OBX-4** for EDAN-family analyzers (identified by
+  `MSH-3` device code `507`/`H90`, or by registered source IP). The LOINC/UCUM map
+  already knows the EDAN codes/units (`edge/sim normalize.py` and the core
+  `vendor_code_mapping` seed cover WBC/RBC/HGB/HCT/MCV/PLT + `10^9/L`/`10^12/L`/`g/L`),
+  so once the code is read from the right field, normalization should resolve.
+- Add the **OBR-2** sample-id fallback to `edge/sim` (the bridge already has it) and
+  guard against a populated OBR-3 (reviewing doctor) shadowing the accession.
+- Guard the **PID-3** age from shadowing the PID-2 patient number for EDAN.
+
+The `edan-h60s-oru-r01` seed uses a standard-HL7 OBX-3 code, so it does **not** exercise
+these gaps. Whether the real H60S wire also repurposes fields (the KB notes H90 reused
+the H60 protocol as its base) is itself unverified — confirm it at the H60S bench.
 
 ## Bench Roles
 
@@ -157,15 +198,23 @@ Pass criteria:
   normalization unless a display requirement is explicitly added later.
 - Outbound ACK has `MSA-1=AA`.
 - ACK `MSA-2` exactly equals inbound `MSH-10`.
-- OpenELIS receives a normalized result record or, if a mapping is missing,
-  the gap is isolated to analyzer-code/LOINC/UCUM mapping rather than transport
-  or parsing.
+- OpenELIS receives the staged rows. Expect them under **test code `0`** (the
+  OBX-3/OBX-4 gap in "Readiness and known parser gaps") until the EDAN OBX-4 code
+  source lands — that isolates the remaining gap to analyzer-code field mapping, not
+  transport or framing. Confirm the wire actually carries the analyte name in **OBX-4**
+  and a suspect flag in OBX-3, and whether OBR-3 (reviewing doctor) and PID-3 (age)
+  are populated (they change accession/patient resolution — see the readiness table).
 
 ### 4. Raw archive and simulator fixture
 
+> A **synthetic seed already exists** at `edge/sim/fixtures/edan-h99s-oru-r01`
+> (KB-faithful: `MSH-3 = H90^^507`, analyte name in OBX-4, `synthetic: true`). It
+> reproduces the parser gaps above. **Graduate it** to the real capture below rather
+> than creating it from scratch.
+
 1. Extract the application payload from the pcap with MLLP bytes removed.
-2. Create `edge/sim/fixtures/edan-h99s-oru-r01/message.hl7`.
-3. Create `edge/sim/fixtures/edan-h99s-oru-r01/manifest.json`:
+2. Overwrite `edge/sim/fixtures/edan-h99s-oru-r01/message.hl7` with the de-framed payload.
+3. Update `edge/sim/fixtures/edan-h99s-oru-r01/manifest.json` (already present; flip to captured):
    - `analyzer.vendor`: `EDAN`
    - `analyzer.model`: `H99S`
    - `protocol`: `hl7v2`
