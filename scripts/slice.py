@@ -37,7 +37,7 @@ Usage
 
 Env: PLANE_API_KEY (required); PLANE_WORKSPACE (or PLANE_WORKSPACE_SLUG; default
 "labsolution"); PLANE_PROJECT_ID (else .claude/plane-context.json, else the LIS project).
-Agent identity: --agent, else LIS_AGENT_ID, else CLAUDE_CODE_SESSION_ID, else host:pid.
+Agent identity: --agent, else LIS_AGENT_ID, else Codex/Claude session env, else host:pid.
 Stdlib only.
 """
 import os, re, sys, json, socket, argparse
@@ -79,6 +79,8 @@ def _project() -> str:
 
 def _agent_id(explicit=None) -> str:
     return (explicit or os.environ.get("LIS_AGENT_ID")
+            or os.environ.get("CODEX_THREAD_ID")
+            or os.environ.get("CODEX_SESSION_ID")
             or os.environ.get("CLAUDE_CODE_SESSION_ID")
             or f"{socket.gethostname()}:{os.getpid()}")
 
