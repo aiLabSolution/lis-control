@@ -17,11 +17,11 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** `develop` HEAD **`a98db88`** — the merge of the LIS-86 bridge change (PR
+- **Pin:** release **`3.0.5`** (`a98db88`) — the merge of the LIS-86 bridge change (PR
   `openelis-analyzer-bridge#2`: SD1 PID-2 fallback + in-band 'Alarm' routing) on top of
-  `3.0.4` (`53b6acb`). A tagged pin is preferred for the production data-path; cutting a
-  `3.0.5` release tag from this commit and repinning to it is the change-control follow-up
-  (as with the `3.0.4` repin after the initial develop-HEAD vesting).
+  `3.0.4` (`53b6acb`), vested as a lightweight tag on the production data-path (the
+  change-control follow-up to the initial develop-HEAD pin, mirroring the `3.0.4` repin).
+  The `3.0.x` release line is pom-independent (pom stays `3.3.0`, no bump on tag).
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
   (ADR-0001 / CLAUDE.md).
@@ -73,7 +73,7 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
   **LIS-87**.
 - Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN fallback +
   in-band 'Alarm' OBX → `DiagnosticReport` conclusion, not a result) are **landed** (PR #2,
-  pin `a98db88`). Remaining for full closure: the production code→LOINC seed is OE-core
-  `AnalyzerTestMapping`/`Test.loinc` (a separate **core PR**, not bridge code), and the
-  U/L→UCUM `Quantity` mapping + Patient/MRN channel + OBX-11 finality + bridge↔sim
-  cross-contract are **LIS-87**.
+  release `3.0.5`/`a98db88`). The production code→LOINC seed **landed** in OE-core
+  (`core/openelis` PR #11: liquibase `049-sd1-loinc-seed.xml` — SD1 analyzer +
+  `AnalyzerTestMapping` + `Test.loinc`), pinned here. Remaining: the U/L→UCUM `Quantity`
+  mapping + Patient/MRN channel + OBX-11 finality + bridge↔sim cross-contract are **LIS-87**.
