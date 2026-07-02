@@ -6,3 +6,7 @@
 	path = edge/drivers
 	url = https://github.com/aiLabSolution/openelis-analyzer-bridge.git
 	branch = develop
+[submodule "deploy/kit"]
+	path = deploy/kit
+	url = https://github.com/aiLabSolution/lis-deploy-kit.git
+	branch = main
