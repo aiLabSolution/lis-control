@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .oru import OruReport, RawObservation
+from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_QC
 
 __all__ = [
     "NormalizedObservation",
@@ -30,6 +31,7 @@ __all__ = [
     "STATUS_UNMAPPED",
     "KIND_RESULT",
     "KIND_WARNING",
+    "KIND_CALIBRATION",
 ]
 
 STATUS_NORMALIZED = "NORMALIZED"  # both code and unit resolved
@@ -39,6 +41,7 @@ STATUS_UNMAPPED = "UNMAPPED"  # neither resolved
 # Whether an OBX is a patient analyte result or an in-band instrument flag/note.
 KIND_RESULT = "RESULT"  # a numeric/analyte patient result row
 KIND_WARNING = "WARNING"  # an in-band instrument warning (e.g. SD1 'Alarm' OBX) — a note, not a result
+KIND_CALIBRATION = "CALIBRATION"  # calibration row — never a patient result
 
 # In-band warning sentinel: the Seamaty SD1 emits instrument warnings in-band as an
 # ST OBX whose OBX-3 observation identifier is the literal 'Alarm' (warning code in
@@ -59,7 +62,7 @@ class NormalizedObservation:
     loinc: str  # normalized LOINC ("" if unmapped)
     ucum_value: str  # normalized UCUM unit ("" if unmapped)
     status: str  # NORMALIZED | PARTIAL | UNMAPPED
-    kind: str = KIND_RESULT  # RESULT (analyte) | WARNING (in-band instrument flag/note)
+    kind: str = KIND_RESULT  # RESULT | WARNING | CALIBRATION
 
 
 # --- default RAYTO RAC-050 CBC terminology seed (LIS-14 / S1.2) -------------
@@ -154,10 +157,28 @@ class Normalizer:
         )
 
     def normalize_report(self, report: OruReport) -> list[NormalizedObservation]:
-        return [self.normalize_observation(obs) for obs in report.observations]
+        rows = [self.normalize_observation(obs) for obs in report.observations]
+        if report.result_type == RESULT_TYPE_CALIBRATION:
+            return [_with_kind(row, KIND_CALIBRATION) for row in rows]
+        if report.result_type == RESULT_TYPE_QC:
+            return rows
+        return rows
 
 
 def _is_inband_warning(obs: RawObservation) -> bool:
     """True for an in-band instrument-warning OBX (OBX-3 = 'Alarm'), routed as a
     flag/note rather than a patient result — see :data:`_INBAND_WARNING_CODE`."""
     return (obs.raw_code or "").strip().upper() == _INBAND_WARNING_CODE
+
+
+def _with_kind(obs: NormalizedObservation, kind: str) -> NormalizedObservation:
+    return NormalizedObservation(
+        set_id=obs.set_id,
+        value=obs.value,
+        raw_code=obs.raw_code,
+        raw_unit=obs.raw_unit,
+        loinc=obs.loinc,
+        ucum_value=obs.ucum_value,
+        status=obs.status,
+        kind=kind,
+    )

@@ -43,6 +43,7 @@ from .e1394 import (
 from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
+    KIND_CALIBRATION,
     KIND_RESULT,
     KIND_WARNING,
     STATUS_NORMALIZED,
@@ -52,7 +53,15 @@ from .normalize import (
     Normalizer,
     TerminologyMap,
 )
-from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
+from .oru import (
+    RESULT_TYPE_CALIBRATION,
+    RESULT_TYPE_PATIENT,
+    RESULT_TYPE_QC,
+    OruParseError,
+    OruReport,
+    RawObservation,
+    parse_oru_r01,
+)
 from .replay import ReplayResult, replay
 from .transport import AstmTransport, LoopbackTransport, MllpTransport, Transport, TransportError
 
@@ -98,6 +107,9 @@ __all__ = [
     "OruReport",
     "RawObservation",
     "OruParseError",
+    "RESULT_TYPE_PATIENT",
+    "RESULT_TYPE_CALIBRATION",
+    "RESULT_TYPE_QC",
     "parse_oru_r01",
     "NormalizedObservation",
     "TerminologyMap",
@@ -107,6 +119,7 @@ __all__ = [
     "STATUS_UNMAPPED",
     "KIND_RESULT",
     "KIND_WARNING",
+    "KIND_CALIBRATION",
     # ASTM E1381 codec + session (LIS-23 / S2.1)
     "ENQ",
     "ACK",

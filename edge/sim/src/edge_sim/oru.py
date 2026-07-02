@@ -22,8 +22,15 @@ __all__ = [
     "RawObservation",
     "OruReport",
     "OruParseError",
+    "RESULT_TYPE_PATIENT",
+    "RESULT_TYPE_CALIBRATION",
+    "RESULT_TYPE_QC",
     "parse_oru_r01",
 ]
+
+RESULT_TYPE_PATIENT = "PATIENT"
+RESULT_TYPE_CALIBRATION = "CALIBRATION"
+RESULT_TYPE_QC = "QC"
 
 
 class OruParseError(Exception):
@@ -60,6 +67,9 @@ class OruReport:
     specimen_id: str  # OBR-3 filler order / specimen id
     order_code: str  # OBR-4.1
     observations: tuple[RawObservation, ...]
+    result_type: str = RESULT_TYPE_PATIENT  # MSH-16: PATIENT / CALIBRATION / QC
+    qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads
+    qc_type: str = ""  # OBR-20 for SD1 QC type / level
 
 
 def parse_oru_r01(message: Message | bytes | str) -> OruReport:
@@ -90,6 +100,9 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         patient_name=u(pid.field(5)) if pid else "",
         specimen_id=u(obr.field(3)) if obr else "",
         order_code=u(obr.component(4, 1)) if obr else "",
+        result_type=_result_type(msh.field(16)),
+        qc_lot_number=u(obr.field(14)) if obr else "",
+        qc_type=u(obr.field(20)) if obr else "",
         observations=observations,
     )
 
@@ -106,6 +119,21 @@ def _patient_id(pid) -> str:
     """
     pid3 = pid.component(3, 1)
     return pid3 if pid3.strip() else pid.component(2, 1)
+
+
+def _result_type(msh16: str) -> str:
+    """Seamaty SD1 result-type dispatcher from ``MSH-16``.
+
+    The vendor protocol uses 0=patient, 1=calibration, 2=QC. Unknown or blank
+    values stay patient for backward compatibility with analyzers that do not
+    populate this field.
+    """
+    value = (msh16 or "").strip()
+    if value == "1":
+        return RESULT_TYPE_CALIBRATION
+    if value == "2":
+        return RESULT_TYPE_QC
+    return RESULT_TYPE_PATIENT
 
 
 def _observation(seg, u) -> RawObservation:

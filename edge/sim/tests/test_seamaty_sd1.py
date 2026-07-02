@@ -21,13 +21,14 @@ from edge_sim.cli import main as cli_main
 from edge_sim.fixtures import load_fixture
 from edge_sim.milestone import run_milestone
 from edge_sim.normalize import (
+    KIND_CALIBRATION,
     KIND_RESULT,
     KIND_WARNING,
     Normalizer,
     STATUS_NORMALIZED,
     STATUS_UNMAPPED,
 )
-from edge_sim.oru import parse_oru_r01
+from edge_sim.oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT, RESULT_TYPE_QC, parse_oru_r01
 from edge_sim.replay import check_against_expected, replay_normalized
 from edge_sim.transport import LoopbackTransport
 
@@ -49,6 +50,25 @@ EXPECTED_PANEL = {
 def _normalized(fixture_dir):
     report = parse_oru_r01(load_fixture(fixture_dir).message_bytes)
     return Normalizer().normalize_report(report)
+
+
+def _sd1_result_type_message(result_type: str) -> bytes:
+    msh = [
+        "MSH", "^~\\&", "SMT", "SD1", "", "", "20201207144113", "",
+        "ORU^R01", "1", "P", "2.3.1", "A", "", "AL", result_type, "ASCII",
+    ]
+    obr = ["OBR"] + [""] * 20
+    obr[1] = "1"
+    obr[3] = "SD1-SPEC-0007"
+    obr[4] = "SD1"
+    obr[14] = "SD1-LOT-2026A"
+    obr[20] = "QC-NORMAL"
+    return (
+        "|".join(msh) + "\r"
+        "PID|1|SD1-0042|||DELA CRUZ^JUAN||1990|M\r"
+        + "|".join(obr) + "\r"
+        "OBX|1|NM|GLU|GLU|95|mg/dL|70-110|N|||F"
+    ).encode("ascii")
 
 
 # --- AC1: PID-2 MRN fallback -----------------------------------------------
@@ -81,6 +101,29 @@ def test_pid3_preferred_over_pid2_when_both_present():
 def test_sd1_patient_id_matches_manifest_expected():
     fx = load_fixture(SD1)
     assert parse_oru_r01(fx.message_bytes).patient_id == fx.expected["patient_id"]
+
+
+def test_sd1_fixture_declares_patient_result_type_from_msh16():
+    report = parse_oru_r01(load_fixture(SD1).message_bytes)
+    assert report.result_type == RESULT_TYPE_PATIENT
+
+
+def test_sd1_qc_result_type_from_msh16_carries_obr14_and_obr20():
+    report = parse_oru_r01(_sd1_result_type_message("2"))
+    rows = Normalizer().normalize_report(report)
+
+    assert report.result_type == RESULT_TYPE_QC
+    assert report.qc_lot_number == "SD1-LOT-2026A"
+    assert report.qc_type == "QC-NORMAL"
+    assert rows[0].kind == KIND_RESULT
+
+
+def test_sd1_calibration_result_type_from_msh16_never_enters_ingest_payload():
+    out = run_milestone(_sd1_result_type_message("1"))
+
+    assert out.report.result_type == RESULT_TYPE_CALIBRATION
+    assert [row.kind for row in out.calibrations] == [KIND_CALIBRATION]
+    assert out.ingest_payload() == []
 
 
 # --- AC2: biochem LOINC/UCUM maps ------------------------------------------
