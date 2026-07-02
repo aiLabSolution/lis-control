@@ -21,10 +21,11 @@ from edge_sim.replay import (
     replay_from_archive,
     replay_normalized,
 )
-from edge_sim.transport import LoopbackTransport, MllpTransport
+from edge_sim.transport import AstmTransport, LoopbackTransport, MllpTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RAYTO = FIXTURES_ROOT / "rayto-rac050-oru-r01"
+ERBA = FIXTURES_ROOT / "erba-ec90-astm-panel"
 WHEN = "2026-06-28T08:30:00+00:00"
 
 
@@ -77,6 +78,35 @@ def test_deterministic_round_trip_over_mllp_framing(tmp_path):
     # Survives real MLLP frame/de-frame AND normalizes to the asserted rows.
     assert res.round_trip_ok is True
     assert res.transport == "mllp"
+    assert check_against_expected(res, fx.expected) == []
+
+
+def test_erba_ec90_astm_replay_normalizes_expected_rows():
+    fx = load_fixture(ERBA)
+    res = replay_normalized(fx.message_bytes, AstmTransport())
+
+    assert res.round_trip_ok is True
+    assert res.transport == "astm"
+    assert res.message_type == "ASTM^E1394"
+    assert res.patient_id == "PID-026"
+    assert res.specimen_id == "SPEC-026"
+    assert [o.raw_code for o in res.observations] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [o.raw_unit for o in res.observations] == ["mg/dL", "mmol/L", "mmol/L", "mmol/L", "mg/dL"]
+    assert [o.loinc for o in res.observations] == ["2345-7", "2951-2", "2823-3", "2075-0", "17861-6"]
+    assert [o.ucum_value for o in res.observations] == ["mg/dL", "mmol/L", "mmol/L", "mmol/L", "mg/dL"]
+    assert [o.status for o in res.observations] == ["NORMALIZED"] * 5
+    assert check_against_expected(res, fx.expected) == []
+
+
+def test_erba_ec90_astm_archive_round_trip_is_deterministic(tmp_path):
+    arc = RawMessageArchive(tmp_path)
+    fx = load_fixture(ERBA)
+    res = deterministic_round_trip(fx, AstmTransport(), archive=arc, received_at=WHEN)
+    again = replay_from_archive(arc, res.digest, AstmTransport())
+
+    assert res.round_trip_ok is True
+    assert res.result_digest == again.result_digest
+    assert res.observations == again.observations
     assert check_against_expected(res, fx.expected) == []
 
 

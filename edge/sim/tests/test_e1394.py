@@ -17,6 +17,7 @@ from edge_sim.transport import AstmTransport
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 DIASYS = FIXTURES_ROOT / "diasys-r920-astm-result"
 PANEL = FIXTURES_ROOT / "diasys-r920-astm-panel"
+ERBA = FIXTURES_ROOT / "erba-ec90-astm-panel"
 
 
 # --- delimiters + record access --------------------------------------------
@@ -119,6 +120,24 @@ def test_parse_diasys_panel_fixture_multi_analyte():
     assert len(order.results) == 4
     assert [r.test_code for r in order.results] == ["GLU", "BUN", "CREA", "K"]
     assert [r.units for r in order.results] == ["mmol/L", "mmol/L", "umol/L", "mmol/L"]
+    assert AstmTransport().roundtrip(fx.message_bytes) == fx.message_bytes
+
+
+def test_parse_erba_ec90_panel_fixture_multi_analyte():
+    """LIS-26 ERBA EC90 re-scope: an ASTM panel parses as one isolated analyzer
+    channel payload with final R records and raw code/unit preserved."""
+    fx = load_fixture(ERBA)
+    msg = parse_e1394(fx.message_bytes)
+    assert msg.header is not None
+    assert msg.header.sender_name == "ERBA"
+    assert msg.header.sender_model == "EC90"
+    assert len(msg.patients) == 1
+    assert msg.patients[0].patient_id == "PID-026"
+    order = msg.patients[0].orders[0]
+    assert order.specimen_id == "SPEC-026"
+    assert [r.test_code for r in order.results] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [r.units for r in order.results] == ["mg/dL", "mmol/L", "mmol/L", "mmol/L", "mg/dL"]
+    assert [r.status for r in order.results] == ["F"] * 5
     assert AstmTransport().roundtrip(fx.message_bytes) == fx.message_bytes
 
 

@@ -121,6 +121,38 @@ def test_corrupted_frame_naks_then_retransmits_and_completes():
     assert result.aborted is False
 
 
+def test_erba_ec90_panel_corrupted_frame_naks_then_retransmits():
+    """LIS-26 channel negative: a transient checksum fault on the ERBA EC90 panel
+    drives NAK + retransmit and still yields the original records."""
+    records = [
+        "H|\\^&|||ERBA^EC90|||||||P|1",
+        "P|1||PID-026||DOE^ERBA",
+        "O|1|SPEC-026||^^^CHEM|R",
+        "R|1|^^^GLU|98|mg/dL||N||F",
+        "R|2|^^^NA|140|mmol/L||N||F",
+        "R|3|^^^K|4.2|mmol/L||N||F",
+        "R|4|^^^CL|103|mmol/L||N||F",
+        "R|5|^^^CA|9.4|mg/dL||N||F",
+        "L|1|N",
+    ]
+    seen: dict[int, int] = {}
+
+    def corrupt(index: int, frame: bytes) -> bytes:
+        seen[index] = seen.get(index, 0) + 1
+        if index == 3 and seen[index] == 1:
+            bad = bytearray(frame)
+            bad[5] ^= 0xFF
+            return bytes(bad)
+        return frame
+
+    result = run_session(records, corrupt=corrupt)
+    assert result.naks == 1
+    assert result.retransmits == 1
+    assert result.complete is True
+    assert result.records == records
+    assert result.aborted is False
+
+
 def test_session_aborts_after_max_retries_on_persistent_corruption():
     records = ["H|\\^&|||RAC", "R|1|data"]
 

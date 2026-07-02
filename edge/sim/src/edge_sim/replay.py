@@ -25,8 +25,9 @@ from dataclasses import dataclass
 
 from .archive import RawMessageArchive, archive_fixture
 from .fixtures import Fixture
+from .e1394 import AstmMessage, parse_e1394
 from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
-from .oru import parse_oru_r01
+from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
 from .transport import Transport
 
 __all__ = [
@@ -99,7 +100,7 @@ def replay_normalized(
     """
     sent = bytes(message)
     received = transport.roundtrip(sent)
-    report = parse_oru_r01(received)
+    report = _parse_report(received)
     rows = tuple((normalizer or Normalizer()).normalize_report(report))
     return NormalizedReplay(
         digest=hashlib.sha256(sent).hexdigest(),
@@ -200,6 +201,58 @@ def _check_rows(key: str, expected_rows, got_rows) -> list[str]:
                     f"{key}[{i}].{field}: expected {want[field]!r}, got {getattr(got, field)!r}"
                 )
     return problems
+
+
+def _parse_report(message: bytes) -> OruReport:
+    """Parse a replayed analyzer payload into the transport-neutral report shape.
+
+    Stage 1 only accepted HL7 ORU^R01. LIS-26 adds ASTM E1394 chemistry panels:
+    once the E1381 transport has de-framed the payload, its R records map onto the
+    same raw-observation fields the normalizer already understands.
+    """
+    try:
+        return parse_oru_r01(message)
+    except OruParseError:
+        return _astm_report(parse_e1394(message))
+
+
+def _astm_report(msg: AstmMessage) -> OruReport:
+    first_patient = msg.patients[0] if msg.patients else None
+    first_order = next(
+        (order for patient in msg.patients for order in patient.orders),
+        None,
+    )
+    observations = []
+    for patient in msg.patients:
+        for order in patient.orders:
+            for result in order.results:
+                observations.append(
+                    RawObservation(
+                        set_id=result.seq,
+                        value_type="NM",
+                        raw_code=result.test_code,
+                        raw_text=result.test_code,
+                        raw_system="ASTM",
+                        sub_id="",
+                        value=result.value,
+                        raw_unit=result.units,
+                        reference_range=result.reference_range,
+                        abnormal_flags=result.abnormal_flags,
+                        status=result.status,
+                    )
+                )
+    header = msg.header
+    return OruReport(
+        message_type="ASTM^E1394",
+        sending_app=header.sender_name if header else "",
+        sending_facility=header.sender_model if header else "",
+        message_control_id="",
+        patient_id=first_patient.patient_id if first_patient else "",
+        patient_name=first_patient.name if first_patient else "",
+        specimen_id=first_order.specimen_id if first_order else "",
+        order_code=first_order.test_code if first_order else "",
+        observations=tuple(observations),
+    )
 
 
 def _result_digest(observations: tuple[NormalizedObservation, ...]) -> str:
