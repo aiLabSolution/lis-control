@@ -15,6 +15,7 @@
     "id": "erba-ec90-serial-astm",
     "isolation_group": "erba-ec90",
     "rs232": {
+      "provenance": "bridge-default-bench-pending",
       "baud_rate": 9600,
       "data_bits": 8,
       "parity": "NONE",

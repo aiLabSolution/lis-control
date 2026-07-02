@@ -140,17 +140,25 @@ class Normalizer:
     def from_fixture(cls, fixture) -> "Normalizer":
         """Build a normalizer from a fixture's manifest terminology block.
 
-        The simulator keeps the same contract as the production bridge: analyzer
-        code and unit mappings are data supplied with the channel/profile, not
-        parser branches. Fixtures without a terminology block keep the default
-        seed map for backwards compatibility.
+        The simulator mirrors the production bridge contract: analyzer code →
+        LOINC comes only from the channel/profile data (no seed fallback, so a
+        fixture proves its own code mappings), while raw unit → UCUM prefers
+        the profile data and falls back to the common seed map — the same
+        analyzer-map-then-common-map order the bridge's FhirBundleBuilder
+        applies. Fixtures without a terminology block keep the default seed
+        map for backwards compatibility.
         """
         terminology = getattr(fixture, "terminology", None) or {}
         codes = terminology.get("codes")
         units = terminology.get("units")
         if codes is None and units is None:
             return cls()
-        return cls(TerminologyMap(codes=codes or {}, units=units or {}))
+        return cls(
+            TerminologyMap(
+                codes=codes if codes is not None else _DEFAULT_CODES,
+                units={**_DEFAULT_UNITS, **(units or {})},
+            )
+        )
 
     def normalize_observation(self, obs: RawObservation) -> NormalizedObservation:
         loinc = self._tmap.normalize_code(obs.raw_code) or ""

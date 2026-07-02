@@ -123,6 +123,27 @@ def test_erba_ec90_electrolytes_are_fixture_terminology_not_default_seed():
     assert [o.status for o in configured.observations] == ["NORMALIZED"] * 5
 
 
+def test_from_fixture_codes_only_block_keeps_common_unit_fallback():
+    """Bridge parity: FhirBundleBuilder tries the analyzer registry's unit map,
+    then falls back to its common-unit map. A fixture terminology block that
+    supplies only codes must therefore still resolve common units from the seed
+    map — not silently drop every unit to PARTIAL."""
+    from types import SimpleNamespace
+
+    fx = load_fixture(ERBA)
+    codes_only = SimpleNamespace(terminology={"codes": dict(fx.terminology["codes"])})
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(codes_only))
+
+    assert [o.status for o in res.observations] == ["NORMALIZED"] * 5
+    assert [o.ucum_value for o in res.observations] == [
+        "mg/dL",
+        "mmol/L",
+        "mmol/L",
+        "mmol/L",
+        "mg/dL",
+    ]
+
+
 def test_erba_ec90_astm_archive_round_trip_is_deterministic(tmp_path):
     arc = RawMessageArchive(tmp_path)
     fx = load_fixture(ERBA)

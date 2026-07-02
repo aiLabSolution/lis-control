@@ -46,6 +46,9 @@ def test_erba_fixture_carries_channel_config_and_terminology_data():
 
     assert fx.channel["id"] == "erba-ec90-serial-astm"
     assert fx.channel["isolation_group"] == "erba-ec90"
+    # Line-setting values are unconfirmed bridge defaults until the bench
+    # capture lands — the provenance marker keeps them from reading as fact.
+    assert fx.channel["rs232"]["provenance"] == "bridge-default-bench-pending"
     assert fx.channel["rs232"]["baud_rate"] == 9600
     assert fx.channel["rs232"]["data_bits"] == 8
     assert fx.channel["rs232"]["parity"] == "NONE"

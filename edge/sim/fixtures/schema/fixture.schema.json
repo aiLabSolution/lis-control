@@ -89,8 +89,13 @@
         "rs232": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["baud_rate", "data_bits", "parity", "stop_bits"],
+          "required": ["baud_rate", "data_bits", "parity", "stop_bits", "provenance"],
           "properties": {
+            "provenance": {
+              "type": "string",
+              "enum": ["bench-capture", "vendor-doc", "bridge-default-bench-pending"],
+              "description": "Where the line-setting values came from. 'bridge-default-bench-pending' marks unconfirmed defaults that must be replaced by a bench capture or vendor doc before go-live."
+            },
             "baud_rate": { "type": "integer" },
             "data_bits": { "type": "integer" },
             "parity": { "type": "string", "enum": ["NONE", "EVEN", "ODD", "MARK", "SPACE"] },
