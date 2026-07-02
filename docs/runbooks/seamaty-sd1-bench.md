@@ -354,12 +354,32 @@ RAM-tight — **stop co-resident stacks first** and drop FHIR to save ~2 GiB.
 docker stop erpnext erpnexttrial crate-db-demo 2>/dev/null || true
 docker network rm erpnexttrial_default 2>/dev/null || true   # frees the 172.20.x overlap
 
-# 2) Lean bring-up (digest-pinned images; FHIR dropped).
+# 2) Install the GenericHL7 plugin into the webapp's plugin volume (LIS-94).
+#    SD1 is a Dashboard-configured HL7 analyzer, so it needs the GenericHL7 plugin —
+#    which is NOT in the prebuilt image's volume. The script builds it from the pinned
+#    plugins submodule (the aiLabSolution fork, which carries the commons-lang3 build
+#    fix — ADR-0017) and installs it with no manual jar copying; run it BEFORE `up`
+#    so the webapp loads it on startup.
 cd /home/marloeu/projects/lis-control
+deploy/ci/install-generichl7-plugin.sh          # → core/openelis/volume/plugins/GenericHL7-1.0.jar
+
+# 3) Lean bring-up (digest-pinned images; FHIR dropped).
 C="-f core/openelis/docker-compose.yml -f core/openelis/.github/ci/ci.memory-limits.yml -f deploy/ci/compose.bootstrap.yml"
 docker compose --project-directory core/openelis $C up -d certs db.openelis.org oe.openelis.org frontend.openelis.org proxy
 bash deploy/ci/healthcheck.sh        # waits: db healthy + webapp running + UI 200
+
+# 4) Confirm the plugin loaded and its analyzer type registered (no manual jar copy).
+deploy/ci/install-generichl7-plugin.sh --verify
+#   ✓ analyzer_type contains 'Generic HL7'
+#   ✓ webapp log shows PluginLoader 'Plugins loaded'
+#   Equivalent manual check:
+#     docker exec openelisglobal-database psql -U clinlims -d clinlims -tAc \
+#       "SELECT name FROM clinlims.analyzer_type;"        # → Generic HL7
 ```
+
+> If you rebuild/recreate the webapp later, the plugin persists in the bind-mounted
+> `volume/plugins/`; re-run the install script only after a `down -v` (which wipes it) or
+> a fresh checkout. The install is idempotent — it overwrites the jar in place.
 
 - **UI:** https://localhost (self-signed) · also http://localhost:8080 · DB on :15432.
 - **Login:** `admin` / `adminADMIN!`.

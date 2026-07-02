@@ -13,7 +13,7 @@ These files are created lazily — some may not exist yet (see `docs/agents/doma
 |---|---|---|---|
 | **OpenELIS core** — clinical core: orders/results/QC/reporting, RBAC, audit, data model | `core/openelis/` | `aiLabSolution/OpenELIS-Global-2` (`upstream`: `DIGI-UW/OpenELIS-Global-2`) | [`contexts/core-openelis/CONTEXT.md`](contexts/core-openelis/CONTEXT.md) |
 | **Edge / drivers** — analyzer interface engine (`openelis-analyzer-bridge`): per-transport listeners (MLLP/serial/ASTM/file), parse + LOINC/UCUM normalization, FHIR northbound (ADR-0015) | `edge/drivers/` (submodule, pin `fe391a7` = release `3.0.7` w/ LIS-28 registry-backed unit→UCUM, LIS-26 EC90 ASTM, EDAN H90 profile, LIS-95 QC/cal gate, branch `develop`) | `aiLabSolution/openelis-analyzer-bridge` (standalone export, not a fork) | [`contexts/edge-drivers/CONTEXT.md`](contexts/edge-drivers/CONTEXT.md) |
-| **Plugins** — analyzer plugins; generic ones contributed upstream | `plugins/` _(planned)_ | _aiLabSolution fork of `DIGI-UW/openelisglobal-plugins` (TBD)_ | _(lazy)_ |
+| **Plugins** — analyzer plugins; build/compat fixes carried on the fork (ADR-0017) | `plugins/` _(planned; today mounted as core's nested `plugins` submodule)_ | `aiLabSolution/openelisglobal-plugins` (`upstream`: `DIGI-UW/openelisglobal-plugins`) | _(lazy)_ |
 | **Deploy kit** — on-prem/offline deploy kit, authoritative deployed configuration, single-site store-and-forward (pilot); **site↔central sync = post-pilot M3 spoke** (ADR-0006) | `deploy/kit/` | `aiLabSolution/lis-deploy-kit` | [`contexts/deploy-kit/CONTEXT.md`](contexts/deploy-kit/CONTEXT.md) |
 | **Infra** — IaC, CI/CD, environments | `infra/` _(planned)_ | _aiLabSolution (TBD)_ | _(lazy)_ |
 
