@@ -17,10 +17,13 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release **`3.0.5`** (`a98db88`) — the merge of the LIS-86 bridge change (PR
-  `openelis-analyzer-bridge#2`: SD1 PID-2 fallback + in-band 'Alarm' routing) on top of
-  `3.0.4` (`53b6acb`), vested as a lightweight tag on the production data-path (the
-  change-control follow-up to the initial develop-HEAD pin, mirroring the `3.0.4` repin).
+- **Pin:** release **`3.0.6`** (`c7382e4`) — the LIS-26 bridge change (PR
+  `openelis-analyzer-bridge#5`: ERBA EC90 ASTM normalization — E1381-95 framed
+  compliant receive, e1381-95 config-key fix, UCUM `Quantity` coding) on top of the
+  EDAN H90-series parse profile (PR #4) and the LIS-95 SD1 QC/calibration gate (PR #3),
+  which followed `3.0.5` (`a98db88`, LIS-86: SD1 PID-2 fallback + in-band 'Alarm'
+  routing) — vested as a lightweight tag on the production data-path (the change-control
+  follow-up mirroring the `3.0.4`/`3.0.5` repins).
   The `3.0.x` release line is pom-independent (pom stays `3.3.0`, no bump on tag).
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
@@ -67,13 +70,17 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
 - Intra-bridge isolation is thread-level (shared JVM); rate-limiting is MLLP-only; the
   filesystem DLQ (`DeadLetterWriter`) is inert; the source allow-list is advisory (TB-1
   spoofing gap). Change-controlled hardening, L5-proven in Stage 5 — **LIS-88 / LIS-89**.
-- FILE channel bypasses the shared normalizer; ASTM E1381-95 listener config key mismatched —
-  **LIS-88** (fix before Stage-2 bench).
+- FILE channel bypasses the shared normalizer — **LIS-88**. (The ASTM E1381-95 config-key
+  mismatch, originally here, is **closed** by LIS-26 / PR #5, release `3.0.6`: the key now
+  binds under `listen-astm-server.e1381-95` and `E1381_95` uses the framed compliant
+  receive path.)
 - Cross-contract conformance (bridge FHIR `Observation` ↔ sim `NormalizedObservation`) —
   **LIS-87**.
 - Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN fallback +
   in-band 'Alarm' OBX → `DiagnosticReport` conclusion, not a result) are **landed** (PR #2,
   release `3.0.5`/`a98db88`). The production code→LOINC seed **landed** in OE-core
   (`core/openelis` PR #11: liquibase `049-sd1-loinc-seed.xml` — SD1 analyzer +
-  `AnalyzerTestMapping` + `Test.loinc`), pinned here. Remaining: the U/L→UCUM `Quantity`
-  mapping + Patient/MRN channel + OBX-11 finality + bridge↔sim cross-contract are **LIS-87**.
+  `AnalyzerTestMapping` + `Test.loinc`), pinned here. The raw-unit→UCUM `Quantity`
+  coding (incl. U/L) **landed** via LIS-26 (PR #5, release `3.0.6`:
+  `FhirBundleBuilder.UNIT_TO_UCUM`, raw `Quantity.unit` preserved beside `system`/`code`).
+  Remaining: Patient/MRN channel + OBX-11 finality + bridge↔sim cross-contract are **LIS-87**.
