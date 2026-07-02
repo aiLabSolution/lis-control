@@ -63,6 +63,7 @@ edge/sim/
     oru.py                  # ORU^R01 -> typed RawObservations (PID/OBR/OBX) (S1.2)
     normalize.py            # vendor code -> LOINC, unit -> UCUM -> NormalizedObservation (S1.2)
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
+    astm_simulator.py       # analyzer-side ASTM session harness + corruption injection (S2.3)
     e1394.py                # ASTM E1394 record parser: H>P>O>R>L -> typed record tree (S2.2)
     archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
