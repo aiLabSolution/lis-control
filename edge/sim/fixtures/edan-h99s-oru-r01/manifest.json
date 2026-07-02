@@ -1,6 +1,6 @@
 {
   "id": "edan-h99s-oru-r01",
-  "description": "Synthetic HL7 v2.4 ORU^R01 CBC result from an EDAN H99S 5-part hematology analyzer, modelled on the EDAN H90-series LIS Communication Protocol KB (EDAN\\WI\\82-01.54.460907 v1.0) worked example (KB §10.1) — the LIS-78 / S1.11 bench-conformance seed. Unlike the edan-h60s-oru-r01 seed (which uses a standard-HL7 OBX-3 code), this fixture is FAITHFUL to the H90-series field repurposing (KB §5): the analyte name is carried in OBX-4 with OBX-3 as a suspect flag, so it exercises the EDAN parse gap the generic HL7 parser has today. MLLP; analyzer is the TCP client, our edge listens. MSH-16=0 (patient sample). NOT a real instrument capture.",
+  "description": "Synthetic HL7 v2.4 ORU^R01 CBC result from an EDAN H99S 5-part hematology analyzer, modelled on the EDAN H90-series LIS Communication Protocol KB (EDAN\\WI\\82-01.54.460907 v1.0) worked example (KB §10.1) — the LIS-78 / S1.11 bench-conformance seed. Unlike the edan-h60s-oru-r01 seed (which uses a standard-HL7 OBX-3 code), this fixture is FAITHFUL to the H90-series field repurposing (KB §5): the analyte name is carried in OBX-4 with OBX-3 as a suspect flag, so it exercises the shipped EDAN H90-series parse profile (OBX-4 code, OBR-2 sample, PID-2 patient); before that profile the generic HL7 parser staged every row under code 0. MLLP; analyzer is the TCP client, our edge listens. MSH-16=0 (patient sample). NOT a real instrument capture.",
   "analyzer": { "vendor": "EDAN", "model": "H99S" },
   "protocol": "hl7v2",
   "transport": "mllp",
@@ -8,7 +8,7 @@
   "message": { "path": "message.hl7", "encoding": "utf-8", "framing": "mllp" },
   "source": {
     "reference": "synthetic seed (LIS-78 / S1.11 — EDAN H90-series LIS Communication Protocol KB EDAN\\WI\\82-01.54.460907 v1.0, 2025-09-03; ORU^R01 worked example §10.1; device sub-type 507 per §7). Vendor KB staged at /tmp/EDAN_H99S_LIS_Integration_KB.md.",
-    "note": "Application payload only (no MLLP framing). H99S announces itself with device code 507 in MSH-3 component 3 (H90^^507, KB §7), MSH-4=EDANLAB, MSH-12=2.4, MSH-16=0 (patient sample), MSH-18=UTF8. Hematology OBX rows use EDAN-native codes (WBC/RBC/HGB/HCT/MCV/PLT) and default units (HGB g/L, RBC 10^12/L); the 10^9/L and 10^12/L unit carets are HL7-escaped on the wire (10\\S\\9/L) since '^' is the component separator; the tolerant parser unescapes them before normalization. IMPORTANT — this seed is FAITHFUL to the H90-series field repurposing (KB §5), so the current generic parser (edge/sim oru.py + edge/drivers HL7ResultParser) does NOT read it correctly yet: see expected.parser_gaps. A real EDAN H99S bench capture replaces this at conformance (set synthetic:false with the capture reference), per docs/runbooks/edan-h99s-bench-conformance.md."
+    "note": "Application payload only (no MLLP framing). H99S announces itself with device code 507 in MSH-3 component 3 (H90^^507, KB §7), MSH-4=EDANLAB, MSH-12=2.4, MSH-16=0 (patient sample), MSH-18=UTF8. Hematology OBX rows use EDAN-native codes (WBC/RBC/HGB/HCT/MCV/PLT) and default units (HGB g/L, RBC 10^12/L); the 10^9/L and 10^12/L unit carets are HL7-escaped on the wire (10\\S\\9/L) since '^' is the component separator; the tolerant parser unescapes them before normalization. IMPORTANT — this seed is FAITHFUL to the H90-series field repurposing (KB §5); the shipped EDAN H90-series parse profile (edge/sim oru.py _is_edan_h90/_specimen_id + OBX-4 code; edge/drivers HL7ResultParser isEdanH90Series) now reads it correctly (code from OBX-4, sample from OBR-2, patient from PID-2). Before that profile the generic parser staged every row under code 0 — see expected.pre_profile_parse and expected.parser_gaps (all field gaps closed; only the OBX-11 finality gap remains, harness-only). A real EDAN H99S bench capture replaces this at conformance (set synthetic:false with the capture reference), per docs/runbooks/edan-h99s-bench-conformance.md."
   },
   "synthetic": true,
   "expected": {
@@ -16,9 +16,14 @@
     "device_subtype": "507",
     "patient_id": "H99S-PT-01",
     "specimen_id": "H99S-SPEC-01",
-    "observed_current_parse": {
-      "edge_sim": "patient=H99S-PT-01 (PID-2 fallback OK); specimen=BLANK (edge/sim reads OBR-3 only, no OBR-2 fallback); all 6 OBX -> code '0' / LOINC unmapped / PARTIAL (unit resolves, code does not).",
-      "bridge": "accession resolves to H99S-SPEC-01 (OBR-3 blank -> OBR-2 fallback); all 6 OBX -> testCode '0' (extractTestCode(OBX-3)), colliding on one code, none mapping to LOINC."
+    "current_parse": {
+      "edge_sim": "patient=H99S-PT-01 (PID-2); specimen=H99S-SPEC-01 (OBR-2); all 6 OBX read the code from OBX-4 -> WBC/RBC/HGB/HCT/MCV/PLT, each NORMALIZED to LOINC/UCUM. Milestone ingest still holds these rows back on the OBX-11 finality gap (harness-only; see parser_gaps EDAN-OBX11-FINALITY).",
+      "bridge": "accession=H99S-SPEC-01 (OBR-2); all 6 OBX read testCode from OBX-4 -> WBC/RBC/HGB/HCT/MCV/PLT under the isEdanH90Series gate, mapping to LOINC."
+    },
+    "pre_profile_parse": {
+      "note": "Historical — behavior BEFORE the EDAN H90-series parse profile shipped (kept for context; the profile closed all three field gaps).",
+      "edge_sim": "patient=H99S-PT-01 (PID-2 fallback OK); specimen=BLANK (edge/sim read OBR-3 only, no OBR-2 fallback); all 6 OBX -> code '0' / LOINC unmapped / PARTIAL (unit resolved, code did not).",
+      "bridge": "accession resolved to H99S-SPEC-01 (OBR-3 blank -> OBR-2 fallback); all 6 OBX -> testCode '0' (extractTestCode(OBX-3)), colliding on one code, none mapping to LOINC."
     },
     "observations": [
       { "obx4_code": "WBC", "value": "12.17", "raw_unit": "10^9/L",  "target_loinc": "6690-2", "target_ucum": "10*9/L" },
@@ -32,34 +37,38 @@
       {
         "id": "EDAN-OBX4-CODE",
         "severity": "blocker",
+        "status": "closed",
         "unconditional": true,
         "field": "OBX-3 vs OBX-4",
         "kb": "§5.4",
-        "detail": "EDAN carries the analyte name in OBX-4 (Observation Sub-ID) and puts a suspect flag (0/1) in OBX-3. Both edge/sim oru.py (raw_code = OBX-3.1) and edge/drivers HL7ResultParser.extractTestCode(fields[3] = OBX-3) read OBX-3, so every numeric row resolves to code '0' — none map to LOINC and all rows collide on the same code. A code->LOINC seed alone does NOT fix this; the EDAN family needs an OBX-4 code source."
+        "detail": "EDAN carries the analyte name in OBX-4 (Observation Sub-ID) and puts a suspect flag (0/1) in OBX-3. BEFORE the profile, both edge/sim oru.py (raw_code = OBX-3.1) and edge/drivers HL7ResultParser.extractTestCode(fields[3] = OBX-3) read OBX-3, so every numeric row resolved to code '0' — none mapped to LOINC and all rows collided. CLOSED by the EDAN H90-series parse profile: edge/sim oru.py _observation(edan) reads OBX-4 (PR #46) and edge/drivers HL7ResultParser reads OBX-4 under isEdanH90Series (bridge PR #4, umbrella edge/drivers pin 4db3c9e)."
       },
       {
         "id": "EDAN-OBR2-SAMPLE",
         "severity": "conditional",
+        "status": "closed",
         "unconditional": false,
         "field": "OBR-2 vs OBR-3",
         "kb": "§5.3a",
-        "detail": "EDAN puts the Sample ID in OBR-2 (OBR-3 = reviewing doctor). The two parsers DIVERGE: edge/drivers HL7ResultParser resolves accession OBR-3 -> OBR-2, so with a blank OBR-3 this seed's sample id (H99S-SPEC-01) resolves from OBR-2; edge/sim oru.py reads OBR-3 ONLY (no OBR-2 fallback), so specimen_id comes back BLANK for this seed. Two consequences to fix: (a) a populated OBR-3 (reviewing doctor) would be mistaken for the accession by the bridge; (b) edge/sim needs the same OBR-2 fallback the bridge has. Confirm the real bench message's OBR-2/OBR-3 layout at capture."
+        "detail": "EDAN puts the Sample ID in OBR-2 (OBR-3 = reviewing doctor). BEFORE the profile the two parsers DIVERGED: the bridge resolved accession OBR-3 -> OBR-2 (so a blank OBR-3 worked, but a populated reviewing-doctor OBR-3 would be mistaken for the accession), while edge/sim oru.py read OBR-3 ONLY (no fallback), so specimen_id came back BLANK. CLOSED: edge/sim now has the OBR-2 fallback (_specimen_id(edan)) matching the bridge, preferring OBR-2 for H90-series so OBR-3 (reviewing doctor) cannot shadow the accession. Confirm the real bench message's OBR-2/OBR-3 layout at capture."
       },
       {
         "id": "EDAN-PID3-AGE",
         "severity": "conditional",
+        "status": "closed",
         "unconditional": false,
         "field": "PID-2 vs PID-3",
         "kb": "§5.2",
-        "detail": "EDAN carries the patient number in PID-2 (PID-3 = Age^unit). Parsers prefer PID-3.1 then fall back to PID-2.1, so a populated PID-3 age (e.g. 35^Year) would be mistaken for the patient id. This seed leaves PID-3 age empty (^0), so the PID-2 fallback resolves H99S-PT-01 correctly; confirm the real bench message's PID-3 at capture."
+        "detail": "EDAN carries the patient number in PID-2 (PID-3 = Age^unit). BEFORE the profile both parsers preferred PID-3.1 then fell back to PID-2.1, so a populated PID-3 age (e.g. 35^Year) would be mistaken for the patient id (this seed leaves PID-3 age empty as ^0, so the fallback happened to resolve correctly). CLOSED: the EDAN H90-series profile reads the patient number from PID-2 and never uses PID-3 age (_patient_id(edan)). Confirm the real bench message's PID-3 at capture."
       },
       {
         "id": "EDAN-OBX11-FINALITY",
         "severity": "harness-only",
+        "status": "open",
         "unconditional": true,
         "field": "OBX-11",
         "kb": "§5.4",
-        "detail": "EDAN uses OBX-11 as a 'modified?' flag (empty = not modified), NOT HL7 Table-0085 result-lifecycle finality (F/P/C). So EDAN rows carry no 'F', and the edge/sim milestone's finality-gated ingest (only OBX-11=F rows stage) holds every EDAN result back. This is an edge/sim ORACLE nuance only — the production bridge -> OpenELIS path is not finality-gated this way (results stage regardless, read_only if unmapped). Closing EDAN OBX-11 finality (treat completed EDAN uploads as final) is a separate profile step."
+        "detail": "EDAN uses OBX-11 as a 'modified?' flag (empty = not modified), NOT HL7 Table-0085 result-lifecycle finality (F/P/C). So EDAN rows carry no 'F', and the edge/sim milestone's finality-gated ingest (only OBX-11=F rows stage) holds every EDAN result back. This is an edge/sim ORACLE nuance only — the production bridge -> OpenELIS path is not finality-gated this way (results stage regardless, read_only if unmapped). OPEN: closing EDAN OBX-11 finality (treat completed EDAN uploads as final) is a separate profile step."
       }
     ]
   }
