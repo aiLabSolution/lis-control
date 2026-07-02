@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create Plane work items with the body in the **description**, not a comment.
+"""Create/update Plane work items and comments with markdown rendered to rich text.
 
 Why this exists
 ---------------
@@ -10,37 +10,48 @@ PRD), so the repo convention used to route bodies into the *first comment*
 instead — leaving every issue with an empty description (see
 `docs/agents/issue-tracker.md`). That's backwards: the body is the description.
 
-This helper renders a markdown body into clean `description_html` and POSTs it on
-creation, so the issue reads correctly in Plane and comments stay reserved for the
-progress log + claim ledger. It wraps the Plane REST API directly (stdlib only),
-the same way `scripts/slice.py` does, rather than depending on the global CLI.
+This helper renders a markdown body into clean HTML and sends it where it
+belongs: `create`/`update` write `description_html`, `comment` writes
+`comment_html` (so progress-log comments keep their structure too). It wraps
+the Plane REST API directly (stdlib only, shared plumbing in
+scripts/planelib.py) rather than depending on the global CLI.
 
 Usage
 -----
   python3 scripts/plane_issue.py create --name "[S2.4] ERBA EC90 channel thread" \
-      --body-file slice.md [--priority high] [--parent UUID] [--label UUID]
+      --body-file slice.md [--priority high] [--parent UUID] [--state ready-for-agent]
   printf '%s' "$BODY" | python3 scripts/plane_issue.py create --name "…" --body-file -
+  python3 scripts/plane_issue.py update LIS-26 [--body-file b.md] [--name "…"] \
+      [--priority high] [--state "In Progress"]
+  python3 scripts/plane_issue.py comment LIS-26 --body-file progress.md
   python3 scripts/plane_issue.py render --body-file slice.md     # preview HTML, no network
   python3 scripts/plane_issue.py create --name "…" --body-file b.md --dry-run
+
+`--state` accepts a state UUID *or name* (resolved via the project's states);
+issue arguments accept `LIS-NN` or a raw UUID. Priorities are the Plane API's
+string enum (urgent/high/medium/low/none) — the API rejects anything else.
 
 Env: PLANE_API_KEY (required); PLANE_WORKSPACE (or PLANE_WORKSPACE_SLUG; default
 "labsolution"); PLANE_PROJECT_ID (else .claude/plane-context.json, else the LIS
 project). Stdlib only.
 
 Markdown coverage (deliberately small — matches the PRD/slice body template):
-ATX headings (#..######), unordered (-,*,+) and ordered (1.) lists, task items
-([ ] / [x]), fenced ``` code blocks, blockquotes, --- rules, blank-line
-paragraphs (single newlines preserved as <br>), inline **bold**, `code`, and
-[text](url) links (http/https/mailto/relative only). Anything else passes through
-as literal text — never as raw HTML.
+ATX headings (#..######), unordered (-,*,+) and ordered (1.) lists with one
+level of nesting, task items ([ ] / [x]), fenced ``` code blocks, blockquotes,
+--- rules, blank-line paragraphs (single newlines preserved as <br>), inline
+**bold**, `code`, and [text](url) links (http/https/mailto/relative only).
+Anything else passes through as literal text — never as raw HTML.
 """
-import os, re, sys, json, argparse
-import urllib.request, urllib.error, urllib.parse
+import argparse
+import json
+import os
+import re
+import sys
 
-WS_DEFAULT = "labsolution"
-PROJECT_DEFAULT = "d7f3bcf7-0953-478f-a510-4599e3a2a4bf"  # LIS project
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PRIORITY = {"urgent": 1, "high": 2, "medium": 3, "low": 4, "none": 0}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import planelib as pl  # noqa: E402
+
+PRIORITY = ("urgent", "high", "medium", "low", "none")  # Plane API string enum
 
 
 # --------------------------------------------------------------------------- markdown
@@ -100,6 +111,15 @@ def _is_block_start(line: str) -> bool:
     )
 
 
+def _render_li(content: str) -> str:
+    """One list item's inner HTML, with [ ]/[x] task-box support."""
+    tm = re.match(r"\[([ xX])\]\s+(.*)$", content)
+    if tm:
+        box = "☑ " if tm.group(1).lower() == "x" else "☐ "
+        return box + _inline(tm.group(2))
+    return _inline(content)
+
+
 def md_to_html(md: str) -> str:
     """Render a markdown body to Plane-friendly description_html. Stdlib only."""
     lines = md.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -139,24 +159,33 @@ def md_to_html(md: str) -> str:
             out.append(f"<blockquote>{'<br>'.join(_inline(b) for b in buf)}</blockquote>")
             continue
 
-        m = _LIST_RE.match(line)                                 # list (ul / ol)
+        m = _LIST_RE.match(line)                                 # list (ul / ol, 1 nest level)
         if m:
+            base = len(m.group(1))
             ordered = bool(re.match(r"\d+\.", m.group(2)))
             tag = "ol" if ordered else "ul"
-            items = []
+            items: list = []  # [item_html, sub_htmls, sub_ordered]
             while i < len(lines):
                 lm = _LIST_RE.match(lines[i])
-                if not lm or bool(re.match(r"\d+\.", lm.group(2))) != ordered:
+                if not lm:
                     break
-                content = lm.group(3)
-                tm = re.match(r"\[([ xX])\]\s+(.*)$", content)   # task item
-                if tm:
-                    box = "☑ " if tm.group(1).lower() == "x" else "☐ "
-                    items.append(f"<li>{box}{_inline(tm.group(2))}</li>")
-                else:
-                    items.append(f"<li>{_inline(content)}</li>")
+                ind = len(lm.group(1))
+                lordered = bool(re.match(r"\d+\.", lm.group(2)))
+                if ind > base and items:                         # nested under previous item
+                    items[-1][1].append(_render_li(lm.group(3)))
+                    items[-1][2] = lordered
+                elif ind == base and lordered == ordered:        # sibling
+                    items.append([_render_li(lm.group(3)), [], False])
+                else:                                            # dedent / kind switch → new block
+                    break
                 i += 1
-            out.append(f"<{tag}>{''.join(items)}</{tag}>")
+            rendered = []
+            for item_html, subs, sub_ordered in items:
+                if subs:
+                    stag = "ol" if sub_ordered else "ul"
+                    item_html += f"<{stag}>" + "".join(f"<li>{s_}</li>" for s_ in subs) + f"</{stag}>"
+                rendered.append(f"<li>{item_html}</li>")
+            out.append(f"<{tag}>{''.join(rendered)}</{tag}>")
             continue
 
         buf = []                                                 # paragraph
@@ -167,52 +196,7 @@ def md_to_html(md: str) -> str:
     return "\n".join(out)
 
 
-# --------------------------------------------------------------------------- config / api
-def _workspace() -> str:
-    return (os.environ.get("PLANE_WORKSPACE")
-            or os.environ.get("PLANE_WORKSPACE_SLUG") or WS_DEFAULT)
-
-
-def _project() -> str:
-    if os.environ.get("PLANE_PROJECT_ID"):
-        return os.environ["PLANE_PROJECT_ID"]
-    ctx = os.path.join(REPO, ".claude", "plane-context.json")
-    try:
-        with open(ctx, encoding="utf-8") as fh:
-            pid = json.load(fh).get("project_id")
-            if pid:
-                return pid
-    except (OSError, ValueError):
-        pass
-    return PROJECT_DEFAULT
-
-
-def _key() -> str:
-    k = os.environ.get("PLANE_API_KEY")
-    if not k:
-        sys.exit("PLANE_API_KEY is required (Plane → Profile Settings → Personal Access Tokens).")
-    return k
-
-
-def _api(method: str, path: str, body: dict | None = None):
-    url = f"https://api.plane.so/api/v1/workspaces/{_workspace()}{path}"
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        url, data=data, method=method,
-        headers={"X-API-Key": _key(), "Content-Type": "application/json",
-                 "User-Agent": "plane-cli/1.0"},  # default urllib UA is Cloudflare-blocked (1010)
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status == 204:
-                return None
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"API {method} {path} -> {e.code}: {e.read().decode()[:400]}")
-    except urllib.error.URLError as e:
-        sys.exit(f"connection error: {e.reason}")
-
-
+# --------------------------------------------------------------------------- payloads
 def _read_body(path: str | None) -> str:
     """Read the markdown body from a file, or stdin when path is '-' / omitted-with-pipe."""
     if path and path != "-":
@@ -226,16 +210,24 @@ def _read_body(path: str | None) -> str:
     sys.exit("no body: pass --body-file PATH, --body-file - , or pipe the body on stdin.")
 
 
+def _priority(p: str) -> str:
+    v = p.lower()
+    if v not in PRIORITY:
+        sys.exit(f"invalid priority {p!r} (one of: {', '.join(PRIORITY)})")
+    return v
+
+
 def build_payload(name: str, body_md: str, priority: str | None = None,
                   parent: str | None = None, label: str | None = None,
                   state: str | None = None) -> dict:
-    """Assemble the work-item create payload (pure; no network — unit-testable)."""
+    """Assemble the work-item create payload (pure; no network — unit-testable).
+    `state` must already be a UUID here — name resolution needs the network."""
     payload: dict = {"name": name}
     body_md = (body_md or "").strip()
     if body_md:
         payload["description_html"] = md_to_html(body_md)
     if priority:
-        payload["priority"] = PRIORITY.get(priority.lower(), 3)
+        payload["priority"] = _priority(priority)  # API is a string enum, not ints
     if parent:
         payload["parent"] = parent
     if label:
@@ -247,16 +239,57 @@ def build_payload(name: str, body_md: str, priority: str | None = None,
 
 # --------------------------------------------------------------------------- commands
 def cmd_create(args) -> None:
+    state = args.state
+    if state and not args.dry_run:
+        state = pl.state_id(state)          # accept a name; resolving needs the network
+    parent = args.parent
+    if parent and not args.dry_run and not parent.startswith("-"):
+        parent = pl.resolve_item(parent)["id"]  # accept LIS-NN
     payload = build_payload(args.name, _read_body(args.body_file),
-                            args.priority, args.parent, args.label, args.state)
+                            args.priority, parent, args.label, state)
     if args.dry_run:
         print(json.dumps(payload, indent=2))
         return
-    data = _api("POST", f"/projects/{_project()}/work-items/", body=payload)
+    data = pl.api("POST", f"/projects/{pl.project()}/work-items/", body=payload)
     seq, iid = data.get("sequence_id"), data.get("id")
     print(f"✓ created LIS-{seq} ({iid})")
     if args.json:
         print(json.dumps(data, indent=2))
+
+
+def cmd_update(args) -> None:
+    payload: dict = {}
+    if args.body_file or not sys.stdin.isatty():
+        body_md = _read_body(args.body_file).strip()
+        if body_md:
+            payload["description_html"] = md_to_html(body_md)
+    if args.name:
+        payload["name"] = args.name
+    if args.priority:
+        payload["priority"] = _priority(args.priority)
+    if args.state:
+        payload["state"] = args.state if args.dry_run else pl.state_id(args.state)
+    if not payload:
+        sys.exit("nothing to update — pass --body-file/--name/--priority/--state.")
+    if args.dry_run:
+        print(json.dumps(payload, indent=2))
+        return
+    it = pl.resolve_item(args.issue)
+    pl.api("PATCH", f"/projects/{pl.project()}/work-items/{it['id']}/", body=payload)
+    print(f"✓ updated LIS-{it['sequence_id']} ({', '.join(sorted(payload))})")
+
+
+def cmd_comment(args) -> None:
+    html = md_to_html(_read_body(args.body_file).strip())
+    if not html:
+        sys.exit("empty comment body.")
+    if args.dry_run:
+        print(html)
+        return
+    it = pl.resolve_item(args.issue)
+    pl.api("POST", f"/projects/{pl.project()}/work-items/{it['id']}/comments/",
+           body={"comment_html": html})
+    print(f"✓ commented on LIS-{it['sequence_id']}")
 
 
 def cmd_render(args) -> None:
@@ -271,12 +304,27 @@ def main() -> None:
     c.add_argument("--name", required=True, help="work item title")
     c.add_argument("--body-file", help="markdown body file, or '-' for stdin (else piped stdin)")
     c.add_argument("--priority", choices=list(PRIORITY), help="priority level")
-    c.add_argument("--parent", help="parent work item UUID (creates a sub-item)")
+    c.add_argument("--parent", help="parent work item (LIS-NN or UUID; creates a sub-item)")
     c.add_argument("--label", help="label UUID")
-    c.add_argument("--state", help="state UUID")
+    c.add_argument("--state", help="state UUID or name (e.g. ready-for-agent)")
     c.add_argument("--dry-run", action="store_true", help="print the payload; do not POST")
     c.add_argument("--json", action="store_true", help="also print the created item JSON")
     c.set_defaults(func=cmd_create)
+
+    u = sub.add_parser("update", help="update a work item (description/name/priority/state)")
+    u.add_argument("issue", help="LIS-NN or UUID")
+    u.add_argument("--body-file", help="markdown body file, or '-' for stdin (else piped stdin)")
+    u.add_argument("--name", help="new title")
+    u.add_argument("--priority", choices=list(PRIORITY), help="priority level")
+    u.add_argument("--state", help="state UUID or name (e.g. 'In Progress')")
+    u.add_argument("--dry-run", action="store_true", help="print the payload; do not PATCH")
+    u.set_defaults(func=cmd_update)
+
+    m = sub.add_parser("comment", help="post a markdown comment (progress log entries)")
+    m.add_argument("issue", help="LIS-NN or UUID")
+    m.add_argument("--body-file", help="markdown body file, or '-' for stdin (else piped stdin)")
+    m.add_argument("--dry-run", action="store_true", help="print the comment_html; do not POST")
+    m.set_defaults(func=cmd_comment)
 
     r = sub.add_parser("render", help="render a body to description_html (no network)")
     r.add_argument("--body-file", help="markdown body file, or '-' for stdin (else piped stdin)")

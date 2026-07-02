@@ -76,6 +76,23 @@ class TestBlocks(unittest.TestCase):
         html = pi.md_to_html("- [ ] todo\n- [x] done")
         self.assertEqual(html, "<ul><li>☐ todo</li><li>☑ done</li></ul>")
 
+    def test_nested_unordered_list(self):
+        html = pi.md_to_html("- top\n  - sub a\n  - sub b\n- next")
+        self.assertEqual(html, "<ul><li>top<ul><li>sub a</li><li>sub b</li></ul></li>"
+                               "<li>next</li></ul>")
+
+    def test_nested_ordered_under_unordered(self):
+        html = pi.md_to_html("- top\n  1. first\n  2. second")
+        self.assertEqual(html, "<ul><li>top<ol><li>first</li><li>second</li></ol></li></ul>")
+
+    def test_nested_task_items(self):
+        html = pi.md_to_html("- AC\n  - [ ] sub-check")
+        self.assertIn("<li>AC<ul><li>☐ sub-check</li></ul></li>", html)
+
+    def test_list_kind_switch_starts_new_list(self):
+        html = pi.md_to_html("- a\n1. b")
+        self.assertEqual(html, "<ul><li>a</li></ul>\n<ol><li>b</li></ol>")
+
     def test_fenced_code_block_escaped_no_inline(self):
         html = pi.md_to_html("```\n<tag> **not bold** `not code`\n```")
         self.assertIn("<pre><code>", html)
@@ -114,7 +131,8 @@ class TestPrdTemplate(unittest.TestCase):
         "An end-to-end ERBA EC90 channel that ingests `ASTM E1381` frames.\n"
         "See [the spec](https://example.test/astm).\n\n"
         "## Acceptance criteria\n\n"
-        "- [ ] Frames parse\n- [ ] Results normalize\n- [x] Already done\n\n"
+        "- [ ] Frames parse\n  - [ ] checksums verified\n- [ ] Results normalize\n"
+        "- [x] Already done\n\n"
         "## Blocked by\n\n- None - can start immediately\n"
     )
 
@@ -122,8 +140,8 @@ class TestPrdTemplate(unittest.TestCase):
         html = pi.md_to_html(self.BODY)
         for frag in ("<h2>Parent</h2>", "<h2>What to build</h2>",
                      "<code>ASTM E1381</code>", '<a href="https://example.test/astm">',
-                     "<li>☐ Frames parse</li>", "<li>☑ Already done</li>",
-                     "<h2>Blocked by</h2>"):
+                     "<li>☐ Frames parse<ul><li>☐ checksums verified</li></ul></li>",
+                     "<li>☑ Already done</li>", "<h2>Blocked by</h2>"):
             self.assertIn(frag, html)
 
     def test_round_trips_without_raising(self):
@@ -139,14 +157,24 @@ class TestPayload(unittest.TestCase):
     def test_empty_body_omits_description(self):
         self.assertNotIn("description_html", pi.build_payload("Title", "   "))
 
-    def test_priority_mapping(self):
-        self.assertEqual(pi.build_payload("T", "b", priority="high")["priority"], 2)
-        self.assertEqual(pi.build_payload("T", "b", priority="none")["priority"], 0)
+    def test_priority_is_string_enum(self):
+        # The Plane API takes priority as a string enum — the old int mapping 400s
+        # ('"2" is not a valid choice', confirmed live 2026-07-02).
+        self.assertEqual(pi.build_payload("T", "b", priority="high")["priority"], "high")
+        self.assertEqual(pi.build_payload("T", "b", priority="NONE")["priority"], "none")
+
+    def test_priority_rejects_unknown(self):
+        with self.assertRaises(SystemExit):
+            pi.build_payload("T", "b", priority="critical")
 
     def test_parent_and_label(self):
         p = pi.build_payload("T", "b", parent="uuid-1", label="uuid-2")
         self.assertEqual(p["parent"], "uuid-1")
         self.assertEqual(p["labels"], ["uuid-2"])
+
+    def test_state_passthrough(self):
+        # build_payload is pure: it takes an already-resolved state UUID verbatim
+        self.assertEqual(pi.build_payload("T", "b", state="uuid-s")["state"], "uuid-s")
 
 
 class TestReadBody(unittest.TestCase):
