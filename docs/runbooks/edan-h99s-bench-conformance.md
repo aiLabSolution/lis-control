@@ -8,10 +8,11 @@ through the Stage-1 pipeline.
 
 ## References
 
-- H99S KB supplied for this slice:
-  `/tmp/EDAN_H99S_LIS_Integration_KB.md`.
-- Vendor source named by the KB: EDAN `H90 LIS Communication Protocol`,
-  document `EDAN\WI\82-01.54.460907`, version 1.0, covering H90/H90S/H95/H95S/H96/H96S/H98S/H99S.
+- Vendor source of truth: EDAN `H90 LIS Communication Protocol`, document
+  `EDAN\WI\82-01.54.460907`, version 1.0, covering
+  H90/H90S/H95/H95S/H96/H96S/H98S/H99S.
+- Slice KB note, if available locally: `/tmp/EDAN_H99S_LIS_Integration_KB.md`
+  (non-durable working note only; do not use it as bench evidence).
 - Architecture: `docs/adr/0005-mllp-framing-and-ack-modes.md`,
   `docs/adr/0011-oru-parse-and-normalization.md`,
   `docs/adr/0012-raw-message-archive-and-deterministic-replay.md`,
@@ -115,8 +116,10 @@ Use bench/test identifiers only. Do not use real patient PHI for this run.
   - expected protocol: `HL7`
   - transport: `MLLP`
   - source: analyzer IP or bench network allow-list
-  - mapping profile: start with the EDAN hematology map used by H60S, then
-    adjust after the captured H99S OBX rows are inspected.
+  - mapping profile: use the EDAN H90-series parse profile and EDAN
+    hematology map. Do not use the H60S standard-HL7 profile for H99S; the
+    H90-series protocol carries analyte code in OBX-4, sample ID in OBR-2,
+    and patient number in PID-2.
 - Packet capture is ready on the bridge host:
 
 ```bash
@@ -183,6 +186,8 @@ Pass criteria:
 - Analyzer UI reports successful connection test.
 - Packet capture shows analyzer as TCP client and bridge as TCP server.
 - MLLP framing is `0x0B ... 0x1C 0x0D`.
+- If the connection test emits an HL7 application payload, it uses `MSH-16=2`
+  and the host ACK echoes the inbound `MSH-10` in `MSA-2`.
 
 ### 3. Patient-sample ORU upload
 
@@ -285,7 +290,8 @@ respond safely.
 Pass criteria:
 
 - Query contains `QRD`, with QRD-8 or QRD-9 populated.
-- Response, if sent, has `MSA-1=AA` and correlates to the query.
+- Response, if sent, has `MSA-1=AA` and `MSA-2` exactly equals the inbound
+  `QRY^R02` `MSH-10`.
 - The result is recorded as characterization only unless bidirectional support is
   promoted through change control.
 
