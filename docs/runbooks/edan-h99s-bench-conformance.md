@@ -214,14 +214,19 @@ Pass criteria:
 
 ### 3. Register and map the analyzer in OpenELIS
 
-The bridge does not know the analyzer until it sends a message. On first contact
-(the §2 connection test if it emits an HL7 payload, otherwise the first ORU in §4),
-OpenELIS find-or-creates a `PENDING_REGISTRATION` stub from the message's sender
+The bridge does not know the analyzer until it sends an HL7 message. Only then does
+OpenELIS find-or-create a `PENDING_REGISTRATION` stub from the message's sender
 (`H90-EDANLAB`) — **not** from the source IP, which docker NAT rewrites to the
-bridge gateway. Promote and map that stub before accepting results.
+bridge gateway. A bare connection test (TCP handshake with no ORU payload) does
+**not** create the stub, so this section requires at least one inbound message
+first. Promote and map that stub before accepting results.
 
-1. Confirm the stub exists: `GET /rest/analyzer/analyzers` shows an entry named
-   `H90-EDANLAB`, status `PENDING_REGISTRATION`.
+1. Ensure the stub exists: `GET /rest/analyzer/analyzers` shows an entry named
+   `H90-EDANLAB`, status `PENDING_REGISTRATION`. **If it is absent** — the §2
+   connection test carried no HL7 payload — send one bench ORU now by running §4
+   steps 1–4, then return here. Any rows that arrive before the mapping in step 3
+   stage as unmapped / `read_only` and re-resolve on the next send once mapped, so a
+   priming ORU is safe.
 2. Promote it (Analyzer management UI, or `PUT /rest/analyzer/analyzers/<id>`):
    name `EDAN H99S`, type `HEMATOLOGY`, protocol `HL7_V2_3_1`, communication mode
    `ANALYZER_INITIATED`, identifier pattern `^H90-EDANLAB$`, status `SETUP`.
