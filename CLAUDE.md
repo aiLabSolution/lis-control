@@ -20,10 +20,11 @@ Five canonical triage roles, mapped onto Plane workflow states. See `docs/agents
 
 ### Working a slice (the loop)
 
-Work each Plane slice (`LIS-NN`) as a self-paced `/loop`: find & claim the next slice with
-`scripts/slice.py next` / `claim` (the cheap, structured front door — **not** a raw
-`plane issues list` dump) → work increments in a **dedicated worktree** → push to the slice
-branch → log progress on the issue → open a PR. Non-negotiables:
+Work each Plane slice (`LIS-NN`) as a self-paced `/loop`: find, read & claim the next slice
+with `scripts/slice.py next` / `show` / `claim` (the cheap, structured front door — **not**
+a raw `plane issues list` dump) → work increments in a **dedicated worktree** → push to the
+slice branch → log progress on the issue (`scripts/plane_issue.py comment` for markdown) →
+open a PR. Non-negotiables:
 
 - **Worktree per slice, never the shared `main` checkout.** `../lis-control-<key>` on branch
   `<key>-<slug>` (e.g. `lis-control-lis-10` / `lis-10-compliance-scaffold`). Don't switch the
