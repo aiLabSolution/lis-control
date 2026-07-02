@@ -14,6 +14,7 @@ import pytest
 
 from edge_sim.archive import ArchiveIntegrityError, RawMessageArchive, archive_fixture
 from edge_sim.fixtures import load_fixture
+from edge_sim.normalize import Normalizer
 from edge_sim.replay import (
     NormalizedReplay,
     check_against_expected,
@@ -83,7 +84,7 @@ def test_deterministic_round_trip_over_mllp_framing(tmp_path):
 
 def test_erba_ec90_astm_replay_normalizes_expected_rows():
     fx = load_fixture(ERBA)
-    res = replay_normalized(fx.message_bytes, AstmTransport())
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(fx))
 
     assert res.round_trip_ok is True
     assert res.transport == "astm"
@@ -98,11 +99,35 @@ def test_erba_ec90_astm_replay_normalizes_expected_rows():
     assert check_against_expected(res, fx.expected) == []
 
 
+def test_erba_ec90_electrolytes_are_fixture_terminology_not_default_seed():
+    fx = load_fixture(ERBA)
+    default = replay_normalized(fx.message_bytes, AstmTransport())
+    configured = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(fx))
+
+    assert [o.raw_code for o in configured.observations] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [o.loinc for o in default.observations] == ["2345-7", "", "", "", ""]
+    assert [o.status for o in default.observations] == [
+        "NORMALIZED",
+        "PARTIAL",
+        "PARTIAL",
+        "PARTIAL",
+        "PARTIAL",
+    ]
+    assert [o.loinc for o in configured.observations] == [
+        "2345-7",
+        "2951-2",
+        "2823-3",
+        "2075-0",
+        "17861-6",
+    ]
+    assert [o.status for o in configured.observations] == ["NORMALIZED"] * 5
+
+
 def test_erba_ec90_astm_archive_round_trip_is_deterministic(tmp_path):
     arc = RawMessageArchive(tmp_path)
     fx = load_fixture(ERBA)
     res = deterministic_round_trip(fx, AstmTransport(), archive=arc, received_at=WHEN)
-    again = replay_from_archive(arc, res.digest, AstmTransport())
+    again = replay_from_archive(arc, res.digest, AstmTransport(), Normalizer.from_fixture(fx))
 
     assert res.round_trip_ok is True
     assert res.result_digest == again.result_digest

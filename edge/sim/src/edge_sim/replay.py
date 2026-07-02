@@ -142,7 +142,12 @@ def deterministic_round_trip(
     replay it *from the archive* — capture → archive → reload → wire round-trip →
     parse → normalize → normalized Result."""
     entry = archive_fixture(archive, fixture, received_at=received_at)
-    return replay_from_archive(archive, entry.digest, transport, normalizer)
+    return replay_from_archive(
+        archive,
+        entry.digest,
+        transport,
+        normalizer or Normalizer.from_fixture(fixture),
+    )
 
 
 def check_against_expected(replay: NormalizedReplay, expected: dict) -> list[str]:

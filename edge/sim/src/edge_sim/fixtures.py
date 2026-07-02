@@ -53,6 +53,8 @@ class Fixture:
     source_reference: str
     message_path: Path
     message_bytes: bytes
+    channel: dict = field(default_factory=dict)
+    terminology: dict = field(default_factory=dict)
     expected: dict = field(default_factory=dict)
     manifest: dict = field(default_factory=dict)
 
@@ -101,6 +103,8 @@ def load_fixture(directory: Path | str, schema_path: Path | None = None) -> Fixt
         source_reference=manifest["source"]["reference"],
         message_path=message_path,
         message_bytes=message_path.read_bytes(),
+        channel=manifest.get("channel", {}),
+        terminology=manifest.get("terminology", {}),
         expected=manifest.get("expected", {}),
         manifest=manifest,
     )
