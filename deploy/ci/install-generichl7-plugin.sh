@@ -1,30 +1,21 @@
 #!/usr/bin/env bash
-# LIS-94 (SD1 bench) — reproducibly build + install the GenericHL7 analyzer plugin
-# into the OpenELIS plugin volume, with NO manual jar copying.
+# LIS-94/LIS-106 (SD1 bench) — reproducibly build + install the GenericHL7 analyzer
+# plugin into the OpenELIS plugin volume, with NO manual jar copying.
 #
 # Why this script exists
 # ----------------------
 # The SD1 live bench needs OpenELIS's GenericHL7 plugin (MSH-3/4 pattern-matched,
-# Dashboard-configured HL7 v2 analyzers). It ships in the DIGI-UW `plugins`
-# submodule of core/openelis, but it does NOT build from the pinned source: its
-# Java imports `org.apache.commons.lang3.StringUtils`, yet the plugin pom never
-# declares commons-lang3 (the `openelisglobal:classes` parent dep does not export
-# it to the plugin compile classpath). A build therefore fails with
-# `cannot find symbol: StringUtils` and the jar is missing from the volume, so
-# OpenELIS registers zero analyzer types.
-#
-# Until the fix is persisted upstream (a fork of DIGI-UW/openelisglobal-plugins —
-# see the LIS-94 follow-up), this script carries the one-line pom fix as a patch
-# (deploy/ci/patches/generichl7-commons-lang3.patch, `commons-lang3` at `provided`
-# scope, version pinned to the host's 3.18.0), applies it, builds the jar from the
-# pinned submodule in a pinned Maven image, installs it, then reverts the patch so
-# the submodule working tree stays clean.
+# Dashboard-configured HL7 v2 analyzers). It ships in the `plugins` submodule of
+# core/openelis — the aiLabSolution fork of DIGI-UW/openelisglobal-plugins, which
+# carries the commons-lang3 build fix (ADR-0017; the pinned DIGI-UW source did
+# not compile). This script syncs + inits the submodule, builds the jar from the
+# pinned source in a pinned Maven image, and installs it into the plugin volume.
 #
 # Usage:
 #   deploy/ci/install-generichl7-plugin.sh            # build + install
 #   deploy/ci/install-generichl7-plugin.sh --offline  # build with a warm ~/.m2 only
-#   deploy/ci/install-generichl7-plugin.sh --verify    # after a webapp restart,
-#                                                       # assert the plugin loaded
+#   deploy/ci/install-generichl7-plugin.sh --verify   # after a webapp restart,
+#                                                     # assert the plugin loaded
 #   deploy/ci/install-generichl7-plugin.sh --help
 #
 # After install you must recreate/restart the webapp so it re-scans the volume:
@@ -41,7 +32,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORE="$REPO_ROOT/core/openelis"
 PLUGIN_DIR="plugins/analyzers/GenericHL7"          # relative to $CORE
-PATCH="$SCRIPT_DIR/patches/generichl7-commons-lang3.patch"
 JAR_NAME="GenericHL7-1.0.jar"
 DEST="$CORE/volume/plugins"
 
@@ -52,7 +42,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline) OFFLINE=true ;;
     --verify)  DO_BUILD=false ;;
-    --help)    sed -n '2,40p' "$0"; exit 0 ;;
+    --help)    sed -n '2,24p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -88,20 +78,11 @@ if [ "$DO_BUILD" = false ]; then
   verify; exit $?
 fi
 
-[ -f "$PATCH" ] || { red "patch not found: $PATCH"; exit 1; }
-
-echo "→ Initializing core plugins submodule…"
+echo "→ Syncing + initializing core plugins submodule…"
+# sync first: clones that predate the fork re-point (ADR-0017) still have the
+# DIGI-UW remote in .git/modules and would fail to fetch the pinned commit.
+git -C "$CORE" submodule sync plugins >/dev/null
 git -C "$CORE" submodule update --init plugins >/dev/null
-
-# Apply the carried pom fix; always revert on exit so the submodule stays clean.
-cleanup() { git -C "$CORE/plugins" checkout -- "analyzers/GenericHL7/pom.xml" 2>/dev/null || true; }
-trap cleanup EXIT
-if git -C "$CORE/plugins" apply --check "$PATCH" 2>/dev/null; then
-  git -C "$CORE/plugins" apply "$PATCH"
-  echo "→ Applied commons-lang3 pom fix (transient)."
-else
-  echo "→ pom fix already present or not applicable; building as-is."
-fi
 
 echo "→ Building $JAR_NAME from the pinned submodule ($MAVEN_IMAGE)…"
 mvn_flags=(-Duser.home=/var/maven -Dmaven.test.skip=true -Dspotless.check.skip=true package)

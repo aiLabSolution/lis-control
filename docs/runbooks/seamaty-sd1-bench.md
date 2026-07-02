@@ -356,9 +356,10 @@ docker network rm erpnexttrial_default 2>/dev/null || true   # frees the 172.20.
 
 # 2) Install the GenericHL7 plugin into the webapp's plugin volume (LIS-94).
 #    SD1 is a Dashboard-configured HL7 analyzer, so it needs the GenericHL7 plugin —
-#    which is NOT in the prebuilt image's volume and does not build from the pinned
-#    source unpatched (missing commons-lang3). This script builds + installs it with
-#    no manual jar copying; run it BEFORE `up` so the webapp loads it on startup.
+#    which is NOT in the prebuilt image's volume. The script builds it from the pinned
+#    plugins submodule (the aiLabSolution fork, which carries the commons-lang3 build
+#    fix — ADR-0017) and installs it with no manual jar copying; run it BEFORE `up`
+#    so the webapp loads it on startup.
 cd /home/marloeu/projects/lis-control
 deploy/ci/install-generichl7-plugin.sh          # → core/openelis/volume/plugins/GenericHL7-1.0.jar
 
