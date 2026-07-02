@@ -41,11 +41,14 @@ here and component-specific guidance in the nested component docs.
 - Do not switch the shared primary checkout away from its current branch.
 - Before editing a slice, check/claim it with
   `python3 scripts/slice.py status LIS-NN` and
-  `python3 scripts/slice.py claim LIS-NN --task "..."`; use `heartbeat` for
-  long work and `release` on handoff, done, or blocked.
-- Use `scripts/slice.py next` for ready work. Do not use a raw
-  `plane issues list` dump as the front door; the repo docs call out API
-  filtering issues.
+  `python3 scripts/slice.py claim LIS-NN --task "..." [--start]`; use `heartbeat`
+  for long work and `release` on handoff, done, or blocked.
+- Use `scripts/slice.py next` for ready work and `scripts/slice.py show LIS-NN`
+  to read a ticket. Do not use a raw `plane issues list` dump as the front
+  door; the repo docs call out API filtering issues.
+- Issue bodies and markdown progress comments go through
+  `scripts/plane_issue.py` (`create` / `update` / `comment`) — state names and
+  `LIS-NN` keys are accepted; priorities are the API's string enum.
 - Coordinate through the Plane issue and branch. Fetch/rebase before commits,
   push after commits, and never force-push a shared slice branch.
 - Keep `.claude/plane-context.json` and other per-checkout bookkeeping out of

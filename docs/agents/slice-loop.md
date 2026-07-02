@@ -35,14 +35,17 @@ acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plan
    ```
    Reuse the worktree if it already exists. Point that worktree's
    `.claude/plane-context.json` at the slice issue.
-3. **Sync + claim** — `python3 scripts/slice.py status LIS-NN` shows current ownership
-   (assignee + any live claims with their TTL) without reading the whole activity feed. To
-   take work, `python3 scripts/slice.py claim LIS-NN --task "<sub-task / files>"` — this
+3. **Sync + claim** — read the ticket with `python3 scripts/slice.py show LIS-NN`, then
+   `python3 scripts/slice.py status LIS-NN` for current ownership (assignee + any live
+   claims with their TTL) without reading the whole activity feed. To take work,
+   `python3 scripts/slice.py claim LIS-NN --task "<sub-task / files>" --start` — this
    assigns the issue (the coarse *taken* flag, which then hides it from other agents'
-   `slice.py next`) **and** posts a machine-readable, TTL'd claim record. If another agent
+   `slice.py next`), posts a machine-readable TTL'd claim record, **and** (with `--start`)
+   transitions the issue to In Progress in the same command. The claim is race-safe:
+   the ledger record is written first and re-read, and if another agent's live claim
+   landed earlier the command withdraws and exits non-zero. If another agent already
    holds a live claim, `claim` refuses (cooperative lock) — take a different sub-task, or
-   `--force` to share the slice and partition by sub-item. Then set the issue to its
-   in-progress state (`plane issues update … --state <In Progress>`). For full history,
+   `--force` to share the slice and partition by sub-item. For full history,
    `plane comments list --all` still works.
 4. **Work one increment** toward the acceptance criteria. For code, follow `/tdd`
    (red→green→refactor) and the relevant `CONTEXT.md` glossary (`docs/agents/domain.md`).
@@ -50,7 +53,9 @@ acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plan
 5. **Integrate** — from the slice worktree:
    `git -C <worktree> fetch origin && git -C <worktree> rebase origin/<branch>`, then commit
    (subject references `LIS-NN`), then **push immediately** so other sessions see it.
-6. **Log** — post a progress comment on the issue (what landed, what's next).
+6. **Log** — post a progress comment on the issue (what landed, what's next). Markdown
+   renders properly via
+   `printf '%s' "$NOTE" | python3 scripts/plane_issue.py comment LIS-NN --body-file -`.
 7. **Done?** — if the acceptance criteria are met, open/refresh the PR (see PR conventions)
    and move the issue to your review/done state, then stop or select the next slice.
    Otherwise, loop.
@@ -78,10 +83,12 @@ or in separate worktrees on the same branch. The Plane issue is the coordination
 - **Branch hygiene.** `fetch && rebase origin/<branch>` before every commit; push right
   after. **Never force-push** a shared slice branch. A rebase conflict means two sessions
   touched the same lines — resolve and re-partition.
-- **Heartbeat.** Long loops run `scripts/slice.py heartbeat LIS-NN` to extend the claim's TTL,
-  so a second agent reads active-vs-stalled from the structured record instead of guessing from
-  prose. On done / blocked / handoff, `scripts/slice.py release LIS-NN` drops the claim and
-  unassigns (returning the slice to `slice.py next`).
+- **Heartbeat.** Long loops run `scripts/slice.py heartbeat LIS-NN` to extend the claim's TTL
+  (the task text carries over), so a second agent reads active-vs-stalled from the structured
+  record instead of guessing from prose. On done / blocked / handoff,
+  `scripts/slice.py release LIS-NN` drops the claim and unassigns — unless another agent still
+  holds a live claim on the shared slice, in which case the *taken* flag stays until the last
+  live claim releases.
 
 ## Submodule slices (two-level sync)
 
