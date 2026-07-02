@@ -33,7 +33,7 @@ from .ack import (
 )
 from .ingest import to_ingest_payload
 from .mllp import frame
-from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
+from .normalize import KIND_CALIBRATION, KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
 from .oru import OruParseError, OruReport, parse_oru_r01
 from .transport import MllpTransport
 
@@ -121,6 +121,11 @@ class MilestoneOutcome:
         masquerading as a patient analyte result (LIS-86 / S2.10)."""
         return tuple(o for o in self.observations if o.kind == KIND_WARNING)
 
+    @property
+    def calibrations(self) -> tuple[NormalizedObservation, ...]:
+        """Calibration rows routed out of the patient result stream."""
+        return tuple(o for o in self.observations if o.kind == KIND_CALIBRATION)
+
     def ingest_payload(self) -> list[dict]:
         """The core ingest contract DTOs (core ADR-0003) for the **final analyte
         results** only — what the edge hands the core persistence seam.
@@ -130,9 +135,9 @@ class MilestoneOutcome:
         as if authoritative — persisting a preliminary result indistinguishably from
         a final one is a clinical hazard (carrying finality onto the row for a later
         preliminary→final reconciliation is deferred, ADR-0013). In-band instrument
-        warnings (``KIND_WARNING``, e.g. the SD1 'Alarm' OBX) are routed out entirely
-        — an alarm is a note, not a numeric result, and must never enter the result
-        stream (LIS-86 / S2.10). Until then, only final analyte results flow."""
+        warnings (``KIND_WARNING``, e.g. the SD1 'Alarm' OBX) and calibration
+        rows (``KIND_CALIBRATION``) are routed out entirely — neither is a patient
+        result. Until then, only final analyte results flow."""
         return to_ingest_payload(
             obs
             for obs, finality in zip(self.observations, self.result_statuses)
