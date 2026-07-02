@@ -14,6 +14,7 @@ import pytest
 
 from edge_sim.archive import ArchiveIntegrityError, RawMessageArchive, archive_fixture
 from edge_sim.fixtures import load_fixture
+from edge_sim.normalize import Normalizer
 from edge_sim.replay import (
     NormalizedReplay,
     check_against_expected,
@@ -83,7 +84,7 @@ def test_deterministic_round_trip_over_mllp_framing(tmp_path):
 
 def test_erba_ec90_astm_replay_normalizes_expected_rows():
     fx = load_fixture(ERBA)
-    res = replay_normalized(fx.message_bytes, AstmTransport())
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(fx))
 
     assert res.round_trip_ok is True
     assert res.transport == "astm"
@@ -98,11 +99,72 @@ def test_erba_ec90_astm_replay_normalizes_expected_rows():
     assert check_against_expected(res, fx.expected) == []
 
 
+def test_erba_ec90_electrolytes_are_fixture_terminology_not_default_seed():
+    fx = load_fixture(ERBA)
+    default = replay_normalized(fx.message_bytes, AstmTransport())
+    configured = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(fx))
+
+    assert [o.raw_code for o in configured.observations] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [o.loinc for o in default.observations] == ["2345-7", "", "", "", ""]
+    assert [o.status for o in default.observations] == [
+        "NORMALIZED",
+        "PARTIAL",
+        "PARTIAL",
+        "PARTIAL",
+        "PARTIAL",
+    ]
+    assert [o.loinc for o in configured.observations] == [
+        "2345-7",
+        "2951-2",
+        "2823-3",
+        "2075-0",
+        "17861-6",
+    ]
+    assert [o.status for o in configured.observations] == ["NORMALIZED"] * 5
+
+
+def test_from_fixture_codes_only_block_keeps_common_unit_fallback():
+    """Bridge parity: FhirBundleBuilder tries the analyzer registry's unit map,
+    then falls back to its common-unit map. A fixture terminology block that
+    supplies only codes must therefore still resolve common units from the seed
+    map — not silently drop every unit to PARTIAL."""
+    from types import SimpleNamespace
+
+    fx = load_fixture(ERBA)
+    codes_only = SimpleNamespace(terminology={"codes": dict(fx.terminology["codes"])})
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(codes_only))
+
+    assert [o.status for o in res.observations] == ["NORMALIZED"] * 5
+    assert [o.ucum_value for o in res.observations] == [
+        "mg/dL",
+        "mmol/L",
+        "mmol/L",
+        "mmol/L",
+        "mg/dL",
+    ]
+
+
+def test_from_fixture_units_only_block_does_not_leak_default_codes():
+    """A terminology block that supplies only units must not resolve codes from
+    the default seed — code → LOINC comes only from the profile data, like a
+    bridge entry with no codeToLoinc. GLU is the canary: it lives in the seed
+    map and must stay unmapped here."""
+    from types import SimpleNamespace
+
+    fx = load_fixture(ERBA)
+    units_only = SimpleNamespace(terminology={"units": dict(fx.terminology["units"])})
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(units_only))
+
+    assert [o.raw_code for o in res.observations] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [o.loinc for o in res.observations] == [""] * 5
+    assert [o.status for o in res.observations] == ["PARTIAL"] * 5
+
+
 def test_erba_ec90_astm_archive_round_trip_is_deterministic(tmp_path):
     arc = RawMessageArchive(tmp_path)
     fx = load_fixture(ERBA)
     res = deterministic_round_trip(fx, AstmTransport(), archive=arc, received_at=WHEN)
-    again = replay_from_archive(arc, res.digest, AstmTransport())
+    again = replay_from_archive(arc, res.digest, AstmTransport(), Normalizer.from_fixture(fx))
 
     assert res.round_trip_ok is True
     assert res.result_digest == again.result_digest

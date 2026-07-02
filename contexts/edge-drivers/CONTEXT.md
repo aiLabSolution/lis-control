@@ -17,13 +17,16 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release **`3.0.6`** (`c7382e4`) — the LIS-26 bridge change (PR
-  `openelis-analyzer-bridge#5`: ERBA EC90 ASTM normalization — E1381-95 framed
-  compliant receive, e1381-95 config-key fix, UCUM `Quantity` coding) on top of the
-  EDAN H90-series parse profile (PR #4) and the LIS-95 SD1 QC/calibration gate (PR #3),
-  which followed `3.0.5` (`a98db88`, LIS-86: SD1 PID-2 fallback + in-band 'Alarm'
-  routing) — vested as a lightweight tag on the production data-path (the change-control
-  follow-up mirroring the `3.0.4`/`3.0.5` repins).
+- **Pin:** release **`3.0.7`** (`fe391a7`) — the LIS-28 bridge change (PR
+  `openelis-analyzer-bridge#6`: registry-backed raw-unit→UCUM mapping —
+  `AnalyzerEntry.unitToUcum` feeds FHIR `Quantity.system/code` while `Quantity.unit`
+  preserves the raw analyzer text, with fallback to the legacy common-unit map; plus
+  `testUnitUcum` wired through both the `/register` and full-state `/sync` push paths
+  so an OE sync cannot wipe it — the LIS-98 bug class. OE-core does not *send*
+  `testUnitUcum` yet; that lands with the LIS-98 fix). Follows `3.0.6` (`c7382e4`,
+  LIS-26: ERBA EC90 ASTM normalization — E1381-95 framed compliant receive,
+  e1381-95 config-key fix, UCUM `Quantity` coding) on top of the EDAN H90-series
+  parse profile (PR #4) and the LIS-95 SD1 QC/calibration gate (PR #3).
   The `3.0.x` release line is pom-independent (pom stays `3.3.0`, no bump on tag).
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
@@ -82,5 +85,8 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
   (`core/openelis` PR #11: liquibase `049-sd1-loinc-seed.xml` — SD1 analyzer +
   `AnalyzerTestMapping` + `Test.loinc`), pinned here. The raw-unit→UCUM `Quantity`
   coding (incl. U/L) **landed** via LIS-26 (PR #5, release `3.0.6`:
-  `FhirBundleBuilder.UNIT_TO_UCUM`, raw `Quantity.unit` preserved beside `system`/`code`).
+  `FhirBundleBuilder.UNIT_TO_UCUM`, raw `Quantity.unit` preserved beside `system`/`code`);
+  LIS-28 (PR #6, release `3.0.7`) makes it registry-backed per analyzer
+  (`AnalyzerEntry.unitToUcum`, pushed as `testUnitUcum`) with `UNIT_TO_UCUM` demoted to
+  the fallback — OE-core doesn't send `testUnitUcum` yet (goes with the LIS-98 fix).
   Remaining: Patient/MRN channel + OBX-11 finality + bridge↔sim cross-contract are **LIS-87**.

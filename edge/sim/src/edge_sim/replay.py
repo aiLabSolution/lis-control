@@ -95,8 +95,10 @@ def replay_normalized(
     """Replay raw ``message`` bytes through ``transport``, then parse + normalize the
     received ``ORU^R01`` into a :class:`NormalizedReplay`.
 
-    The pipeline is pure, so a given message always yields the same ``result_digest``
-    — that reproducibility is what makes the round-trip "deterministic".
+    The pipeline is pure, so a given (message, terminology map) pair always yields
+    the same ``result_digest`` — that reproducibility is what makes the round-trip
+    "deterministic". The ``normalizer`` (the channel's terminology data) is therefore
+    part of a Result's reproduction inputs, alongside the source bytes.
     """
     sent = bytes(message)
     received = transport.roundtrip(sent)
@@ -124,7 +126,10 @@ def replay_from_archive(
     """Reload the archived message ``digest`` (integrity-verified) and replay it.
 
     Re-derives the normalized Result from the verbatim stored source bytes — the
-    auditable "reproduce a Result from its evidence" path.
+    auditable "reproduce a Result from its evidence" path. The archive stores raw
+    bytes only: to reproduce a Result that was normalized with per-channel
+    terminology data (``Normalizer.from_fixture``), the caller must supply that
+    same ``normalizer`` — the channel profile is part of the evidence.
     """
     entry = archive.load(digest)  # raises ArchiveIntegrityError on a tampered blob
     return replay_normalized(entry.raw, transport, normalizer)
@@ -140,9 +145,20 @@ def deterministic_round_trip(
 ) -> NormalizedReplay:
     """The full S1.4 vertical for a fixture: archive its captured message, then
     replay it *from the archive* — capture → archive → reload → wire round-trip →
-    parse → normalize → normalized Result."""
+    parse → normalize → normalized Result.
+
+    When no ``normalizer`` is given, the fixture's own terminology block supplies
+    it (:meth:`Normalizer.from_fixture`) — the fixture is in hand here, so its
+    channel/profile data travels with its message. A later
+    :func:`replay_from_archive` must be given the same terminology to reproduce
+    the same Result (see its docstring)."""
     entry = archive_fixture(archive, fixture, received_at=received_at)
-    return replay_from_archive(archive, entry.digest, transport, normalizer)
+    return replay_from_archive(
+        archive,
+        entry.digest,
+        transport,
+        normalizer or Normalizer.from_fixture(fixture),
+    )
 
 
 def check_against_expected(replay: NormalizedReplay, expected: dict) -> list[str]:

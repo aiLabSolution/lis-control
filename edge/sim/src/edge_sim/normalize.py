@@ -76,11 +76,6 @@ _DEFAULT_CODES: dict[str, str] = {
     "RBC": "789-8",  # Erythrocytes [#/volume] in Blood by Automated count
     "MCV": "787-2",  # MCV [Entitic volume] by Automated count
     "GLU": "2345-7",  # Glucose [Mass/volume] in Serum or Plasma (aligns with LIS-8 seed)
-    # ERBA EC90 chemistry/electrolyte panel seed - config/data analog for LIS-26.
-    "NA": "2951-2",  # Sodium [Moles/volume] in Serum or Plasma
-    "K": "2823-3",  # Potassium [Moles/volume] in Serum or Plasma
-    "CL": "2075-0",  # Chloride [Moles/volume] in Serum or Plasma
-    "CA": "17861-6",  # Calcium [Mass/volume] in Serum or Plasma
     # Seamaty SD1 dry-chemistry biochem panel — serum/plasma LOINCs (LIS-86 / S2.10).
     "BUN": "3094-0",  # Urea nitrogen [Mass/volume] in Serum or Plasma
     "CREA": "2160-0",  # Creatinine [Mass/volume] in Serum or Plasma
@@ -140,6 +135,32 @@ class Normalizer:
 
     def __init__(self, terminology: TerminologyMap | None = None):
         self._tmap = terminology if terminology is not None else TerminologyMap.default()
+
+    @classmethod
+    def from_fixture(cls, fixture) -> "Normalizer":
+        """Build a normalizer from a fixture's manifest terminology block.
+
+        The simulator mirrors the production bridge contract: analyzer code →
+        LOINC comes only from the channel/profile data — never the seed map,
+        so a fixture proves its own code mappings (a block without ``codes``
+        maps nothing, like a bridge entry with no ``codeToLoinc``). Raw unit →
+        UCUM prefers the profile data and falls back to the common seed map —
+        the same analyzer-map-then-common-map order the bridge's
+        FhirBundleBuilder applies (the bridge has no common *code* map, only a
+        common unit map). Fixtures without a terminology block keep the
+        default seed maps for backwards compatibility.
+        """
+        terminology = getattr(fixture, "terminology", None) or {}
+        codes = terminology.get("codes")
+        units = terminology.get("units")
+        if codes is None and units is None:
+            return cls()
+        return cls(
+            TerminologyMap(
+                codes=codes or {},
+                units={**_DEFAULT_UNITS, **(units or {})},
+            )
+        )
 
     def normalize_observation(self, obs: RawObservation) -> NormalizedObservation:
         loinc = self._tmap.normalize_code(obs.raw_code) or ""

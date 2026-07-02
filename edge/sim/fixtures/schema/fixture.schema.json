@@ -75,6 +75,60 @@
       "type": "boolean",
       "description": "true = not a real instrument capture (illustrative/skeleton seed). Real conformance captures set false."
     },
+    "channel": {
+      "type": "object",
+      "description": "Per-analyzer channel configuration data. This captures the physical/listener settings required to run the fixture without baking them into parser code.",
+      "additionalProperties": false,
+      "required": ["id", "isolation_group"],
+      "properties": {
+        "id": { "type": "string" },
+        "isolation_group": {
+          "type": "string",
+          "description": "Independent channel/driver group this analyzer belongs to; faults in one group must not require parser or core changes for another."
+        },
+        "rs232": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baud_rate", "data_bits", "parity", "stop_bits", "provenance"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "enum": ["bench-capture", "vendor-doc", "bridge-default-bench-pending"],
+              "description": "Where the line-setting values came from. 'bridge-default-bench-pending' marks unconfirmed defaults that must be replaced by a bench capture or vendor doc before go-live."
+            },
+            "baud_rate": { "type": "integer" },
+            "data_bits": { "type": "integer" },
+            "parity": { "type": "string", "enum": ["NONE", "EVEN", "ODD", "MARK", "SPACE"] },
+            "stop_bits": { "type": "integer" },
+            "flow_control": { "type": "string" },
+            "db9": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "pinout": { "type": "string" },
+                "cable": { "type": "string" },
+                "note": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "terminology": {
+      "type": "object",
+      "description": "Per-analyzer vendor-code and unit mapping data used by the simulator/bridge analogs.",
+      "additionalProperties": false,
+      "properties": {
+        "codes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
     "expected": {
       "type": "object",
       "description": "Placeholder for downstream parser/normalization assertions (e.g. the normalized LOINC/UCUM Result row). Wired up once those services land in Stage 1.",
