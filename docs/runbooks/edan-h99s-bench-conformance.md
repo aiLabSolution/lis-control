@@ -226,9 +226,9 @@ first. Promote and map that stub before accepting results.
    connection test carried no HL7 payload — send one *priming* ORU now (run §4
    steps 1–4) using a **scratch sample you will discard**, not the conformance
    sample. Its rows stage as unmapped / `read_only` and **persist** — mapping the
-   analyzer below does **not** retroactively remap or remove them (dedupe is by
-   `analyzer_id + accession + test_name`, and a later mapped send lands as separate
-   rows). So do the real §4 conformance run with a *fresh* bench sample **after**
+   analyzer below does **not** retroactively remap or remove them, and re-sending
+   adds new staging rows rather than updating the old ones. So do the real §4
+   conformance run with a *fresh* bench sample **after**
    this section, and treat any pre-mapping scratch rows as inert staging noise to
    ignore or delete — never as conformance results.
 2. Promote it (Analyzer management UI, or `PUT /rest/analyzer/analyzers/<id>`):
