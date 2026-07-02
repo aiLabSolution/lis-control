@@ -1,0 +1,69 @@
+{
+  "id": "erba-ec90-astm-panel",
+  "description": "Synthetic ASTM E1394 record set (H->P->O->R->R->R->R->R->L) for one ERBA EC90 chemistry/electrolyte panel. Exercises LIS-26: E1381 framing, E1394 parse, normalized raw-beside-LOINC/UCUM rows, and deterministic archive replay. NOT a real instrument capture.",
+  "analyzer": { "vendor": "ERBA", "model": "EC90" },
+  "protocol": "astm-e1394",
+  "transport": "serial-rs232",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-26 / S2.4 - ERBA EC90 ASTM channel thread, re-scoped by LIS-74)",
+    "note": "Application payload only (CR-separated E1394 records); the E1381 transport applies the STX FN text ETX C1 C2 CR LF envelope and validates the modulo-256 checksum at replay time. Replace with a real ERBA EC90 ASTM-HOST bench capture when available: set synthetic:false with capture provenance."
+  },
+  "synthetic": true,
+  "expected": {
+    "round_trip": true,
+    "records": 9,
+    "frames": 1,
+    "message_type": "ASTM^E1394",
+    "patient_id": "PID-026",
+    "specimen_id": "SPEC-026",
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "98",
+        "raw_code": "GLU",
+        "raw_unit": "mg/dL",
+        "loinc": "2345-7",
+        "ucum_value": "mg/dL",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "2",
+        "value": "140",
+        "raw_code": "NA",
+        "raw_unit": "mmol/L",
+        "loinc": "2951-2",
+        "ucum_value": "mmol/L",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "3",
+        "value": "4.2",
+        "raw_code": "K",
+        "raw_unit": "mmol/L",
+        "loinc": "2823-3",
+        "ucum_value": "mmol/L",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "4",
+        "value": "103",
+        "raw_code": "CL",
+        "raw_unit": "mmol/L",
+        "loinc": "2075-0",
+        "ucum_value": "mmol/L",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "5",
+        "value": "9.4",
+        "raw_code": "CA",
+        "raw_unit": "mg/dL",
+        "loinc": "17861-6",
+        "ucum_value": "mg/dL",
+        "status": "NORMALIZED"
+      }
+    ]
+  }
+}

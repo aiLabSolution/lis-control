@@ -76,6 +76,11 @@ _DEFAULT_CODES: dict[str, str] = {
     "RBC": "789-8",  # Erythrocytes [#/volume] in Blood by Automated count
     "MCV": "787-2",  # MCV [Entitic volume] by Automated count
     "GLU": "2345-7",  # Glucose [Mass/volume] in Serum or Plasma (aligns with LIS-8 seed)
+    # ERBA EC90 chemistry/electrolyte panel seed - config/data analog for LIS-26.
+    "NA": "2951-2",  # Sodium [Moles/volume] in Serum or Plasma
+    "K": "2823-3",  # Potassium [Moles/volume] in Serum or Plasma
+    "CL": "2075-0",  # Chloride [Moles/volume] in Serum or Plasma
+    "CA": "17861-6",  # Calcium [Mass/volume] in Serum or Plasma
     # Seamaty SD1 dry-chemistry biochem panel — serum/plasma LOINCs (LIS-86 / S2.10).
     "BUN": "3094-0",  # Urea nitrogen [Mass/volume] in Serum or Plasma
     "CREA": "2160-0",  # Creatinine [Mass/volume] in Serum or Plasma
