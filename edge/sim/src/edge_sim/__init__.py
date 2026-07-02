@@ -29,6 +29,13 @@ from .astm import (
     parse_frame,
     run_session,
 )
+from .astm_simulator import (
+    AstmAnalyzerSessionResult,
+    AstmCorruption,
+    AstmSessionEvent,
+    run_analyzer_session,
+    run_fixture_session,
+)
 from .e1394 import (
     AstmMessage,
     AstmOrder,
@@ -133,6 +140,12 @@ __all__ = [
     "AstmReceiver",
     "SessionResult",
     "run_session",
+    # ASTM analyzer-side simulator harness (LIS-25 / S2.3)
+    "AstmCorruption",
+    "AstmSessionEvent",
+    "AstmAnalyzerSessionResult",
+    "run_analyzer_session",
+    "run_fixture_session",
     # ASTM E1394 record parser (LIS-24 / S2.2)
     "Delimiters",
     "Record",
