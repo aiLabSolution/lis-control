@@ -141,12 +141,14 @@ class Normalizer:
         """Build a normalizer from a fixture's manifest terminology block.
 
         The simulator mirrors the production bridge contract: analyzer code →
-        LOINC comes only from the channel/profile data (no seed fallback, so a
-        fixture proves its own code mappings), while raw unit → UCUM prefers
-        the profile data and falls back to the common seed map — the same
-        analyzer-map-then-common-map order the bridge's FhirBundleBuilder
-        applies. Fixtures without a terminology block keep the default seed
-        map for backwards compatibility.
+        LOINC comes only from the channel/profile data — never the seed map,
+        so a fixture proves its own code mappings (a block without ``codes``
+        maps nothing, like a bridge entry with no ``codeToLoinc``). Raw unit →
+        UCUM prefers the profile data and falls back to the common seed map —
+        the same analyzer-map-then-common-map order the bridge's
+        FhirBundleBuilder applies (the bridge has no common *code* map, only a
+        common unit map). Fixtures without a terminology block keep the
+        default seed maps for backwards compatibility.
         """
         terminology = getattr(fixture, "terminology", None) or {}
         codes = terminology.get("codes")
@@ -155,7 +157,7 @@ class Normalizer:
             return cls()
         return cls(
             TerminologyMap(
-                codes=codes if codes is not None else _DEFAULT_CODES,
+                codes=codes or {},
                 units={**_DEFAULT_UNITS, **(units or {})},
             )
         )

@@ -144,6 +144,22 @@ def test_from_fixture_codes_only_block_keeps_common_unit_fallback():
     ]
 
 
+def test_from_fixture_units_only_block_does_not_leak_default_codes():
+    """A terminology block that supplies only units must not resolve codes from
+    the default seed — code → LOINC comes only from the profile data, like a
+    bridge entry with no codeToLoinc. GLU is the canary: it lives in the seed
+    map and must stay unmapped here."""
+    from types import SimpleNamespace
+
+    fx = load_fixture(ERBA)
+    units_only = SimpleNamespace(terminology={"units": dict(fx.terminology["units"])})
+    res = replay_normalized(fx.message_bytes, AstmTransport(), Normalizer.from_fixture(units_only))
+
+    assert [o.raw_code for o in res.observations] == ["GLU", "NA", "K", "CL", "CA"]
+    assert [o.loinc for o in res.observations] == [""] * 5
+    assert [o.status for o in res.observations] == ["PARTIAL"] * 5
+
+
 def test_erba_ec90_astm_archive_round_trip_is_deterministic(tmp_path):
     arc = RawMessageArchive(tmp_path)
     fx = load_fixture(ERBA)
