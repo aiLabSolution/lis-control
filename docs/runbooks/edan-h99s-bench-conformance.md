@@ -4,9 +4,10 @@ Drafted 2026-07-01 for the physical EDAN H99S bench run. This is the L3
 bench-conformance plan for REQ-CONF-01: prove that the physical analyzer speaks
 as documented, that the LIS edge acknowledges it correctly, that raw wire
 evidence is captured, and that a representative sample result can be replayed
-through the Stage-1 simulator pipeline. Full production bridge -> OpenELIS
-support remains blocked until the EDAN H90-series bridge parse profile is landed
-and the umbrella `edge/drivers` submodule pin is bumped.
+through the Stage-1 pipeline. The production bridge -> OpenELIS path is shipped
+(EDAN H90-series parse profile at `edge/drivers` pin `4db3c9e`) and was verified
+end-to-end with the synthetic seed on 2026-07-02; this bench validates it against
+real instrument bytes.
 
 ## References
 
@@ -41,12 +42,12 @@ Bench evidence target for this run:
 - Raw-message capture plus deterministic replay into normalized Stage-1 result
   rows.
 
-Pilot go-live support claim is conditional on closing the production bridge gap:
-the current umbrella `edge/drivers` pin is `a98db88` / release `3.0.5` (LIS-86)
-and does **not** contain the H99S/H90-series `HL7ResultParser` branch. At that
-pin the bridge still reads analyte code from OBX-3 and prefers generic OBR/PID
-positions, so H99S production ingestion will misread KB-faithful H99S wire unless
-the bridge change lands first.
+The production bridge gap is **closed**: the umbrella `edge/drivers` pin is
+`4db3c9e`, which contains the H99S/H90-series `HL7ResultParser` branch
+(`isEdanH90Series`) that reads analyte code from OBX-4 and the EDAN OBR-2/PID-2
+positions. This bench therefore **validates** the shipped profile against real
+instrument bytes rather than reproducing a parser gap. See the Readiness section
+for the verified end-to-end result staging on 2026-07-02.
 
 Characterization only, not a pilot go-live blocker unless explicitly promoted:
 
@@ -59,28 +60,33 @@ Characterization only, not a pilot go-live blocker unless explicitly promoted:
 
 ## Readiness and EDAN H90-series parse profile (READ BEFORE THE BENCH)
 
-Transport + ACK are ready, and **simulator result parsing/normalization is ready**
-via the **EDAN H90-series parse profile** shipped in `edge/sim` for this slice.
-Production bridge result staging is **not** ready at the current umbrella
-`edge/drivers` pin (`a98db88`). The H90-series protocol repurposes standard HL7
+Transport + ACK are ready, and **result parsing/normalization is ready in both the
+production bridge and `edge/sim`** via the **EDAN H90-series parse profile**. The
+umbrella `edge/drivers` pin is **`4db3c9e`**, which contains the bridge
+`HL7ResultParser` EDAN branch (`isEdanH90Series`); production bridge result staging
+was verified end-to-end on 2026-07-02 (the synthetic seed replayed over MLLP →
+bridge → OpenELIS staged all six CBC rows, each mapped to its LOINC test with
+`read_only=false`). The H90-series protocol repurposes standard HL7
 field positions, so the generic parser reads the wrong fields — sharper than "a
 code->LOINC seed is missing": for EDAN the analyte code is not even in the field
-the generic parser reads. The simulator profile is gated on `MSH-3.1 == H90` or
+the generic parser reads. The profile is gated on `MSH-3.1 == H90` or
 `MSH-4 == EDANLAB` (so standard-HL7 analyzers, including the EDAN H60S seed, are
-untouched) and now reads the EDAN positions. Verified against the synthetic seed
+untouched) and reads the EDAN positions. Verified against the synthetic seed
 `edge/sim/fixtures/edan-h99s-oru-r01` (run `uv run edge-sim normalize
 edan-h99s-oru-r01` — all six rows read their OBX-4 code and normalize to LOINC).
 
-| Field | KB | Position the generic parser read (pre-profile) | EDAN H90-series position the `edge/sim` profile now reads | Status |
+| Field | KB | Position the generic parser read (pre-profile) | EDAN H90-series position the profile now reads | Status |
 |---|---|---|---|---|
-| **Analyte code** | §5.4 | OBX-3.1 (`extractTestCode(fields[3])`; `edge/sim raw_code=OBX-3.1`) — every row collapsed to code `0`, none mapping to LOINC | **OBX-4** (name); OBX-3 = suspect flag `0`/`1` | **Closed in `edge/sim`; open in pinned bridge** |
-| Sample ID | §5.3a | accession OBR-3 -> OBR-2 (bridge); OBR-3 only (edge/sim) -> blank specimen | **OBR-2** (OBR-3 = reviewing doctor); edge/sim now has the OBR-2 fallback | **Closed in `edge/sim`; bridge pin still generic** |
-| Patient number | §5.2 | PID-3.1 -> PID-2.1 — a populated PID-3 age (e.g. `35^Year`) shadowed the id | **PID-2** (PID-3 = Age^unit); the profile never uses PID-3 age for EDAN | **Closed in `edge/sim`; bridge pin still generic** |
+| **Analyte code** | §5.4 | OBX-3.1 (`extractTestCode(fields[3])`; `edge/sim raw_code=OBX-3.1`) — every row collapsed to code `0`, none mapping to LOINC | **OBX-4** (name); OBX-3 = suspect flag `0`/`1` | **Closed** (bridge `4db3c9e` + `edge/sim`) |
+| Sample ID | §5.3a | accession OBR-3 -> OBR-2 (bridge); OBR-3 only (edge/sim) -> blank specimen | **OBR-2** (OBR-3 = reviewing doctor); edge/sim now has the OBR-2 fallback | **Closed** (bridge `4db3c9e` + `edge/sim`) |
+| Patient number | §5.2 | PID-3.1 -> PID-2.1 — a populated PID-3 age (e.g. `35^Year`) shadowed the id | **PID-2** (PID-3 = Age^unit); the profile never uses PID-3 age for EDAN | **Closed** (bridge `4db3c9e` + `edge/sim`) |
 
-**Shipped in `edge/sim`:**
+**Shipped (two-level per ADR-0001 — bridge + `edge/sim`):**
 
 - Analyte code read from **OBX-4** for EDAN H90-series messages — `edge/sim oru.py`
-  (`_is_edan_h90` + `_observation(edan)`). The LOINC/UCUM map already knew the EDAN
+  (`_is_edan_h90` + `_observation(edan)`) via **PR #46**, and the bridge
+  `HL7ResultParser` (`isEdanH90Series`) via bridge **PR #4** (umbrella `edge/drivers`
+  pin `4db3c9e`). The LOINC/UCUM map already knew the EDAN
   codes/units (`edge/sim normalize.py` covers WBC/RBC/HGB/HCT/MCV/PLT +
   `10^9/L`/`10^12/L`/`g/L`), so once the code is read from OBX-4 normalization
   resolves.
@@ -90,12 +96,6 @@ edan-h99s-oru-r01` — all six rows read their OBX-4 code and normalize to LOINC
 
 **Still open — documented gaps (confirm/close against the real bench capture):**
 
-- **Production bridge H90-series profile:** the current pinned bridge
-  (`edge/drivers` `a98db88`) does not contain the H99S/H90-series
-  `HL7ResultParser` branch. It still reads OBX-3 for analyte code; for KB-faithful
-  H99S rows this resolves to the suspect flag `0`, not WBC/RBC/HGB/etc. Land the
-  bridge change first, then bump the umbrella submodule pin before claiming
-  production H99S result ingest support.
 - **OBX-11 finality (harness-only):** EDAN uses OBX-11 as a "modified?" flag, not HL7
   Table-0085 finality (F/P/C), so EDAN rows carry no `F` and the `edge/sim` milestone's
   finality-gated ingest holds them back (`ingest_payload()` is empty for this seed).
@@ -127,18 +127,21 @@ Use bench/test identifiers only. Do not use real patient PHI for this run.
   each other.
 - Bridge MLLP listener is enabled. Use TCP `7999` unless the bench needs another
   free port; record the actual port in the evidence packet.
-- OpenELIS analyzer registry has a draft H99S entry for bench configuration only:
+- OpenELIS has an analyzer registry entry for the H99S. Because the analyzer's
+  MLLP source IP is NAT'd by the bridge's docker publish, do **not** pre-create it
+  by IP — let the bridge auto-create the `PENDING_REGISTRATION` stub on first
+  contact, then promote and map it per **Test Plan §3**. Target configuration:
   - vendor/model: `EDAN H99S`
-  - expected protocol: `HL7`
-  - transport: `MLLP`
-  - source: analyzer IP or bench network allow-list
-  - mapping profile: **blocked for production at the current bridge pin**. The
-    desired profile is the EDAN H90-series parse profile plus EDAN hematology
-    map; do not use the H60S standard-HL7 profile for H99S because the
-    H90-series protocol carries analyte code in OBX-4, sample ID in OBR-2,
-    and patient number in PID-2. If the bridge build still corresponds to
-    `edge/drivers` `a98db88`, collect wire evidence and simulator results but
-    do not mark production bridge ingest supported.
+  - protocol: `HL7` (`HL7_V2_3_1`); transport: `MLLP`; communication mode:
+    `ANALYZER_INITIATED`
+  - identifier pattern: `^H90-EDANLAB$` (the in-message sender the bridge routes on
+    when the source IP is unregistered)
+  - mapping profile: the EDAN H90-series parse profile plus the EDAN hematology map
+    (analyte code in OBX-4, sample ID in OBR-2, patient number in PID-2). Do **not**
+    use the H60S standard-HL7 profile for H99S. This is shipped at `edge/drivers`
+    pin `4db3c9e` and verified end-to-end (see Readiness).
+  - test mappings: WBC, RBC, HGB, HCT, MCV, PLT → the OpenELIS tests carrying LOINC
+    6690-2 / 789-8 / 718-7 / 4544-3 / 787-2 / 777-3.
 - Packet capture is ready on the bridge host:
 
 ```bash
@@ -165,7 +168,8 @@ Collect at minimum:
 | `h99s-mllp.pcap` | Full packet capture for connection test, ORU, optional QC/query. |
 | `oru-message.hl7` | De-framed inbound application payload, no MLLP bytes. |
 | `ack.hl7` | ACK returned by the LIS edge for the ORU. |
-| `openelis-result.png` | OpenELIS UI/API proof of the ingested normalized result; required only after the production bridge H90-series profile/pin is in place. Until then, record the bridge-blocker follow-up instead. |
+| `openelis-result.png` | OpenELIS proof of the ingested normalized result under **Results → Analyzer → EDAN H99S** (rows mapped to LOINC, `read_only=false`). The production bridge H90-series profile is shipped at pin `4db3c9e`, so this is a required artifact. |
+| `analyzer-registry.json` | `GET /rest/analyzer/analyzers` after promotion + test mapping (records the registry entry and the six CBC mappings used for the run). |
 | `edge-sim-roundtrip.txt` | `edge-sim validate`, `normalize`, `roundtrip`, and `milestone` output after fixture creation. `milestone` is expected to exit nonzero until EDAN OBX-11 finality handling is closed; keep its output as diagnostic evidence. |
 | `signed-conformance-report.pdf` | Final validation sign-off. |
 
@@ -208,16 +212,48 @@ Pass criteria:
 - If the connection test emits an HL7 application payload, it uses `MSH-16=2`
   and the host ACK echoes the inbound `MSH-10` in `MSA-2`.
 
-### 3. Patient-sample ORU upload
+### 3. Register and map the analyzer in OpenELIS
+
+The bridge does not know the analyzer until it sends a message. On first contact
+(the §2 connection test if it emits an HL7 payload, otherwise the first ORU in §4),
+OpenELIS find-or-creates a `PENDING_REGISTRATION` stub from the message's sender
+(`H90-EDANLAB`) — **not** from the source IP, which docker NAT rewrites to the
+bridge gateway. Promote and map that stub before accepting results.
+
+1. Confirm the stub exists: `GET /rest/analyzer/analyzers` shows an entry named
+   `H90-EDANLAB`, status `PENDING_REGISTRATION`.
+2. Promote it (Analyzer management UI, or `PUT /rest/analyzer/analyzers/<id>`):
+   name `EDAN H99S`, type `HEMATOLOGY`, protocol `HL7_V2_3_1`, communication mode
+   `ANALYZER_INITIATED`, identifier pattern `^H90-EDANLAB$`, status `SETUP`.
+3. Add the six CBC test mappings (analyzer test name → OpenELIS test): WBC, RBC,
+   HGB, HCT, MCV, PLT → the tests carrying LOINC 6690-2 / 789-8 / 718-7 / 4544-3 /
+   787-2 / 777-3.
+4. **Make the analyzer visible under Results → Analyzer.** A bridge-created /
+   PUT-promoted analyzer does **not** get its `Results → Analyzer → <name>` menu
+   entry until the webapp re-runs its startup menu registration — known limitation
+   **LIS-105**. Either restart the OpenELIS webapp, or navigate directly to
+   `/AnalyzerResults?id=<id>`. Without this, the staged rows are in the database and
+   reachable via `GET /rest/AnalyzerResults?id=<id>` but have no UI link, which reads
+   as "results missing".
+5. Restart the bridge (or wait for its next registry sync) so it pulls the promoted
+   entry and identifier pattern.
+
+Pass criteria:
+
+- The registry entry is `EDAN H99S`, `SETUP`, identifier pattern `^H90-EDANLAB$`,
+  with the six CBC test mappings present.
+- `Results → Analyzer → EDAN H99S` appears in the OpenELIS menu (after the webapp
+  restart) and opens the analyzer's staged-results page.
+- `analyzer-registry.json` is captured for the evidence packet.
+
+### 4. Patient-sample ORU upload
 
 1. Create or select a bench-only sample ID, for example `H99S-BENCH-001`.
 2. Run the analyzer result workflow under bench-operator control.
 3. Send the result manually or via auto-communication.
 4. Capture the inbound `ORU^R01` and outbound `ACK`.
-5. If the production bridge H90-series profile is present, verify the
-   OpenELIS/bridge ingestion path received the result. If the bridge is still at
-   the current umbrella pin (`a98db88`), record this as blocked and use the
-   `edge-sim` fixture steps for parser/normalization evidence.
+5. Verify the OpenELIS/bridge ingestion path received the result: the rows appear
+   under **Results → Analyzer → EDAN H99S** (registered in §3), mapped to LOINC.
 
 Pass criteria:
 
@@ -233,16 +269,14 @@ Pass criteria:
   normalization unless a display requirement is explicitly added later.
 - Outbound ACK has `MSA-1=AA`.
 - ACK `MSA-2` exactly equals inbound `MSH-10`.
-- If the production bridge H90-series profile is present, OpenELIS receives the
-  staged rows, mapped to LOINC via the profile (analyte code read from OBX-4).
-  If the bridge is still at `a98db88`, this criterion is **blocked by the
-  bridge pin**, not failed by the instrument.
+- OpenELIS receives the staged rows, mapped to LOINC via the shipped profile
+  (analyte code read from OBX-4), `read_only=false`.
 - Confirm the real wire actually matches the profile the seed encodes: analyte
   name in **OBX-4** with a suspect flag in OBX-3, the sample id in **OBR-2**
   (OBR-3 = reviewing doctor), and the patient number in **PID-2** (PID-3 = age)
   — see the readiness table. Record any deviation as a follow-up.
 
-### 4. Raw archive and simulator fixture
+### 5. Raw archive and simulator fixture
 
 > A **synthetic seed already exists** at `edge/sim/fixtures/edan-h99s-oru-r01`
 > (KB-faithful: `MSH-3 = H90^^507`, analyte name in OBX-4, `synthetic: true`). It
@@ -287,7 +321,7 @@ Pass criteria:
 - Any parser or normalization gap is converted into a follow-up slice before the
   unit is marked supported.
 
-### 5. QC upload characterization
+### 6. QC upload characterization
 
 Run only after the sample ORU path is stable.
 
@@ -306,7 +340,7 @@ Pass criteria:
 - If the current ingestion path would mix QC into patient results, stop and file
   a QC-routing follow-up; do not mark QC ingestion supported from this bench run.
 
-### 6. Worklist query characterization
+### 7. Worklist query characterization
 
 Run only if the operator can trigger the H99S query workflow and the host can
 respond safely.
@@ -324,7 +358,7 @@ Pass criteria:
 - The result is recorded as characterization only unless bidirectional support is
   promoted through change control.
 
-### 7. Failure and retry observation
+### 8. Failure and retry observation
 
 Do not manufacture unsafe analyzer states. If practical, perform one controlled
 negative observation:
@@ -346,23 +380,20 @@ The H99S can be marked bench-conformant for the pilot sample-result path only wh
 - Identity evidence proves the physical unit is H99S.
 - MLLP/TCP wire capture matches the vendor protocol.
 - One patient-sample `ORU^R01` is accepted with an ACK that echoes `MSH-10`.
-- Raw message, ACK, pcap, bridge config, and OpenELIS result proof are in the
-  evidence packet. If the bridge H90-series profile is not yet pinned, replace
-  OpenELIS result proof with a blocking follow-up and do not claim production
-  result ingest support.
+- Raw message, ACK, pcap, bridge config, analyzer registry, and OpenELIS result
+  proof are in the evidence packet. (The bridge H90-series profile is pinned at
+  `edge/drivers` `4db3c9e`, so OpenELIS result proof is expected, not deferred.)
 - `edge/sim` has a captured H99S fixture or an explicit follow-up to add it.
 - Parser/normalization gaps are either closed or tracked as blocking follow-ups.
-- The production bridge H90-series parser is landed and the umbrella
-  `edge/drivers` pin reflects it before H99S is marked supported for pilot
-  sample-result ingest.
 - Validation owner signs the conformance report.
 
 ## Follow-Up Slices to File if Needed
 
-- Production bridge H90-series parser and umbrella `edge/drivers` pin bump if
-  still on `a98db88`.
 - EDAN OBX-11 finality handling in `edge/sim` if H99S milestone ingest must
   become a green exit criterion.
+- Register the `Results → Analyzer` menu on analyzer promotion / bridge
+  find-or-create, so a bench analyzer is UI-visible without a webapp restart
+  (**LIS-105**).
 - H99S fixture seed and parser assertions if the bench capture differs from the
   H90-series EDAN hematology fixture.
 - H99S code-to-LOINC/UCUM mapping updates if OBX names/units differ from H60S.
