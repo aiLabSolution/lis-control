@@ -25,12 +25,14 @@ __all__ = [
     "RESULT_TYPE_PATIENT",
     "RESULT_TYPE_CALIBRATION",
     "RESULT_TYPE_QC",
+    "RESULT_TYPE_BLANK",
     "parse_oru_r01",
 ]
 
 RESULT_TYPE_PATIENT = "PATIENT"
 RESULT_TYPE_CALIBRATION = "CALIBRATION"
 RESULT_TYPE_QC = "QC"
+RESULT_TYPE_BLANK = "BLANK"
 
 
 class OruParseError(Exception):
@@ -92,6 +94,9 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
     edan = _is_edan_h90(msh)
 
     observations = tuple(_observation(seg, u, edan) for seg in msg.all("OBX"))
+    result_type = _result_type(msh.field(16))
+    if obr and _is_blank_sample_obr(obr, u):
+        result_type = RESULT_TYPE_BLANK
 
     return OruReport(
         message_type=u(msh.field(9)),
@@ -102,7 +107,7 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         patient_name=u(pid.field(5)) if pid else "",
         specimen_id=u(_specimen_id(obr, edan)) if obr else "",
         order_code=u(obr.component(4, 1)) if obr else "",
-        result_type=_result_type(msh.field(16)),
+        result_type=result_type,
         qc_lot_number=u(obr.field(14)) if obr else "",
         qc_type=u(obr.field(20)) if obr else "",
         observations=observations,
@@ -176,6 +181,11 @@ def _result_type(msh16: str) -> str:
     if value == "2":
         return RESULT_TYPE_QC
     return RESULT_TYPE_PATIENT
+
+
+def _is_blank_sample_obr(obr, u) -> bool:
+    """True when an OBR explicitly labels the material as a blank sample."""
+    return any("blank sample" in u(field).lower() for field in obr.fields)
 
 
 def _observation(seg, u, edan: bool = False) -> RawObservation:

@@ -22,8 +22,8 @@ from pathlib import Path
 from edge_sim.cli import main as cli_main
 from edge_sim.fixtures import load_fixture
 from edge_sim.milestone import run_milestone
-from edge_sim.normalize import KIND_RESULT, Normalizer, STATUS_NORMALIZED
-from edge_sim.oru import parse_oru_r01
+from edge_sim.normalize import KIND_ANOMALY, KIND_BLANK, KIND_RESULT, Normalizer, STATUS_NORMALIZED
+from edge_sim.oru import RESULT_TYPE_BLANK, parse_oru_r01
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 H99S = FIXTURES_ROOT / "edan-h99s-oru-r01"
@@ -123,6 +123,27 @@ def test_h60s_standard_hl7_is_not_treated_as_h90_series():
     assert report.specimen_id == "SPEC-0231"  # OBR-3, not OBR-2
     results = {r.raw_code: r for r in _normalized(H60S) if r.kind == KIND_RESULT}
     assert all(r.status == STATUS_NORMALIZED for r in results.values())
+
+
+def test_h99s_blank_sample_placeholder_is_not_patient_result_material():
+    """Bench-shaped H99S blank/QC material carries ``---`` in NM rows. The
+    simulator mirrors the bridge policy: valid sibling rows are classified as
+    blank operational material and placeholder numeric rows are anomalies."""
+    msg = (
+        "MSH|^~\\&|H90^861429-M26416640001^507|EDANLAB|||20260703135352||ORU^R01|5|P|2.4||||0||UTF8\r"
+        "PID|3||^0|||||0|0\r"
+        "OBR||1||EDANLAB^H90|26|General|20260703125023|19700101080000|||1|||20260703124939|^^Blank sample||\r"
+        "OBX||NM|0|WBC|5.0|10\\S\\9/L|4.00-20.00|0|0|0||5.0^10\\S\\9/L\r"
+        "OBX||NM|0|MCV|---|fL|82.5-97.4|0|0|0||0.0^fL"
+    ).encode("utf-8")
+
+    report = parse_oru_r01(msg)
+    rows = {row.raw_code: row for row in Normalizer().normalize_report(report)}
+
+    assert report.result_type == RESULT_TYPE_BLANK
+    assert rows["WBC"].kind == KIND_BLANK
+    assert rows["MCV"].kind == KIND_ANOMALY
+    assert rows["MCV"].value == "---"
 
 
 # --- end to end -------------------------------------------------------------
