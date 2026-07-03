@@ -90,7 +90,7 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    | Unit | Transport / protocol | v1 placement |
    |---|---|---|
    | **EDAN H60S** (warehouse) | ✅ HL7 V2.4 / MLLP (TCP) | **v1 anchor** |
-   | **EDAN H99S** | HL7 (EDAN family) | **v1** — ⚠ confirm H99S = same driver |
+   | **EDAN H99S** | HL7 (EDAN H90 family) | **v1** — H90-series result profile shipped; **order-download gate released for LIS-149** |
    | **RAYTO RT-7600** (hematology) | ✅ TCP (Netport), bidirectional; ⚠ message format unconfirmed | **v1** — confirm HL7 vs vendor format |
    | **SNIBE MAGLUMI X3** | ✅ ASTM E1394 / TCP (via SnibeLis) | **v1.1** — bridge-native ASTM, but +SnibeLis middleware → REQ-PRIV-09 DPA flow-down |
    | **Seamaty SD1** | ✅ HL7 v2.3.1 / MLLP (TCP); RS-232 also; upload-only (ORU+ACK) — vendor LIS manual on file | **v1** (HL7/MLLP result-ingestion) — added 2026-06-29; bench port/framing capture pending |
@@ -100,7 +100,7 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    **v1 = EDAN H60S/H99S + RAYTO RT-7600 + Seamaty SD1** (HL7/MLLP, result-ingestion; SD1 added 2026-06-29). **v1.1 = MAGLUMI X3** (pull
    into v1 only if immunoassay is pilot-critical, accepting the SnibeLis middleware + DPA cost).
    **Deferred post-pilot under change control (REQ-QMS-03):** ERBA EC90 (RS-232 serial) and HETO
-   AU120 (incoming), plus **bidirectional host-query / order-download** (add in v1.1). Each
+   AU120 (incoming), plus general **bidirectional host-query / order-download** expansion. Each
    deferred/added analyzer is one TB-1 trust boundary + one REQ-CONF-01 signed bench report.
 
    > **`[NEEDS-HUMAN]` — protocol confirmations to firm the pin (3):** RAYTO RT-7600 message format
@@ -120,6 +120,15 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    > change control" means **deferred for go-live, not deferred for development**. The fleet pin and
    > the TB-1 / REQ-CONF-01 pilot surface are unchanged. (The ASTM ADRs 0009/0010 carry the matching
    > vehicle-re-scope note.)
+
+   > **⮕ DEC-06 change-control release (2026-07-04) — H99S order-download implementation gate.**
+   > LIS-149 releases the EDAN H99S `QRY^R02 -> ORF^R04` order-download path from the generic
+   > deferred-bidirectional bucket into active build and bench scope. The release is deliberately
+   > narrow: OpenELIS may resolve a pending order by analyzer barcode, the bridge may answer the H99S
+   > worklist query over MLLP, and `edge/sim` carries the matching H99S fixture. This is **not** a
+   > fleet-wide bidirectional expansion and does **not** mark the path bench-conformant by itself;
+   > H99S order-download still needs real wire evidence and validation-owner sign-off before it can be
+   > claimed as supported in the pilot dossier.
 
 ## Consequences
 

@@ -1,0 +1,26 @@
+{
+  "id": "edan-h99s-worklist-query-qry-r02",
+  "description": "Synthetic HL7 v2.4 QRY^R02 worklist/order-download host-query from an EDAN H99S/H90-series analyzer. The analyzer asks the host for orders for barcode DEV01260000000000002 (QRD-8, QRD-9 = OTH) and expects an ORF^R04 answer with MSH-16=3 carrying PID/OBR order rows. NOT a real instrument capture.",
+  "analyzer": { "vendor": "EDAN", "model": "H99S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "bidirectional",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-149 / DEC-06 H99S order-download - EDAN H90 LIS Communication Protocol, QRY^R02 / ORF^R04 worklist profile)",
+    "note": "Application payload only (no MLLP framing). QRD-8 carries the analyzer barcode DEV01260000000000002; the host response may return the reconciled OpenELIS accession 2 in OBR-2/3. Replace with real H99S bench wire capture before treating this as signed conformance evidence."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "QRY^R02",
+    "query_id": "Q-1",
+    "control_id": "H99SQ1",
+    "barcode": "DEV01260000000000002",
+    "what_subject": "OTH",
+    "response_message_type": "ORF^R04",
+    "response_msh16": "3",
+    "reconciled_accession": "2",
+    "patient_id": "17",
+    "analyzer_codes": ["WBC", "HGB"]
+  }
+}

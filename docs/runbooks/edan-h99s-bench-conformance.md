@@ -53,10 +53,15 @@ Characterization only, not a pilot go-live blocker unless explicitly promoted:
 
 - QC result upload (`MSH-16=1`), because the QC engine/autoverification surface
   is a later validation stream.
-- Worklist/query (`QRY^R02` -> `ORF^R04`, `MSH-16=3`), because bidirectional
-  host-query is deferred post-pilot by ADR-0008/ADR-0015 even though the H99S
-  protocol supports it.
 - SOAP transport. The pilot edge substrate is MLLP/TCP.
+
+**DEC-06 change-control release (2026-07-04 / LIS-149):** the H99S
+worklist/order-download path (`QRY^R02` -> `ORF^R04`, `MSH-16=3`) is promoted
+from characterization-only into active build and bench scope. This is narrow to
+H99S barcode-to-accession order download; it is not a generic bidirectional fleet
+release. The path is not bench-conformant until the request/response wire bytes,
+OpenELIS pending-order lookup, and validation-owner sign-off are in the evidence
+packet.
 
 ## Readiness and EDAN H90-series parse profile (READ BEFORE THE BENCH)
 
@@ -165,9 +170,12 @@ Collect at minimum:
 | `network-settings.png` | Analyzer IP/gateway/netmask and LIS IP/port setting. |
 | `bridge-config.yml` | Listener port and analyzer registry/mapping profile used for the run. |
 | `connection-test.png` | Device UI proof that the LIS connection test succeeded. |
-| `h99s-mllp.pcap` | Full packet capture for connection test, ORU, optional QC/query. |
+| `h99s-mllp.pcap` | Full packet capture for connection test, ORU, optional QC, and the released worklist query if run. |
 | `oru-message.hl7` | De-framed inbound application payload, no MLLP bytes. |
 | `ack.hl7` | ACK returned by the LIS edge for the ORU. |
+| `qry-worklist.hl7` | De-framed H99S `QRY^R02` order-download request (`MSH-16=3`, QRD barcode subject). Required if claiming LIS-149 support. |
+| `orf-worklist.hl7` | De-framed LIS `ORF^R04` order-download answer with `MSA-1=AA`, `MSA-2` echo, `PID`, and `OBR` rows. Required if claiming LIS-149 support. |
+| `openelis-pending-order.json` | OpenELIS pending-order lookup evidence for the queried barcode, showing the reconciled accession and mapped LOINC/test rows. |
 | `openelis-result.png` | OpenELIS proof of the ingested normalized result under **Results → Analyzer → EDAN H99S** (rows mapped to LOINC, `read_only=false`). The production bridge H90-series profile is shipped at pin `4db3c9e`, so this is a required artifact. |
 | `analyzer-registry.json` | `GET /rest/analyzer/analyzers` after promotion + test mapping (records the registry entry and the six CBC mappings used for the run). |
 | `edge-sim-roundtrip.txt` | `edge-sim validate`, `normalize`, `roundtrip`, and `milestone` output after fixture creation. `milestone` is expected to exit nonzero until EDAN OBX-11 finality handling is closed; keep its output as diagnostic evidence. |
@@ -349,23 +357,44 @@ Pass criteria:
 - If the current ingestion path would mix QC into patient results, stop and file
   a QC-routing follow-up; do not mark QC ingestion supported from this bench run.
 
-### 7. Worklist query characterization
+### 7. Worklist query change-control gate (LIS-149)
 
-Run only if the operator can trigger the H99S query workflow and the host can
-respond safely.
+Run after the ORU path is stable and only with bench-only identifiers. This is a
+DEC-06 released implementation gate for H99S, but it still requires real wire
+evidence before support is claimed.
 
-1. Configure a bench-only patient/sample lookup.
+1. Configure a bench-only OpenELIS order with a known barcode and accession. The
+   LIS-149 synthetic fixture uses barcode `DEV01260000000000002`, reconciled to
+   accession `2`, patient id `17`, and analyzer tests `WBC`/`HGB`.
 2. Trigger `QRY^R02` from the H99S.
-3. Return an `ORF^R04` response from the host, if available.
-4. Capture request and response.
+3. Return an `ORF^R04` response from the bridge/OpenELIS host resolver.
+4. Capture request and response as `qry-worklist.hl7` and `orf-worklist.hl7`.
+5. Capture the pending-order lookup or equivalent OpenELIS evidence as
+   `openelis-pending-order.json`.
+6. Mirror the synthetic contract locally:
+
+```bash
+cd edge/sim
+uv run edge-sim worklist-query edan-h99s-worklist-query-qry-r02 \
+  --accession 2 \
+  --patient 17 \
+  --codes WBC,HGB
+```
 
 Pass criteria:
 
-- Query contains `QRD`, with QRD-8 or QRD-9 populated.
-- Response, if sent, has `MSA-1=AA` and `MSA-2` exactly equals the inbound
-  `QRY^R02` `MSH-10`.
-- The result is recorded as characterization only unless bidirectional support is
-  promoted through change control.
+- Query is HL7 v2.4 `QRY^R02` with `MSH-16=3`, `QRD`, and a barcode subject in
+  `QRD-8`.
+- Response is HL7 v2.4 `ORF^R04` with `MSH-16=3`.
+- `MSA-1=AA`; `MSA-2` exactly equals the inbound `QRY^R02` `MSH-10`.
+- `QRD-4` and `QRD-8` are echoed so the analyzer can correlate the answer to the
+  request.
+- Barcode-to-accession reconciliation is explicit: the `QRD-8` barcode may be
+  `DEV01260000000000002`, while returned `OBR-2/3` is accession `2`.
+- `PID` identifies the bench-only patient, and every `OBR` order row maps to an
+  OpenELIS pending test configured for the analyzer (`WBC`/`HGB` in the fixture
+  example).
+- The `edge-sim worklist-query` demo exits 0 and prints `correlates=True`.
 
 ### 8. Failure and retry observation
 
@@ -396,6 +425,16 @@ The H99S can be marked bench-conformant for the pilot sample-result path only wh
 - Parser/normalization gaps are either closed or tracked as blocking follow-ups.
 - Validation owner signs the conformance report.
 
+The H99S order-download path can be marked supported only when, in addition to
+the sample-result evidence above:
+
+- `qry-worklist.hl7`, `orf-worklist.hl7`, and `openelis-pending-order.json` are in
+  the evidence packet.
+- The request/response satisfies §7 pass criteria, including `MSA-2` echo and
+  barcode-to-accession reconciliation.
+- The bridge/OpenELIS implementation used for the run is recorded by git SHA.
+- The validation owner signs the LIS-149 change-control evidence.
+
 ## Follow-Up Slices to File if Needed
 
 - EDAN OBX-11 finality handling in `edge/sim` if H99S milestone ingest must
@@ -409,4 +448,5 @@ The H99S can be marked bench-conformant for the pilot sample-result path only wh
 - Image OBX display/archive policy if the lab requires WBC/DIFF/other plots in
   the LIS.
 - QC routing if H99S QC upload is in scope before Stage 5.
-- Bidirectional query support if H99S worklist pull becomes a pilot requirement.
+- General bidirectional query support for analyzers beyond the released H99S
+  worklist path remains change-controlled.
