@@ -17,14 +17,24 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release **`3.0.9`** (`fb2167c`) — the LIS-88 bridge change (PR
+- **Pin:** untagged **`aae56e8`** (`3.0.9-3-gaae56e8`) — the LIS-119 SnibeLis/MAGLUMI X3
+  bridge adapter (PR `openelis-analyzer-bridge#12`: ASTM R.6 reference range →
+  `Observation.referenceRange` (raw text always, guarded numeric low/high w/ UCUM),
+  R.7 abnormal flag → `Observation.interpretation` (v3-coded N/L/H/LL/HH/A/AA/</>,
+  unknown flags carried as text), tolerant R.13 completion-time read (pinned idx 9
+  precedence → spec R.13 → 14-digit scan, recovering the SnibeLis manual's R.12
+  off-by-one) + compact→ISO normalization so `Observation.effective` actually emits
+  (pre-existing silent drop for all ASTM analyzers), `uIU/mL`/`pmol/L` UCUM backstop.
+  Gap 4 — simplified ENQ/STX/…/ETX/EOT session framing — stays gated on the LIS-75
+  live capture; SnibeLis codes/units are synthetic until LIS-75/LIS-38.
+  Follows release `3.0.9` (`fb2167c`) — the LIS-88 bridge change (PR
   `openelis-analyzer-bridge#10`: FILE routed through the shared
   `MessageNormalizer`/`HttpForwardingRouter` pipeline via a `parsedResults` envelope
   field — parse stays in the FILE listener, send/retry/rejection-capture/metrics are
   the common path; inert `DeadLetterWriter` removed, SQLite `rejected_bundles`
   documented as the single rejection store of record; plus PR #11 adversarial-review
   follow-ups: listener-bound analyzer identity takes precedence over central source
-  lookup, and a null forward-URI guard replaces an NPE). Follows the untagged `f28923d`
+  lookup, and a null forward-URI guard replaces an NPE) — and the untagged `f28923d`
   (LIS-109, PRs #8/#9: H99S blank-placeholder suppression) and `3.0.7` (`fe391a7`,
   LIS-28 / PR #6: registry-backed raw-unit→UCUM mapping — `AnalyzerEntry.unitToUcum`
   feeds FHIR `Quantity.system/code`, `testUnitUcum` wired through `/register` +
