@@ -17,12 +17,14 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release **`3.0.8`** (`10ec333`) — the LIS-88 bridge change (PR
+- **Pin:** release **`3.0.9`** (`fb2167c`) — the LIS-88 bridge change (PR
   `openelis-analyzer-bridge#10`: FILE routed through the shared
   `MessageNormalizer`/`HttpForwardingRouter` pipeline via a `parsedResults` envelope
   field — parse stays in the FILE listener, send/retry/rejection-capture/metrics are
   the common path; inert `DeadLetterWriter` removed, SQLite `rejected_bundles`
-  documented as the single rejection store of record). Follows the untagged `f28923d`
+  documented as the single rejection store of record; plus PR #11 adversarial-review
+  follow-ups: listener-bound analyzer identity takes precedence over central source
+  lookup, and a null forward-URI guard replaces an NPE). Follows the untagged `f28923d`
   (LIS-109, PRs #8/#9: H99S blank-placeholder suppression) and `3.0.7` (`fe391a7`,
   LIS-28 / PR #6: registry-backed raw-unit→UCUM mapping — `AnalyzerEntry.unitToUcum`
   feeds FHIR `Quantity.system/code`, `testUnitUcum` wired through `/register` +
@@ -78,7 +80,7 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
   source allow-list is advisory (TB-1 spoofing gap). Change-controlled hardening,
   L5-proven in Stage 5 — **LIS-91** (hardening) / **LIS-89** (threat-model wording).
 - ~~FILE channel bypasses the shared normalizer~~ / ~~inert filesystem DLQ~~ — **closed**
-  by LIS-88 / PR #10, release `3.0.8`: FILE accessions enter the `MessageEnvelope` seam
+  by LIS-88 / PRs #10+#11, release `3.0.9`: FILE accessions enter the `MessageEnvelope` seam
   (`parsedResults`) and route through the common pipeline; `DeadLetterWriter` removed,
   `rejected_bundles` is the DLQ of record (bridge README §Rejection handling). (The ASTM
   E1381-95 config-key mismatch, originally here, was **closed** by LIS-26 / PR #5, release
