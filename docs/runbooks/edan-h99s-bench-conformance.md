@@ -391,6 +391,13 @@ Pass criteria:
   request.
 - Barcode-to-accession reconciliation is explicit: the `QRD-8` barcode may be
   `DEV01260000000000002`, while returned `OBR-2/3` is accession `2`.
+- Reconciliation is deliberately narrow: only barcode-shaped identifiers (short
+  alpha prefix + long digit run, e.g. `DEV…`) are canonicalized; anything else
+  (QC labels, typos, plain accessions) is exact-match only, and a barcode whose
+  digit candidates match more than one sample is refused (no worklist answer)
+  rather than guessed. If the bench query gets no `ORF` order rows, check the
+  OpenELIS log for an "ambiguous host-query lookup" warning before assuming a
+  mapping gap.
 - `PID` identifies the bench-only patient, and every `OBR` order row maps to an
   OpenELIS pending test configured for the analyzer (`WBC`/`HGB` in the fixture
   example).
