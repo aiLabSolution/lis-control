@@ -1,0 +1,45 @@
+{
+  "id": "snibelis-maglumi-x3-result-upload",
+  "description": "Synthetic SnibeLis ASTM E1394 result upload for MAGLUMI X3: documented ENQ/STX/content/ETX/EOT session ACKs, H/P/O/R/R/L records, ^^^ assay identifiers, raw units and abnormal flags. NOT a real instrument capture.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3 via SnibeLis" },
+  "protocol": "astm-e1394",
+  "transport": "astm-tcp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-108 / S3.0a); SnibeLis LIS User Manual v1.1 Appendix A Network Interface, result transmission example",
+    "note": "Application payload only. The SnibeLis simulator applies the manual's simplified ENQ/STX/content/ETX/EOT envelope and ACKs ENQ, STX, ETX and EOT. The manual examples omit E1381 frame numbers and checksums; live SnibeLis capture must confirm whether production uses this simplified envelope or full E1381 framing."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibelis-maglumi-x3-astm",
+    "isolation_group": "snibelis-maglumi-x3"
+  },
+  "expected": {
+    "message_type": "ASTM^E1394",
+    "records": 6,
+    "patient_id": "PID-SNB-108-001",
+    "specimen_id": "SNB-108-001",
+    "session": {
+      "framing": "snibelis-astm",
+      "wire_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "acked_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "frame_numbers": false,
+      "checksums": false
+    },
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "2.31",
+        "raw_code": "TSH",
+        "raw_unit": "uIU/mL"
+      },
+      {
+        "set_id": "2",
+        "value": "14.8",
+        "raw_code": "FT4",
+        "raw_unit": "pmol/L"
+      }
+    ]
+  }
+}

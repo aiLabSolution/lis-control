@@ -31,8 +31,8 @@
     },
     "transport": {
       "type": "string",
-      "description": "Transport the real instrument speaks; the harness replays via a matching Transport (loopback in the skeleton).",
-      "enum": ["mllp", "serial-rs232", "file", "loopback"]
+      "description": "Transport the real instrument speaks; the harness replays via a matching Transport or protocol-specific session simulator.",
+      "enum": ["mllp", "serial-rs232", "astm-tcp", "file", "loopback"]
     },
     "direction": {
       "type": "string",
@@ -54,7 +54,7 @@
         "framing": {
           "type": "string",
           "description": "Wire framing the transport must apply/strip around the payload.",
-          "enum": ["raw", "mllp", "astm"]
+          "enum": ["raw", "mllp", "astm", "snibelis-astm"]
         }
       }
     },
