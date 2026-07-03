@@ -1,0 +1,39 @@
+{
+  "id": "snibelis-maglumi-x3-query-request",
+  "description": "Synthetic SnibeLis ASTM E1394 query/order-download exchange seed for MAGLUMI X3: Q-3 sample ID uses ^<id>, host answers with H/P/O/L and repeated ^^^ assay identifiers. NOT a real instrument capture.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3 via SnibeLis" },
+  "protocol": "astm-e1394",
+  "transport": "astm-tcp",
+  "direction": "bidirectional",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-108 / S3.0a); SnibeLis LIS User Manual v1.1 Appendix A Network Interface, Request Assay / Return Assay examples",
+    "note": "Application payload only. The SnibeLis simulator applies the manual's simplified ENQ/STX/content/ETX/EOT envelope. Live SnibeLis capture must confirm whether query/order download is enabled at the site and whether framing is simplified or full E1381."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibelis-maglumi-x3-astm",
+    "isolation_group": "snibelis-maglumi-x3"
+  },
+  "expected": {
+    "records": 3,
+    "session": {
+      "framing": "snibelis-astm",
+      "wire_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "acked_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "frame_numbers": false,
+      "checksums": false
+    },
+    "query": {
+      "sample_id": "SNB-108-001",
+      "assays_requested": ["ALL"],
+      "status": "O"
+    },
+    "response": {
+      "records": ["H", "P", "O", "L"],
+      "sample_id": "SNB-108-001",
+      "assays": ["TSH", "FT4"],
+      "assay_field": "^^^TSH\\^^^FT4"
+    }
+  }
+}
