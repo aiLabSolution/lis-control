@@ -70,6 +70,7 @@ jobs:
             /projects/analyzer-profiles/
             /docker-compose.yml
             /build.docker-compose.yml
+            /volume/database/database.env
           sparse-checkout-cone-mode: false
 
       - name: Profile drift check (kit vs core mirror)
