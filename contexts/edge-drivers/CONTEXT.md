@@ -17,16 +17,32 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** release **`3.0.7`** (`fe391a7`) — the LIS-28 bridge change (PR
-  `openelis-analyzer-bridge#6`: registry-backed raw-unit→UCUM mapping —
-  `AnalyzerEntry.unitToUcum` feeds FHIR `Quantity.system/code` while `Quantity.unit`
-  preserves the raw analyzer text, with fallback to the legacy common-unit map; plus
-  `testUnitUcum` wired through both the `/register` and full-state `/sync` push paths
-  so an OE sync cannot wipe it — the LIS-98 bug class. OE-core does not *send*
-  `testUnitUcum` yet; that lands with the LIS-98 fix). Follows `3.0.6` (`c7382e4`,
-  LIS-26: ERBA EC90 ASTM normalization — E1381-95 framed compliant receive,
-  e1381-95 config-key fix, UCUM `Quantity` coding) on top of the EDAN H90-series
-  parse profile (PR #4) and the LIS-95 SD1 QC/calibration gate (PR #3).
+- **Pin:** untagged **`aae56e8`** (`3.0.9-3-gaae56e8`) — the LIS-119 SnibeLis/MAGLUMI X3
+  bridge adapter (PR `openelis-analyzer-bridge#12`: ASTM R.6 reference range →
+  `Observation.referenceRange` (raw text always, guarded numeric low/high w/ UCUM),
+  R.7 abnormal flag → `Observation.interpretation` (v3-coded N/L/H/LL/HH/A/AA/</>,
+  unknown flags carried as text), tolerant R.13 completion-time read (pinned idx 9
+  precedence → spec R.13 → 14-digit scan, recovering the SnibeLis manual's R.12
+  off-by-one) + compact→ISO normalization so `Observation.effective` actually emits
+  (pre-existing silent drop for all ASTM analyzers), `uIU/mL`/`pmol/L` UCUM backstop.
+  Gap 4 — simplified ENQ/STX/…/ETX/EOT session framing — stays gated on the LIS-75
+  live capture; SnibeLis codes/units are synthetic until LIS-75/LIS-38.
+  Follows release `3.0.9` (`fb2167c`) — the LIS-88 bridge change (PR
+  `openelis-analyzer-bridge#10`: FILE routed through the shared
+  `MessageNormalizer`/`HttpForwardingRouter` pipeline via a `parsedResults` envelope
+  field — parse stays in the FILE listener, send/retry/rejection-capture/metrics are
+  the common path; inert `DeadLetterWriter` removed, SQLite `rejected_bundles`
+  documented as the single rejection store of record; plus PR #11 adversarial-review
+  follow-ups: listener-bound analyzer identity takes precedence over central source
+  lookup, and a null forward-URI guard replaces an NPE) — and the untagged `f28923d`
+  (LIS-109, PRs #8/#9: H99S blank-placeholder suppression) and `3.0.7` (`fe391a7`,
+  LIS-28 / PR #6: registry-backed raw-unit→UCUM mapping — `AnalyzerEntry.unitToUcum`
+  feeds FHIR `Quantity.system/code`, `testUnitUcum` wired through `/register` +
+  `/sync`; OE-core does not *send* `testUnitUcum` yet — lands with the LIS-98 fix),
+  which followed `3.0.6` (`c7382e4`, LIS-26: ERBA EC90 ASTM normalization —
+  E1381-95 framed compliant receive, e1381-95 config-key fix, UCUM `Quantity`
+  coding) on top of the EDAN H90-series parse profile (PR #4) and the LIS-95 SD1
+  QC/calibration gate (PR #3).
   The `3.0.x` release line is pom-independent (pom stays `3.3.0`, no bump on tag).
 - **Bump the pin (two-level):** PR the change on `openelis-analyzer-bridge` first, then
   `git -C <umbrella> add edge/drivers && git commit` to record the new pin in an umbrella PR
@@ -71,12 +87,15 @@ for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is
 ## Open items / residuals (ADR-0015 §4, tracked as follow-ups)
 
 - Intra-bridge isolation is thread-level (shared JVM); rate-limiting is MLLP-only; the
-  filesystem DLQ (`DeadLetterWriter`) is inert; the source allow-list is advisory (TB-1
-  spoofing gap). Change-controlled hardening, L5-proven in Stage 5 — **LIS-88 / LIS-89**.
-- FILE channel bypasses the shared normalizer — **LIS-88**. (The ASTM E1381-95 config-key
-  mismatch, originally here, is **closed** by LIS-26 / PR #5, release `3.0.6`: the key now
-  binds under `listen-astm-server.e1381-95` and `E1381_95` uses the framed compliant
-  receive path.)
+  source allow-list is advisory (TB-1 spoofing gap). Change-controlled hardening,
+  L5-proven in Stage 5 — **LIS-91** (hardening) / **LIS-89** (threat-model wording).
+- ~~FILE channel bypasses the shared normalizer~~ / ~~inert filesystem DLQ~~ — **closed**
+  by LIS-88 / PRs #10+#11, release `3.0.9`: FILE accessions enter the `MessageEnvelope` seam
+  (`parsedResults`) and route through the common pipeline; `DeadLetterWriter` removed,
+  `rejected_bundles` is the DLQ of record (bridge README §Rejection handling). (The ASTM
+  E1381-95 config-key mismatch, originally here, was **closed** by LIS-26 / PR #5, release
+  `3.0.6`: the key now binds under `listen-astm-server.e1381-95` and `E1381_95` uses the
+  framed compliant receive path.)
 - Cross-contract conformance (bridge FHIR `Observation` ↔ sim `NormalizedObservation`) —
   **LIS-87**.
 - Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN fallback +
