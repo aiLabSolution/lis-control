@@ -1,6 +1,6 @@
 {
   "id": "snibelis-maglumi-x3-result-upload",
-  "description": "Synthetic SnibeLis ASTM E1394 result upload for MAGLUMI X3: documented ENQ/STX/content/ETX/EOT session ACKs, H/P/O/R/R/L records, ^^^ assay identifiers, raw units and abnormal flags. NOT a real instrument capture.",
+  "description": "Synthetic SnibeLis ASTM E1394 result upload for MAGLUMI X3: documented ENQ/STX/content/ETX/EOT session ACKs, H/P/O/R/R/L records, ^^^ assay identifiers, raw units and abnormal flags, normalized to LOINC/UCUM (LIS-32). NOT a real instrument capture.",
   "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3 via SnibeLis" },
   "protocol": "astm-e1394",
   "transport": "astm-tcp",
@@ -14,6 +14,17 @@
   "channel": {
     "id": "snibelis-maglumi-x3-astm",
     "isolation_group": "snibelis-maglumi-x3"
+  },
+  "terminology": {
+    "note": "Minimal synthetic MAGLUMI X3 immunoassay seed (LIS-32) — the two assays in this fixture only. Codes come solely from this channel block (bridge contract: codeToLoinc is per-analyzer data, never a shared seed). NOT a complete or site-verified MAGLUMI assay dictionary; real code strings + units graduate with a SnibeLis capture (LIS-75/LIS-38).",
+    "codes": {
+      "TSH": "3016-3",
+      "FT4": "14920-3"
+    },
+    "units": {
+      "uIU/mL": "u[IU]/mL",
+      "pmol/L": "pmol/L"
+    }
   },
   "expected": {
     "message_type": "ASTM^E1394",
@@ -32,13 +43,19 @@
         "set_id": "1",
         "value": "2.31",
         "raw_code": "TSH",
-        "raw_unit": "uIU/mL"
+        "raw_unit": "uIU/mL",
+        "loinc": "3016-3",
+        "ucum_value": "u[IU]/mL",
+        "status": "NORMALIZED"
       },
       {
         "set_id": "2",
         "value": "14.8",
         "raw_code": "FT4",
-        "raw_unit": "pmol/L"
+        "raw_unit": "pmol/L",
+        "loinc": "14920-3",
+        "ucum_value": "pmol/L",
+        "status": "NORMALIZED"
       }
     ]
   }

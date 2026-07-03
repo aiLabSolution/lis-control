@@ -1,0 +1,70 @@
+{
+  "id": "snibelis-maglumi-x3-result-unmapped",
+  "description": "Synthetic SnibeLis ASTM E1394 result upload for MAGLUMI X3 with assays/units absent from the channel mapping table: proves an unknown assay or unit is RETAINED and flagged (PARTIAL/UNMAPPED) for engineer review, never silently dropped or guessed (LIS-32). NOT a real instrument capture.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3 via SnibeLis" },
+  "protocol": "astm-e1394",
+  "transport": "astm-tcp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-32 / S3.1); SnibeLis LIS User Manual v1.1 Appendix A result transmission example, plus deliberately-unmapped assays to exercise the missing-mapping review path",
+    "note": "Application payload only, simplified SnibeLis ENQ/STX/content/ETX/EOT envelope. AFP and CEA are intentionally absent from the terminology block, and U/mL from the unit map, to assert the flag-for-review contract. NOT a real instrument capture."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibelis-maglumi-x3-astm",
+    "isolation_group": "snibelis-maglumi-x3"
+  },
+  "terminology": {
+    "note": "Minimal synthetic MAGLUMI X3 seed (LIS-32) mapping ONLY TSH and the uIU/mL, ng/mL units — AFP, CEA and U/mL are deliberately omitted so their rows normalize to PARTIAL/UNMAPPED. NOT a complete or site-verified MAGLUMI dictionary.",
+    "codes": {
+      "TSH": "3016-3"
+    },
+    "units": {
+      "uIU/mL": "u[IU]/mL",
+      "ng/mL": "ng/mL"
+    }
+  },
+  "expected": {
+    "message_type": "ASTM^E1394",
+    "records": 7,
+    "patient_id": "PID-SNB-32-U01",
+    "specimen_id": "SNB-32-U01",
+    "session": {
+      "framing": "snibelis-astm",
+      "wire_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "acked_controls": ["ENQ", "STX", "ETX", "EOT"],
+      "frame_numbers": false,
+      "checksums": false
+    },
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "2.31",
+        "raw_code": "TSH",
+        "raw_unit": "uIU/mL",
+        "loinc": "3016-3",
+        "ucum_value": "u[IU]/mL",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "2",
+        "value": "8.4",
+        "raw_code": "AFP",
+        "raw_unit": "ng/mL",
+        "loinc": "",
+        "ucum_value": "ng/mL",
+        "status": "PARTIAL"
+      },
+      {
+        "set_id": "3",
+        "value": "1.2",
+        "raw_code": "CEA",
+        "raw_unit": "U/mL",
+        "loinc": "",
+        "ucum_value": "",
+        "status": "UNMAPPED"
+      }
+    ]
+  }
+}
