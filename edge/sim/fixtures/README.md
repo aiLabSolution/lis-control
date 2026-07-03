@@ -40,6 +40,10 @@ framing codecs land in later slices.
 `_example/` is a **synthetic** HL7 v2.3 `ORU^R01` (LOINC 718-7 Hemoglobin, UCUM
 `g/dL`). It exists so the replay self-test has something to chew on before real
 captures arrive. Real RAYTO RAC-050 and Mindray labXpert captures land in Stage 1.
-`snibelis-maglumi-x3-*` are synthetic LIS-108 seeds for the SnibeLis/MAGLUMI X3
-ASTM E1394 session and query path; replace them with real SnibeLis captures after
-the LIS-75 middleware/license gate opens.
+`snibelis-maglumi-x3-*` are synthetic seeds for the SnibeLis/MAGLUMI X3 ASTM E1394
+path: `-query-request` / `-result-upload` are the LIS-108 session and query seeds,
+the latter extended by LIS-32 with the immunoassay LOINC/UCUM normalization contract
+(TSH, FT4); `-result-unmapped` is the LIS-32 seed proving unknown assays/units are
+flagged (PARTIAL/UNMAPPED) rather than dropped. Their terminology tables are minimal,
+NOT site-verified — replace them with real SnibeLis captures after the LIS-75
+middleware/license gate opens (graduated by LIS-38).

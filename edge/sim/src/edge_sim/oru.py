@@ -54,6 +54,7 @@ class RawObservation:
     reference_range: str  # OBX-7
     abnormal_flags: str  # OBX-8
     status: str  # OBX-11 observation result status (F, P, ...)
+    completion_time: str = ""  # analyzer completion timestamp (ASTM R-13); "" for HL7 ORU
 
 
 @dataclass(frozen=True)

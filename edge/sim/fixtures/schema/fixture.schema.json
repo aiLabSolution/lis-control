@@ -119,6 +119,10 @@
       "description": "Per-analyzer vendor-code and unit mapping data used by the simulator/bridge analogs.",
       "additionalProperties": false,
       "properties": {
+        "note": {
+          "type": "string",
+          "description": "Provenance/caveat for this mapping table — e.g. a synthetic seed disclaiming complete or site-verified assay coverage pending a real capture (ISO 15189 traceability)."
+        },
         "codes": {
           "type": "object",
           "additionalProperties": { "type": "string" }
