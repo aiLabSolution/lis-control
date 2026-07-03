@@ -13,7 +13,7 @@ from .archive import RawMessageArchive, archive_fixture
 from .e1394 import parse_e1394
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .milestone import run_milestone
-from .normalize import KIND_WARNING, Normalizer
+from .normalize import KIND_ANOMALY, KIND_BLANK, KIND_RESULT, KIND_WARNING, Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .query import (
     QueryError,
@@ -150,9 +150,9 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     rows = Normalizer().normalize_report(report)
     print(f"{fx.id}\t{report.message_type}\tpatient={report.patient_id}\tspecimen={report.specimen_id}")
     for r in rows:
-        if r.kind == KIND_WARNING:
-            # In-band instrument warning routed as a note, not a result (LIS-86).
-            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [WARNING note] {r.value}")
+        label = _non_result_label(r.kind)
+        if label:
+            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [{label}] {r.value}")
             continue
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
@@ -184,9 +184,9 @@ def _cmd_milestone(args: argparse.Namespace) -> int:
     )
     all_normalized = True
     for o, fin in zip(out.observations, out.result_statuses):
-        if o.kind == KIND_WARNING:
-            # Routed as a note, not a result — does not count toward result normalization.
-            print(f"  OBX-{o.set_id}\t{o.raw_code}\t-> [WARNING note] {o.value}")
+        label = _non_result_label(o.kind)
+        if label:
+            print(f"  OBX-{o.set_id}\t{o.raw_code}\t-> [{label}] {o.value}")
             continue
         all_normalized = all_normalized and bool(o.loinc and o.ucum_value)
         print(
@@ -227,8 +227,13 @@ def _cmd_query(args: argparse.Namespace) -> int:
         f"answer {rfx.id}: ORF^R04 MSA-1={resp.ack_code} echoed-id={resp.query_id} "
         f"specimen={resp.report.specimen_id} correlates={correlated}"
     )
-    all_normalized = bool(rows)  # an answer with no result rows is not a success
+    result_rows = [r for r in rows if r.kind == KIND_RESULT]
+    all_normalized = bool(result_rows)  # an answer with no result rows is not a success
     for r in rows:
+        label = _non_result_label(r.kind)
+        if label:
+            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [{label}] {r.value}")
+            continue
         all_normalized = all_normalized and bool(r.loinc and r.ucum_value)
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
@@ -237,6 +242,16 @@ def _cmd_query(args: argparse.Namespace) -> int:
     if not rows:
         print("  (no result rows returned)")
     return 0 if correlated and all_normalized else 1
+
+
+def _non_result_label(kind: str) -> str:
+    if kind == KIND_WARNING:
+        return "WARNING note"
+    if kind == KIND_ANOMALY:
+        return "ANOMALY note"
+    if kind == KIND_BLANK:
+        return "BLANK material"
+    return ""
 
 
 def _cmd_parse_astm(args: argparse.Namespace) -> int:

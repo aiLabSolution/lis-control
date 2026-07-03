@@ -50,6 +50,8 @@ from .e1394 import (
 from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
+    KIND_ANOMALY,
+    KIND_BLANK,
     KIND_CALIBRATION,
     KIND_RESULT,
     KIND_WARNING,
@@ -61,6 +63,7 @@ from .normalize import (
     TerminologyMap,
 )
 from .oru import (
+    RESULT_TYPE_BLANK,
     RESULT_TYPE_CALIBRATION,
     RESULT_TYPE_PATIENT,
     RESULT_TYPE_QC,
@@ -117,6 +120,7 @@ __all__ = [
     "RESULT_TYPE_PATIENT",
     "RESULT_TYPE_CALIBRATION",
     "RESULT_TYPE_QC",
+    "RESULT_TYPE_BLANK",
     "parse_oru_r01",
     "NormalizedObservation",
     "TerminologyMap",
@@ -126,7 +130,9 @@ __all__ = [
     "STATUS_UNMAPPED",
     "KIND_RESULT",
     "KIND_WARNING",
+    "KIND_ANOMALY",
     "KIND_CALIBRATION",
+    "KIND_BLANK",
     # ASTM E1381 codec + session (LIS-23 / S2.1)
     "ENQ",
     "ACK",
