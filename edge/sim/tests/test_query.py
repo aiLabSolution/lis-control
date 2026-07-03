@@ -18,11 +18,15 @@ from edge_sim.query import (
     QueryError,
     QueryRecord,
     QueryResponse,
+    WorklistOrder,
+    build_worklist_query_response,
     build_query,
     build_query_response,
     correlates,
     parse_query,
     parse_query_response,
+    parse_worklist_query_response,
+    worklist_correlates,
 )
 
 
@@ -44,9 +48,11 @@ def _response(ack_code="AA", query_id="Q0231-01", specimen="SPEC-0231"):
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 QRY = FIXTURES_ROOT / "edan-h60s-host-query-qry-r02"
+H99S_WORKLIST_QRY = FIXTURES_ROOT / "edan-h99s-worklist-query-qry-r02"
 EDAN_RESULT = FIXTURES_ROOT / "edan-h60s-oru-r01"
 WHEN_Q = "20260628093500"
 WHEN_R = "20260628093501"
+WHEN_H99S = "20260703112800"
 
 
 def _edan_result():
@@ -164,6 +170,70 @@ def test_response_msa2_echoes_query_control_id():
     orf = build_query_response(q, _edan_result(), response_datetime=WHEN_R, control_id="LISR0231")
     msa = next(s for s in orf.split(b"\r") if s.startswith(b"MSA"))
     assert msa.decode("ascii").split("|")[2] == q.control_id  # "H60SQ0231"
+
+
+# --- EDAN H99S worklist/order-download query (LIS-149 / DEC-06) -------------
+
+
+def test_h99s_worklist_query_fixture_reads_barcode_subject():
+    q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
+    exp = load_fixture(H99S_WORKLIST_QRY).expected
+    assert q.query_id == exp["query_id"]
+    assert q.subject_id == "DEV01260000000000002"
+    assert q.subject_id == exp["barcode"]
+    assert q.what_subject == "OTH"
+    assert q.control_id == "H99SQ1"
+    assert q.sending_app == "H90"
+    assert q.sending_facility == "EDANLAB"
+
+
+def test_h99s_worklist_answer_reconciles_barcode_to_accession_orders():
+    q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
+    order = WorklistOrder(
+        accession_number="2",
+        patient_id="17",
+        analyzer_codes=("WBC", "HGB"),
+    )
+
+    orf = build_worklist_query_response(
+        q, (order,), response_datetime=WHEN_H99S, control_id="ORFQ-1"
+    )
+    resp = parse_worklist_query_response(orf)
+
+    assert b"ORF^R04" in orf
+    assert b"|P|2.4||||3\r" in orf  # EDAN H90-series MSH-16 query response type
+    assert b"MSA|AA|H99SQ1\r" in orf
+    assert b"QRD|20260703112800|R|I|Q-1||||DEV01260000000000002|OTH\r" in orf
+    assert b"PID|1||17\r" in orf
+    assert b"OBR|1|2|2|^^^WBC^WBC|||||||A" in orf
+    assert b"OBR|2|2|2|^^^HGB^HGB|||||||A" in orf
+
+    assert resp.ack_code == "AA"
+    assert resp.query_id == "Q-1"
+    assert resp.subject_id == "DEV01260000000000002"
+    assert worklist_correlates(q, resp) is True
+    assert [(o.accession_number, o.patient_id, o.analyzer_codes) for o in resp.orders] == [
+        ("2", "17", ("WBC",)),
+        ("2", "17", ("HGB",)),
+    ]
+
+
+def test_h99s_worklist_exchange_over_mllp_framing():
+    q_bytes = load_fixture(H99S_WORKLIST_QRY).message_bytes
+    q = parse_query(q_bytes)
+    orf = build_worklist_query_response(
+        q,
+        (WorklistOrder(accession_number="2", patient_id="17", analyzer_codes=("WBC",)),),
+        response_datetime=WHEN_H99S,
+        control_id="ORFQ-1",
+    )
+
+    decoder = MllpDecoder()
+    received = decoder.feed(frame(q_bytes) + frame(orf))
+
+    assert received[0] == q_bytes
+    assert received[1] == orf
+    assert worklist_correlates(parse_query(received[0]), parse_worklist_query_response(received[1]))
 
 
 # --- correlation logic (unit-level, incl. the empty-id/subject guards) -------

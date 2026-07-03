@@ -74,8 +74,10 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 MLLP/HL7 is the pilot transport and the only one that must be enabled + bench-proven for
 go-live (EDAN H60S anchor, port 7999; bridge default 2575). Serial/ASTM (Stage 2) and file
 (Stage 3) are the recorded forward path — bench-validated against the simulators, post-pilot
-for the live fleet under change control (DEC-06 / SD-0). Enabling a transport is a config flag
-+ restart; it ships no new code.
+for the live fleet under change control (DEC-06 / SD-0). DEC-06 released one narrow exception on
+2026-07-04: LIS-149 may build and bench the EDAN H99S `QRY^R02 -> ORF^R04` worklist/order-download
+path; support still requires signed H99S wire evidence. Enabling a transport is configuration plus
+a restart; it ships no new code.
 
 ## Component decisions / references
 
