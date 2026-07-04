@@ -121,3 +121,15 @@ normalization tracer-bullet end-to-end. The assertion targets only the new
   - The `vendor_code_mapping` seed rollback deletes the seeded row by `(source, vendor_code)`
     — a best-effort data rollback (acceptable for a reference seed, unlike the schema
     `dropTable` rollback of the table changeset).
+
+## 2026-07-05 update — Test.loinc after Test Catalog terminology
+
+The DIGI-UW Test Catalog v2 sync introduced `clinlims.test_terminology_mapping` as the editor-owned
+terminology model for tests. `TEST.LOINC` remains the legacy resolver column used by existing core
+paths (`getTestsByLoincCode`, analyzer bridge sync, order dispatch), but it is now mirrored from the
+active `LOINC` / `SAME_AS` terminology mapping when the editor saves. Direct SQL writes to
+`TEST.LOINC` can therefore diverge from the terminology table.
+
+Fork-side changeset `051-backfill-test-loinc-terminology.xml` re-runs the LOINC backfill after the
+SD1 seed changesets so seeded tests have matching terminology rows. Until a later slice removes the
+legacy dependency, treat `TEST.LOINC` as a compatibility mirror, not an independent source of truth.
