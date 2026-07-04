@@ -107,7 +107,7 @@ REQ-SEC-03 ("a bad driver cannot corrupt the core") and TB-2 ("the interface eng
 
 Two northbound contracts exist in the codebase and must be reconciled by this ADR, because "the ingest contract" is one of the module boundaries S1.0 fixes:
 
-- **Production data-path (this substrate):** the Java bridge emits a **FHIR R4 transaction Bundle** (`FhirBundleBuilder`: Device + Specimen + DiagnosticReport + Observation[]) to `/analyzer/fhir` — wired, and OpenELIS already ingests FHIR.
+- **Production data-path (this substrate):** the Java bridge emits a **FHIR R4 transaction Bundle** (`FhirBundleBuilder`: Device + Specimen + DiagnosticReport + Observation[]) to `/analyzer/fhir` — wired, and OpenELIS already ingests FHIR. **Amended 2026-07-04 (ADR-0018 / LIS-121–123):** the bundle is now Device + Patient (when the wire carries identity) + one Specimen + DiagnosticReport + Observation[] **per wire specimen** — multi-order transmissions no longer collapse onto a single accession, and id-less specimens get a minted deterministic accession instead of the shared `HL7-UNKNOWN`/`ASTM-UNKNOWN` sentinels.
 - **Core ADR-0003 / edge-sim ADR-0013:** define a language-neutral **`NormalizedObservation` DTO** (`value` + analyzer-native `rawCode`/`rawUnit` beside `loinc`/`ucumValue` + `status`) with a committed JSON-Schema, persisted by `ResultIngestService.ingest`, and the Python simulator emits **that DTO**.
 
 These are **not the same wire.** The reconciliation this ADR records (**ratified 2026-06-30, M. Uy**):

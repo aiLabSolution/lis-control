@@ -100,9 +100,13 @@ a restart; it ships no new code.
   framed compliant receive path.)
 - Cross-contract conformance (bridge FHIR `Observation` ↔ sim `NormalizedObservation`) —
   **LIS-87**.
-- Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN fallback +
+- Per-analyzer SD1 ingestion — **LIS-86**: the bridge parser quirks (PID-2 MRN capture +
   in-band 'Alarm' OBX → `DiagnosticReport` conclusion, not a result) are **landed** (PR #2,
-  release `3.0.5`/`a98db88`). The production code→LOINC seed **landed** in OE-core
+  release `3.0.5`/`a98db88`). **Re-shaped 2026-07-04 (ADR-0018 / LIS-121–123, PR #16):** the
+  MRN is no longer used *as* the accession — it rides the bundle as a FHIR `Patient`
+  resource (reference-only subjects) while an id-less specimen gets a minted deterministic
+  accession (`AccessionMinter`), and both parsers group per specimen (one
+  Specimen+DiagnosticReport per OBR/O-record). The production code→LOINC seed **landed** in OE-core
   (`core/openelis` PR #11: liquibase `049-sd1-loinc-seed.xml` — SD1 analyzer +
   `AnalyzerTestMapping` + `Test.loinc`), pinned here. The raw-unit→UCUM `Quantity`
   coding (incl. U/L) **landed** via LIS-26 (PR #5, release `3.0.6`:
@@ -110,4 +114,6 @@ a restart; it ships no new code.
   LIS-28 (PR #6, release `3.0.7`) makes it registry-backed per analyzer
   (`AnalyzerEntry.unitToUcum`, pushed as `testUnitUcum`) with `UNIT_TO_UCUM` demoted to
   the fallback — OE-core doesn't send `testUnitUcum` yet (goes with the LIS-98 fix).
-  Remaining: Patient/MRN channel + OBX-11 finality + bridge↔sim cross-contract are **LIS-87**.
+  Remaining: OBX-11 finality + bridge↔sim cross-contract are **LIS-87** (the Patient/MRN
+  channel landed via ADR-0018 / PR #16; core-side surfacing of the identity is **LIS-97**,
+  the sim grouping mirror **LIS-157**).
