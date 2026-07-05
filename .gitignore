@@ -3,6 +3,13 @@
 .claude/settings.local.json
 .claude/slice-cache.json
 
+# Local secrets — the .mcp.json openelis-db server reads $OPENELIS_DB_URL.
+# Keep the real connection string (with its password) out of version control;
+# .env.example documents the variable, actual values stay local.
+.env
+.env.*
+!.env.example
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

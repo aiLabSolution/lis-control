@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "openelis-db": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "${OPENELIS_DB_URL}"
+      ],
+      "env": {}
+    }
+  }
+}
