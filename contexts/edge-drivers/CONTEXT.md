@@ -17,7 +17,24 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`aae56e8`** (`3.0.9-3-gaae56e8`) — the LIS-119 SnibeLis/MAGLUMI X3
+- **Pin:** untagged **`ee3ec26`** — LIS-124 serial-HL7 ACK coupling
+  (PR `openelis-analyzer-bridge#17`): the MLLP-over-RS232 HL7 *application* ACK now
+  fires **after** routing and is outcome-dependent — `MSA|AA` on delivery success,
+  `MSA|AE` NAK on routing failure / handler exception / ACK-budget timeout — mirroring
+  the TCP MLLP path (previously it was always `AA`, emitted at frame time before
+  routing, so failed/undeliverable results were silently lost). A new
+  `SerialHl7AckBuilder` owns ACK/NAK construction (MSH swap-echo, MSA-2 = inbound
+  MSH-10, lenient `BRIDGE`/`ANALYZER`/`UNKNOWN` fallback); `SerialFrameBuffer` is
+  HL7-framing-only (`getCompletedMessages()` → `CompletedMessage(payload, protocol)`);
+  the pre-ACK route is bounded by the new `org.itech.ahb.serial.hl7-ack-budget-ms`
+  (default 10 000 ms, below the 15 s ASTM frame-ACK precedent), on timeout the route is
+  not cancelled (OE upsert is idempotent). **ASTM link-layer ACK/NAK is byte-identical**
+  (LIS-23/25, ADR-0009). Deferred: LIS-172 (head-of-line NAK amplification under
+  sustained OE outage). Sits on top of the intervening pins `1ca2c74` (LIS-122
+  analyzer/specimen identity + accession minting, PR #16), `371921c` (LIS-98 code↔LOINC
+  sync, PR #15) and the LIS-149 host-query work — the detailed genealogy below is
+  retained from the `aae56e8` (LIS-119) era.
+- **Prior pin:** untagged **`aae56e8`** (`3.0.9-3-gaae56e8`) — the LIS-119 SnibeLis/MAGLUMI X3
   bridge adapter (PR `openelis-analyzer-bridge#12`: ASTM R.6 reference range →
   `Observation.referenceRange` (raw text always, guarded numeric low/high w/ UCUM),
   R.7 abnormal flag → `Observation.interpretation` (v3-coded N/L/H/LL/HH/A/AA/</>,
