@@ -119,9 +119,12 @@ def _is_edan_h90(msh) -> bool:
     the patient number in **PID-2** (PID-3 is ``Age^unit``). Every H90-series device
     announces type ``H90`` in ``MSH-3.1`` (model code in ``MSH-3.3`` — e.g.
     ``H90^^507`` = H99S, §7) and ``EDANLAB`` in ``MSH-4`` (§5.1). Detecting on either
-    lets us apply the EDAN field profile without disturbing standard-HL7 analyzers —
-    including the EDAN *H60S* seed, which uses a standard OBX-3 code with MSH-3
-    ``H60S`` / MSH-4 ``EDAN`` (LIS-78 readiness finding)."""
+    lets us apply the EDAN field profile without disturbing standard-HL7 analyzers.
+
+    The EDAN **H60S** also belongs here: the 2026-07-06 physical bench (LIS-20) proved
+    the real H60S emits ``MSH-3 'H60^7907'`` / ``MSH-4 'EDANLAB'`` with the code in
+    OBX-4 — the H90-family layout, not the clean-HL7 ``H60S``/``EDAN``/OBX-3 the seed
+    originally assumed. The ``MSH-4 == 'EDANLAB'`` arm routes it correctly."""
     return (
         msh.component(3, 1).strip().upper() == "H90"
         or msh.field(4).strip().upper() == "EDANLAB"

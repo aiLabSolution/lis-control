@@ -23,13 +23,14 @@ from edge_sim.replay import _result_digest, replay_from_archive
 from edge_sim.transport import MllpTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
-EDAN = FIXTURES_ROOT / "edan-h60s-oru-r01"
-WHEN = "2026-06-28T08:30:00+00:00"
-ACK_TS = "20260628093001"
+# Standard-HL7 final-result vehicle (the EDAN H60S fixture is EDANLAB/held-back post-bench).
+RAYTO = FIXTURES_ROOT / "rayto-rac050-oru-r01"
+WHEN = "2026-06-26T08:30:00+00:00"
+ACK_TS = "20260626083001"
 
 
 def test_milestone_result_is_traceable_to_the_archived_raw_message(tmp_path):
-    fx = load_fixture(EDAN)
+    fx = load_fixture(RAYTO)
     archive = RawMessageArchive(tmp_path)
 
     # Archive the raw analyzer message (content-addressed); the digest IS the provenance
@@ -58,7 +59,7 @@ def test_milestone_result_is_traceable_to_the_archived_raw_message(tmp_path):
 
 def test_archive_reload_is_integrity_checked_and_byte_faithful(tmp_path):
     """The archived raw message reloads byte-for-byte (the evidence is verbatim)."""
-    fx = load_fixture(EDAN)
+    fx = load_fixture(RAYTO)
     archive = RawMessageArchive(tmp_path)
     entry = archive_fixture(archive, fx, received_at=WHEN)
     assert archive.load(entry.digest).raw == fx.message_bytes
