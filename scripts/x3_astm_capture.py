@@ -132,7 +132,7 @@ def parse_record(line: str) -> dict:
         rec["name"] = _f(fields, 6)
     elif rtype == "O":
         rec["sample_id"] = _f(fields, 3)
-        rec["assays"] = _assays(_f(fields, 5))
+        rec["assays"] = _assays(_find_assay_field(fields))
     elif rtype == "R":
         rec["assay"] = _strip_caret(_f(fields, 3))
         rec["value"] = _f(fields, 4)
@@ -167,6 +167,20 @@ def _strip_caret(v: str) -> str:
     return v.split("^")[-1] if v else v
 
 
+def _find_assay_field(fields: list[str]) -> str:
+    """The O-record universal-test-ID field, anchored on the `^^^` marker.
+
+    KB §6.6 lists the O assay field as one of the drifting positions (4↔5) and
+    instructs to anchor on the `^^^` marker, not a fixed index — a real X3 O record
+    that omits the O-4 padding would otherwise expose the priority field as the
+    "assay". Falls back to field 5 only if no `^^^` field is present.
+    """
+    for v in fields[2:]:  # after O-2 sequence
+        if "^^^" in v:
+            return v.strip()
+    return _f(fields, 5)
+
+
 def _assays(o5: str) -> list[str]:
     """`^^^TSH\\^^^FT4` -> ['TSH', 'FT4']."""
     if not o5:
@@ -178,14 +192,22 @@ def find_result_timestamp_field(fields: list[str]) -> int | None:
     """1-based index of the R-record completion timestamp, found by content.
 
     The vendor's byte examples drift (field 11 vs 12 vs 13 — KB §6.6), so we do
-    NOT hard-index. We scan for the first field after R-7 (the abnormal flag) that
-    is an all-numeric 8- or 14-digit ASTM timestamp. Returns None if none found.
+    NOT hard-index. Matching the shipped bridge (KB §10), we prefer the first
+    all-numeric **14-digit** field after R-7 (a full `YYYYMMDDHHMMSS`), so a
+    stray 8-digit date field cannot shadow the real completion time. Only if no
+    14-digit field exists do we fall back to a first 8-digit (date-only) field.
+    Returns None if neither is found.
     """
+    fallback_8 = None
     for i in range(8, len(fields) + 1):  # 1-based, skip type..flag (fields 1-7)
         v = _f(fields, i)
-        if v and _DIGITS_ONLY.match(v) and len(v) in (8, 14):
+        if not (v and _DIGITS_ONLY.match(v)):
+            continue
+        if len(v) == 14:
             return i
-    return None
+        if len(v) == 8 and fallback_8 is None:
+            fallback_8 = i
+    return fallback_8
 
 
 def classify_framing(raw: bytes) -> dict:
@@ -351,6 +373,7 @@ class CaptureServer:
         self.mode = mode
         self.once = once
         self.ack_on = _FRAMED_ACK_ON if mode == "framed" else _SIMPLIFIED_ACK_ON
+        self._seq = 0  # monotonic per-connection counter for unique archive names
         os.makedirs(outdir, exist_ok=True)
 
     def serve(self) -> None:
@@ -375,10 +398,13 @@ class CaptureServer:
                     break
 
     def _handle(self, conn: socket.socket, peer) -> None:
-        stamp = _now()
+        self._seq += 1
+        # Second-resolution stamp + a per-connection sequence keeps archive names
+        # unique even when the analyzer reconnects within the same wall-clock second.
+        stamp = f"{_now()}-{self._seq:03d}"
         raw_path = os.path.join(self.outdir, f"raw-{stamp}.bin")
         log_path = os.path.join(self.outdir, f"annotated-{stamp}.log")
-        session = bytearray()
+        msg = bytearray()  # bytes of the CURRENT message; reset at each EOT
         print(f"[{_now_iso()}] connection from {peer} -> raw:{raw_path} log:{log_path}", flush=True)
         with open(raw_path, "ab") as raw_f, open(log_path, "a", encoding="utf-8") as log_f:
             log_f.write(f"# X3 ASTM capture session {stamp} from {peer}, ACK mode={self.mode}\n")
@@ -397,7 +423,7 @@ class CaptureServer:
                 raw_f.write(chunk)
                 raw_f.flush()
                 os.fsync(raw_f.fileno())
-                session.extend(chunk)
+                msg.extend(chunk)
                 log_f.write(f"[{_now_iso()}] RECV {len(chunk)}B  hex={_hex(chunk)}\n")
                 log_f.write(f"                 decode={_decode_chunk(chunk)}\n")
                 log_f.flush()
@@ -415,15 +441,18 @@ class CaptureServer:
                         log_f.write(f"                 !! NAK received from analyzer\n")
                         log_f.flush()
                 if saw_eot:
-                    self._emit_summary(bytes(session), log_f)
-                    # An X3 session ends at EOT; keep the socket for a possible next
-                    # message but reset the per-message accumulator's summary point.
-        # Connection closed: final summary if we never saw an explicit EOT.
-        if session:
-            self._emit_summary(bytes(session), None, path=log_path, force_console=True)
+                    # An X3 message ends at EOT: summarize just this message, then
+                    # reset so a second message on the same connection is not
+                    # re-summarized cumulatively.
+                    self._emit_summary(bytes(msg), log_f)
+                    msg = bytearray()
+            # Connection closed with un-summarized bytes (no trailing EOT): emit a
+            # partial summary so a truncated capture is still readable.
+            if msg:
+                self._emit_summary(bytes(msg), log_f)
 
-    def _emit_summary(self, session: bytes, log_f, path: str | None = None, force_console: bool = False) -> None:
-        analysis = CaptureAnalysis(session)
+    def _emit_summary(self, message: bytes, log_f) -> None:
+        analysis = CaptureAnalysis(message)
         block = "\n".join(
             [
                 "",
@@ -433,12 +462,8 @@ class CaptureServer:
                 "",
             ]
         )
-        if log_f is not None:
-            log_f.write(block + "\n")
-            log_f.flush()
-        elif path is not None:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(block + "\n")
+        log_f.write(block + "\n")
+        log_f.flush()
         print(block, flush=True)
 
 

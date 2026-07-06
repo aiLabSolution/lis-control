@@ -95,6 +95,14 @@ class TestRecordParsing(unittest.TestCase):
         self.assertEqual(rec["sample_id"], "1234567")
         self.assertEqual(rec["assays"], ["ALT", "CK"])
 
+    def test_order_assays_survive_field_drift(self):
+        # KB §6.6: the O assay field drifts (4<->5). A real X3 O record that omits
+        # the O-4 padding must still yield the assays (anchor on '^^^', not field 5),
+        # not misread the priority field as the assay.
+        rec = xc.parse_record(r"O|1|SNB-108-001|^^^TSH\^^^FT4|R")  # assay now at field 4
+        self.assertEqual(rec["sample_id"], "SNB-108-001")
+        self.assertEqual(rec["assays"], ["TSH", "FT4"])
+
     def test_result_fields(self):
         rec = xc.parse_record(KB_6_4_RECORDS[3])
         self.assertEqual(rec["assay"], "TSH")  # R-3, '^^^' stripped
@@ -132,6 +140,19 @@ class TestTimestampFieldIndex(unittest.TestCase):
     def test_no_timestamp_returns_none(self):
         rec = "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N"
         self.assertIsNone(xc.find_result_timestamp_field(rec.split("|")))
+
+    def test_eight_digit_field_does_not_shadow_the_completion_time(self):
+        # A stray 8-digit date at field 9 must NOT be picked over the real 14-digit
+        # completion timestamp at field 12 (KB §10 specifies a 14-digit scan).
+        rec = "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N||20260703|||20260703101530"
+        fields = rec.split("|")
+        self.assertEqual(xc.find_result_timestamp_field(fields), 12)
+        self.assertEqual(xc.parse_record(rec)["timestamp"], "20260703101530")
+
+    def test_date_only_result_falls_back_to_eight_digit(self):
+        # If no 14-digit field exists, an 8-digit date-only field is the fallback.
+        rec = "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N|||||20260703"
+        self.assertEqual(xc.find_result_timestamp_field(rec.split("|")), 12)
 
 
 class TestFraming(unittest.TestCase):

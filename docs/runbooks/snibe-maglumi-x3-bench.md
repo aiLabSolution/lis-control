@@ -34,9 +34,12 @@ disk is the deliverable**. A live bridge→OpenELIS parse is out of scope here.
   PDFs are the authoritative source, not this runbook or the KB note.
 - **Capture tool:** `scripts/x3_astm_capture.py` (this repo) — a stdlib-only TCP
   listener that plays the host side of the handshake and archives raw bytes. Its
-  analysis layer is unit-tested against the KB §6 fixtures
-  (`scripts/test_x3_astm_capture.py`), so its framing classification and
-  R-timestamp field detection are trustworthy on the bench.
+  analysis layer (framing classification, R-timestamp field detection anchored on
+  a 14-digit scan, code/unit extraction) is unit-tested against the KB §6 fixtures
+  and their off-by-one variants (`scripts/test_x3_astm_capture.py`). Treat its live
+  CAPTURE SUMMARY as a decode aid, not the record of truth: confirm framing against
+  the `Enable Checksum` toggle state and read the pinned values off the archived
+  raw bytes.
 - **Architecture:** `docs/adr/0009-astm-e1381-codec-and-session.md`,
   `docs/adr/0010-astm-e1394-record-parser.md`,
   `docs/adr/0012-raw-message-archive-and-deterministic-replay.md`,
