@@ -182,6 +182,27 @@ def test_patient_upload_is_not_calibration(tmp_path):
     assert all(r.kind == KIND_RESULT for r in replay.observations)
 
 
+def test_calibration_prefix_requires_the_hyphen_boundary():
+    """A specimen id that merely starts with the letters ``CAL`` (e.g. a Calcium
+    panel labelled ``CALCIUM-01``) is a patient specimen, not calibration — the
+    prefix boundary is ``CAL-``, so the gate never swallows a real analyte."""
+    from edge_sim.oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT
+    from edge_sim.replay import _astm_result_type  # noqa: PLC0415 - test-only introspection
+
+    def result_type(specimen_id):
+        msg = (
+            "H|\\^&||PSWD|Maglumi User|||||Lis||P|E1394-97|20260703\r"
+            "P|1\r"
+            f"O|1|{specimen_id}||^^^TSH|R\r"
+            "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N\r"
+            "L|1|N\r"
+        )
+        return _astm_result_type(parse_e1394(msg.encode("ascii")))
+
+    assert result_type("CALCIUM-01") == RESULT_TYPE_PATIENT
+    assert result_type("CAL-2026-07") == RESULT_TYPE_CALIBRATION
+
+
 def _report_observations(fixture):
     """The transport-neutral observations the normalizer consumes, via the same
     ASTM report the replay path builds."""

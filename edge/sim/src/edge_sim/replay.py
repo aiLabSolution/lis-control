@@ -39,8 +39,10 @@ from .transport import Transport
 # The production bridge makes this prefix a per-analyzer profile rule
 # (CALIBRATION_SPECIMEN_ID_PREFIX); the sim bakes the documented default so the
 # conformance fixture is deterministic — the same default-vs-profile split as
-# the RAYTO terminology seed in normalize.py.
-_CALIBRATION_SPECIMEN_PREFIX = "CAL"
+# the RAYTO terminology seed in normalize.py. The trailing hyphen keeps the
+# prefix from swallowing a legitimate patient analyte whose id merely starts
+# with the letters CAL (e.g. a specimen labelled for a Calcium panel).
+_CALIBRATION_SPECIMEN_PREFIX = "CAL-"
 
 __all__ = [
     "ReplayResult",
@@ -289,11 +291,19 @@ def _astm_result_type(msg: AstmMessage) -> str:
     """Classify an ASTM message as a patient or calibration upload.
 
     ASTM has no MSH-16-style wire field, so calibration is recognized from the
-    documented Sample-ID convention (:data:`_CALIBRATION_SPECIMEN_PREFIX`): any
+    documented Sample-ID convention (:data:`_CALIBRATION_SPECIMEN_PREFIX`): an
     order whose specimen id (O-3) begins with the calibration prefix marks the
     message a calibration upload, which the normalizer re-kinds to
-    ``KIND_CALIBRATION`` so it never lands as a patient result (LIS-125). Like
-    the HL7 MSH-16 path, the result type is message-level."""
+    ``KIND_CALIBRATION`` so it never lands as a patient result (LIS-125).
+
+    Classification is message-level, like the HL7 MSH-16 path: the whole report
+    carries one result type. This mirrors the sim's current single-specimen
+    ASTM model (``_astm_report`` collapses a multi-``O`` upload onto the first
+    order); per-specimen grouping — and with it per-order calibration in a mixed
+    patient+calibration batch — arrives with LIS-157. The production bridge
+    already classifies per O-record. A calibration prefix is therefore only
+    asserted on a single-purpose calibration upload here; it is never inferred
+    from a bare leading ``CAL`` (see the prefix's trailing hyphen)."""
     for patient in msg.patients:
         for order in patient.orders:
             specimen_id = (order.specimen_id or "").strip().upper()
