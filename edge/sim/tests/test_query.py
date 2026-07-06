@@ -248,8 +248,12 @@ def test_h99s_worklist_result_closes_loop_no_orphan():
 
     # The analyzer runs the tests and later uploads a SEPARATE ORU^R01 for the
     # reconciled accession — build it keyed on resp.orders[0], not a hardcoded
-    # literal, so the chain (not just the value) is what's under test.
+    # literal, so the chain (not just the value) is what's under test. Anchor
+    # the extracted value against the submitted order first: without this, a
+    # worklist answer that dropped the accession (e.g. emitted "") would still
+    # make the downstream self-consistency check below pass vacuously.
     returned_accession = resp.orders[0].accession_number
+    assert returned_accession == order.accession_number
     oru = (
         f"MSH|^~\\&|H90^^507|EDANLAB|||20260703112900||ORU^R01|H99SR1|P|2.4||||0||UTF8\r"
         f"PID|1|17\r"
