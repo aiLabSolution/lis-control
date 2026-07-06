@@ -12,9 +12,11 @@ fields for it:
 
 Proven against the synthetic seed ``edan-h99s-oru-r01`` (device code ``507``,
 MSH-3 ``H90^^507``) — no hardware. The profile is gated on the message announcing
-itself as H90-series (``MSH-3.1 == H90`` or ``MSH-4 == EDANLAB``) so standard-HL7
-analyzers — including the EDAN *H60S* seed (MSH-3 ``H60S`` / MSH-4 ``EDAN``, code
-in OBX-3) — are untouched.
+itself as EDAN (``MSH-3.1 == H90`` or ``MSH-4 == EDANLAB``) so standard-HL7
+analyzers are untouched. The EDAN *H60S* also routes through this profile: the
+2026-07-06 physical bench (LIS-20) proved the real H60S emits the same EDANLAB
+layout (MSH-3 ``H60^7907`` / MSH-4 ``EDANLAB``, code in OBX-4), and its graduated
+fixture is asserted below.
 """
 
 from pathlib import Path
@@ -112,15 +114,18 @@ def test_detection_by_msh4_edanlab_alone():
     assert report.patient_id == "PT-EDANLAB"
 
 
-def test_h60s_standard_hl7_is_not_treated_as_h90_series():
-    """No regression: the EDAN H60S seed (MSH-3 H60S / MSH-4 EDAN, code in OBX-3)
-    must NOT be routed through the H90-series profile — its code stays in OBX-3 and
-    its ids resolve from PID-3 / OBR-3."""
+def test_h60s_is_edanlab_h90_family_after_bench_graduation():
+    """The 2026-07-06 physical H60S bench (LIS-20) proved the real EDAN H60S speaks
+    the H90-family EDANLAB profile — NOT the clean-HL7 layout the original seed
+    assumed. The fixture is graduated to the real wire (MSH-4 'EDANLAB', analyte code
+    in OBX-4, patient number in PID-2, sample id in OBR-2), so the parser routes it
+    through the EDAN profile just like the H99S."""
     report = _report(H60S)
+    assert report.sending_facility == "EDANLAB"
     codes = [o.raw_code for o in report.observations]
-    assert codes == ["WBC", "RBC", "HGB", "HCT", "MCV", "PLT"]  # from OBX-3, unchanged
-    assert report.patient_id == "PID-0231"   # PID-3, not PID-2
-    assert report.specimen_id == "SPEC-0231"  # OBR-3, not OBR-2
+    assert codes == ["WBC", "RBC", "HGB", "HCT", "MCV", "PLT"]  # read from OBX-4, not OBX-3
+    assert report.patient_id == "PID-0231"   # PID-2 (EDAN), not PID-3
+    assert report.specimen_id == "SPEC-0231"  # OBR-2 (EDAN), not OBR-3
     results = {r.raw_code: r for r in _normalized(H60S) if r.kind == KIND_RESULT}
     assert all(r.status == STATUS_NORMALIZED for r in results.values())
 
@@ -164,6 +169,23 @@ def test_h99s_milestone_normalizes_all_six_analytes():
     assert {o.raw_code for o in results} == {"WBC", "RBC", "HGB", "HCT", "MCV", "PLT"}
     assert all(o.loinc for o in results)          # every analyte mapped to a LOINC
     assert out.ingest_payload() == []             # OBX-11 finality gap (documented above)
+
+
+def test_h60s_milestone_normalizes_all_six_analytes_held_back():
+    """The graduated EDAN H60S fixture (real EDANLAB wire, 2026-07-06 bench) runs the
+    Stage-1 milestone: all six analytes read from OBX-4 normalize to LOINC and the ACK
+    is AA — but, exactly like the H99S, the EDAN OBX-11 carries no Table-0085 finality,
+    so the finality-gated ``ingest_payload`` holds them back. The production bridge →
+    OpenELIS path is not finality-gated this way; the same bench confirmed the live FHIR
+    path stages these MAPPED once OE has pushed the analyzer's code→LOINC map.
+    """
+    out = run_milestone(load_fixture(H60S).message_bytes)
+    assert out.accepted is True
+    assert out.ack_code == "AA"
+    results = [o for o in out.observations if o.kind == KIND_RESULT]
+    assert {o.raw_code for o in results} == {"WBC", "RBC", "HGB", "HCT", "MCV", "PLT"}
+    assert all(o.loinc for o in results)          # every analyte mapped to a LOINC (OBX-4)
+    assert out.ingest_payload() == []             # EDAN OBX-11 finality gap (held back)
 
 
 def test_cli_normalize_renders_h99s_panel(capsys):

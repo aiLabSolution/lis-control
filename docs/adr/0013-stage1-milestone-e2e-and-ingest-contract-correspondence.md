@@ -149,3 +149,40 @@ or under-normalized result.
   - **Synthetic fixture** — a real EDAN H60S capture replaces it at bench conformance
     (LIS-74); the second-vendor proof (HETO AU120) and the bidirectional QRD/QRF path
     (**LIS-18 / S1.6**) are the remaining Stage-1 edge slices.
+
+## Addendum — 2026-07-06 (LIS-20 H60S bench outcome; milestone vehicle reconciled)
+
+The physical EDAN H60S bench (LIS-20) changed two premises this ADR was written on:
+
+1. **The real H60S speaks the EDAN H90-family EDANLAB profile, not clean HL7.** Captured
+   wire is `MSH-3 'H60^7907'` / `MSH-4 'EDANLAB'` with the analyte code in **OBX-4** (OBX-3
+   a 0/1 suspect flag), patient in **PID-2**, sample in **OBR-2** — the same layout as the
+   H99S, not the `H60S`/`EDAN`/OBX-3 clean-HL7 shape §Decision-1 assumed. The
+   `edan-h60s-oru-r01` fixture is **graduated** to the real EDANLAB wire (`synthetic:true`,
+   representative CBC values; byte-exact capture archived with the bench evidence).
+2. **The H60S carries no OBX-11 Table-0085 finality.** Like the H99S (KB §5.4), EDAN uses
+   OBX-11 as a "modified?" flag, so H60S results are **held back** by the §Decision-4
+   finality gate — they cannot satisfy the milestone's "six *final* Result rows flow to
+   ingest" criterion as literally written.
+
+**Reconciliation (supersedes §Decision-1 and §Verifiable-output's choice of vehicle):**
+
+- The **finality-demonstrating automated E2E** (`test_milestone.py`, `edge-sim milestone`
+  CLI gate) moves to the **RAYTO RAC-050** standard-HL7 fixture, which carries OBX-11 `F`.
+  This preserves the milestone's *intent* (a first result survives MLLP framing, is ACK'd
+  `AA`, normalizes to LOINC/UCUM, and — being final — flows to the ingest seam; a non-final
+  variant is held back). The ingest-contract correspondence (§Decision-3) is unchanged.
+- The **EDAN H60S** keeps a dedicated held-back assertion (`test_edan_h99s.py::
+  test_h60s_milestone_normalizes_all_six_analytes_held_back`), mirroring the H99S: all six
+  analytes normalize from OBX-4, ACK is `AA`, and the ingest payload is empty (the EDAN
+  OBX-11 finality gap) — the honest Stage-1 state for this analyzer.
+- The milestone's **"first result through the pipe on EDAN H60S"** is now met more strongly
+  than a synthetic E2E: the **live 2026-07-06 bench** drove a physical H60S `ORU^R01` over
+  MLLP → analyzer-bridge → OpenELIS, returned `ACK^R01` / `MSA-1=AA`, and staged the result
+  **mapped** on the FHIR path once OE pushed the analyzer's code→LOINC map (evidence:
+  `~/bench-runs/20260703T134217Z-h60s/`). This also exercises the real cross-process leg the
+  original ADR deferred (§Alternatives "Full cross-process E2E").
+- **Follow-ups:** carry EDAN OBX-11→finality into the profile so H60S results are not
+  perpetually held back (the "separate profile step" noted at §Decision-4); the bridge
+  (`edge/drivers`) still has stale "H60S is standard-HL7" comments (`HL7ResultParser.java`
+  126/209, `HL7ResultParserTest.java` 433) — cosmetic, runtime already parses EDANLAB.

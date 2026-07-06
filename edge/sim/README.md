@@ -21,10 +21,13 @@
   content-addressed, integrity-checked **raw-message archive** and runs a
   **deterministic replay round-trip** — archive → reload → replay → normalize to a
   Result, fingerprinted and checked against the fixture's asserted `expected` rows
-  (LIS-16 / S1.4). Composes all of the above into the **Stage-1 milestone E2E** — an
-  **EDAN H60S** `ORU^R01` over MLLP → normalized Result (raw code/unit preserved beside
-  LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 = AA)** — and emits the **core ingest contract
-  DTO** the core `ResultIngestService.ingest` consumes (core ADR-0003, LIS-17 / S1.5).
+  (LIS-16 / S1.4). Composes all of the above into the **Stage-1 milestone E2E** — a
+  standard-HL7 `ORU^R01` (**RAYTO RAC-050** vehicle) over MLLP → normalized Result (raw
+  code/unit preserved beside LOINC/UCUM; final) **+ `ACK^R01` (MSA-1 = AA)** — and emits
+  the **core ingest contract DTO** the core `ResultIngestService.ingest` consumes (core
+  ADR-0003, LIS-17 / S1.5). The original EDAN H60S vehicle was regraduated to its real
+  EDANLAB wire after the 2026-07-06 bench (no OBX-11 finality → held back; ADR-0013
+  addendum), so its milestone run asserts the held-back behaviour instead.
   Answers a **bidirectional host-query** — a `QRY^R02` (QRD/QRF) is answered with an
   `ORF^R04` (`MSA-1 = AA`, query id echoed) and the returned result normalizes
   (LIS-18 / S1.6).
@@ -80,7 +83,7 @@ edge/sim/
     _example/                    # synthetic seed proving the replay self-test
     example-mllp-oru-r01/        # synthetic ORU^R01 over MLLP (S1.1)
     rayto-rac050-oru-r01/        # synthetic RAC-050 ORU^R01 w/ local codes + expected normalized rows (S1.2)
-    edan-h60s-oru-r01/           # synthetic EDAN H60S ORU^R01 (HL7 v2.4) — Stage-1 milestone vehicle (S1.5)
+    edan-h60s-oru-r01/           # EDAN H60S ORU^R01 — real EDANLAB wire (2026-07-06 bench), representative values; held back (no OBX-11 finality)
     edan-h60s-host-query-qry-r02/ # synthetic EDAN H60S QRY^R02 host-query (QRD/QRF) (S1.6)
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
     snibelis-maglumi-x3-result-upload/ # synthetic SnibeLis H/P/O/R/L result upload (S3.0a)
@@ -103,7 +106,8 @@ uv run edge-sim parse-astm diasys-r920-astm-result            # parse ASTM E1394
 uv run edge-sim archive rayto-rac050-oru-r01                   # archive the raw message -> content digest
 uv run edge-sim roundtrip rayto-rac050-oru-r01                # archive -> replay -> normalized Result, checked vs expected
 uv run edge-sim roundtrip rayto-rac050-oru-r01 --transport mllp # the same deterministic round-trip over MLLP framing
-uv run edge-sim milestone edan-h60s-oru-r01                   # Stage-1 E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) + ingest DTO
+uv run edge-sim milestone rayto-rac050-oru-r01                # Stage-1 E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) + ingest DTO
+uv run edge-sim milestone edan-h60s-oru-r01                   # same run on the real EDANLAB wire: normalizes + ACK AA but exits 1 (held back, no OBX-11 finality)
 uv run edge-sim query edan-h60s-host-query-qry-r02           # bidirectional host-query (QRD/QRF) answered -> ORF^R04 + normalized Result
 ```
 

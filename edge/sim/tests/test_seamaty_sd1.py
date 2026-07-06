@@ -34,7 +34,7 @@ from edge_sim.transport import LoopbackTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 SD1 = FIXTURES_ROOT / "seamaty-sd1-oru-r01"
-EDAN = FIXTURES_ROOT / "edan-h60s-oru-r01"
+RAYTO = FIXTURES_ROOT / "rayto-rac050-oru-r01"
 
 # raw_code -> (expected LOINC, expected UCUM) for the SD1 dry-chem panel.
 EXPECTED_PANEL = {
@@ -81,10 +81,12 @@ def test_sd1_patient_id_falls_back_to_pid2():
 
 
 def test_pid3_analyzer_still_resolves_from_pid3():
-    """No regression: the EDAN H60S carries the id in PID-3; the PID-2 fallback
-    must not change a PID-3 analyzer's resolved patient id."""
-    report = parse_oru_r01(load_fixture(EDAN).message_bytes)
-    assert report.patient_id == "PID-0231"
+    """No regression: a standard-HL7 analyzer (RAYTO RAC-050) carries the id in
+    PID-3; the SD1's PID-2 fallback must not change a PID-3 analyzer's resolved
+    patient id. (The EDAN H60S — the former example here — was regraduated to the
+    EDANLAB / PID-2 profile after the 2026-07-06 bench, so it is no longer PID-3.)"""
+    report = parse_oru_r01(load_fixture(RAYTO).message_bytes)
+    assert report.patient_id == "PID-0142"
 
 
 def test_pid3_preferred_over_pid2_when_both_present():

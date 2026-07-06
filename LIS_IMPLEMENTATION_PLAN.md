@@ -142,10 +142,14 @@ analyzer. The protocol contract is unchanged. See the
 **Deliverables:** edge driver service; HL7 parser; normalization service; fixtures.
 
 **✅ Verifiable output (exit gate)**
-- 🎯 **Milestone — first result:** a captured **EDAN H60S** `ORU^R01` replayed over MLLP
-  produces a normalized **Result** row (raw_code+raw_unit preserved; LOINC+UCUM
-  populated; status=final), asserted by an **automated E2E test**; the listener
-  returns a correct **`ACK^R01` (MSA-1 = AA)**.
+- 🎯 **Milestone — first result:** an `ORU^R01` replayed over MLLP produces a normalized
+  **Result** row (raw_code+raw_unit preserved; LOINC+UCUM populated; status=final),
+  asserted by an **automated E2E test**; the listener returns a correct
+  **`ACK^R01` (MSA-1 = AA)**. *The finality-gated automated E2E runs on the standard-HL7
+  RAYTO RAC-050 fixture; the EDAN H60S was regraduated to its real EDANLAB profile (no
+  OBX-11 finality → held back) after the 2026-07-06 bench, and the H60S "first result"
+  is met by the live bench end-to-end (physical H60S → bridge → OpenELIS, staged mapped).
+  See ADR-0013 addendum (2026-07-06).*
 - **Second vendor:** the same parser ingests a **HETO AU120** HL7/MLLP message without
   code changes (vendor-tolerance proof).
 - **Bidirectional:** an EDAN H60S host-query (QRD/QRF) is answered and a result returns.

@@ -125,9 +125,12 @@ def _is_edan_h90(msh) -> bool:
     the patient number in **PID-2** (PID-3 is ``Age^unit``). Every H90-series device
     announces type ``H90`` in ``MSH-3.1`` (model code in ``MSH-3.3`` — e.g.
     ``H90^^507`` = H99S, §7) and ``EDANLAB`` in ``MSH-4`` (§5.1). Detecting on either
-    lets us apply the EDAN field profile without disturbing standard-HL7 analyzers —
-    including the EDAN *H60S* seed, which uses a standard OBX-3 code with MSH-3
-    ``H60S`` / MSH-4 ``EDAN`` (LIS-78 readiness finding)."""
+    lets us apply the EDAN field profile without disturbing standard-HL7 analyzers.
+
+    The EDAN **H60S** also belongs here: the 2026-07-06 physical bench (LIS-20) proved
+    the real H60S emits ``MSH-3 'H60^7907'`` / ``MSH-4 'EDANLAB'`` with the code in
+    OBX-4 — the H90-family layout, not the clean-HL7 ``H60S``/``EDAN``/OBX-3 the seed
+    originally assumed. The ``MSH-4 == 'EDANLAB'`` arm routes it correctly."""
     return (
         msh.component(3, 1).strip().upper() == "H90"
         or msh.field(4).strip().upper() == "EDANLAB"
@@ -140,7 +143,7 @@ def _patient_id(pid, edan: bool = False) -> str:
     PID-3.1 (the CX patient identifier list) is the canonical id for most
     analyzers. The Seamaty SD1 instead carries the MRN in PID-2 (manual §3.3), so
     we fall back to PID-2.1 only when PID-3 is absent/blank — a present PID-3 always
-    wins, leaving PID-3 analyzers (e.g. the EDAN H60S) unaffected (LIS-86 / S2.10).
+    wins, leaving PID-3 analyzers (e.g. the RAYTO RAC-050) unaffected (LIS-86 / S2.10).
     Emptiness is tested on the stripped value so a whitespace-only PID-3 does not
     shadow a real PID-2 MRN (the very identifier this fallback exists to preserve).
 
@@ -190,9 +193,9 @@ def _is_blank_sample_obr(obr, u) -> bool:
 
 
 def _observation(seg, u, edan: bool = False) -> RawObservation:
-    # EDAN H90-series: the analyte code/name rides in OBX-4 (OBX-3 is a suspect
-    # flag, KB §5.4). Read the code from OBX-4 there; standard analyzers (and the
-    # EDAN H60S seed) keep the OBX-3.1 observation identifier.
+    # EDAN family (H90-series and, per the 2026-07-06 bench, the H60S): the analyte
+    # code/name rides in OBX-4 (OBX-3 is a suspect flag, KB §5.4). Read the code from
+    # OBX-4 there; standard analyzers keep the OBX-3.1 observation identifier.
     raw_code = u(seg.field(4)) if edan else u(seg.component(3, 1))
     return RawObservation(
         set_id=u(seg.field(1)),
