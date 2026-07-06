@@ -50,8 +50,11 @@ cleared under HOLD-001 / LIS-71).
   precedence → spec R.13 → 14-digit scan, recovering the SnibeLis manual's R.12
   off-by-one) + compact→ISO normalization so `Observation.effective` actually emits
   (pre-existing silent drop for all ASTM analyzers), `uIU/mL`/`pmol/L` UCUM backstop.
-  Gap 4 — simplified ENQ/STX/…/ETX/EOT session framing — stays gated on the LIS-75
-  live capture; SnibeLis codes/units are synthetic until LIS-75/LIS-38.
+  Gap 4 — the X3's simplified ENQ/STX/…/ETX/EOT session framing — is now its own slice,
+  **LIS-174**, pinned by the **LIS-75** bench capture of the X3's native `Online` ASTM
+  output against **our bridge** (direct-attach; the SnibeLis middleware was dropped from
+  the topology 2026-07-06 — LIS-178 / ADR-0008+0015 amendments); X3 codes/units stay
+  synthetic until LIS-75/LIS-38.
   Follows release `3.0.9` (`fb2167c`) — the LIS-88 bridge change (PR
   `openelis-analyzer-bridge#10`: FILE routed through the shared
   `MessageNormalizer`/`HttpForwardingRouter` pipeline via a `parsedResults` envelope
@@ -97,9 +100,11 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 ## Pilot substrate
 
 MLLP/HL7 is the pilot transport and the only one that must be enabled + bench-proven for
-go-live (EDAN H60S anchor, port 7999; bridge default 2575). Serial/ASTM (Stage 2) and file
-(Stage 3) are the recorded forward path — bench-validated against the simulators, post-pilot
-for the live fleet under change control (DEC-06 / SD-0). DEC-06 released one narrow exception on
+go-live (EDAN H60S anchor, port 7999; bridge default 2575). Serial/ASTM (Stage 2) and the
+MAGLUMI X3's native ASTM-over-TCP direct attach (Stage 3 — SnibeLis middleware dropped
+2026-07-06, LIS-178 / ADR-0015 amendment; FILE demoted to the LIS-34 contingency) are the
+recorded forward path — bench-validated against the simulators, post-pilot for the live
+fleet under change control (DEC-06 / SD-0). DEC-06 released one narrow exception on
 2026-07-04: LIS-149 may build and bench the EDAN H99S `QRY^R02 -> ORF^R04` worklist/order-download
 path; support still requires signed H99S wire evidence. Enabling a transport is configuration plus
 a restart; it ships no new code.

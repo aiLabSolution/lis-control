@@ -136,7 +136,7 @@ line.
 
 | Vendor | Scope | Reality | Evidence |
 |---|---|---|---|
-| SNIBE | MAGLUMI X3 / X6 / 800 (CLIA immunoassay) | Snibe ships its **own LIS middleware — "SnibeLis" / "SnibeLinker"** (registered trademarks; applicable SW 1.18.8.27+). MAGLUMI ↔ LIS goes **through Snibe's layer**, not raw HL7. You integrate to SnibeLis (or reverse its output), you don't get a clean vanilla HL7 socket. | [SNIBE SnibeLis User Manual v1.1 p.1](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=1) |
+| SNIBE | MAGLUMI X3 / X6 / 800 (CLIA immunoassay) | Snibe ships its **own LIS middleware — "SnibeLis" / "SnibeLinker"** (registered trademarks; applicable SW 1.18.8.27+). MAGLUMI ↔ LIS goes **through Snibe's layer**, not raw HL7. You integrate to SnibeLis (or reverse its output), you don't get a clean vanilla HL7 socket. **⮕ Superseded 2026-07-06 (LIS-178):** the X3's own IFU (v1.4, App. B) documents a **native built-in LIS interface** — ASTM E1394-97 (or HL7 v2.5, SNIBE dialect) over TCP direct to *any* host; SnibeLis is optional middleware, not a required broker. The LIS attaches the X3 natively (ADR-0008/0015 amendments). | [SNIBE SnibeLis User Manual v1.1 p.1](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=1) · [MAGLUMI X3 IFU v1.4 App. B p.131](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/437-2-MAGLUMI-X3-IFU-en-V1.4.pdf#page=131) |
 | MINDRAY | BC hematology series, etc. | Mindray's **labXpert / DMS** middleware. The urine line (§3.1) is clean HL7 v2.x; hematology integration is typically via Mindray DMS export. | [MINDRAY BC-760/780 Operator's Manual — Communication section](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/MINDRAY/BC-760-780/BC-760%26780_Operator_s-Manual_EN_V7.0.textified.md) |
 
 ### 3.5 Coverage gap — flag, don't assume
@@ -340,7 +340,9 @@ for a company whose product *is* integration).
    hematology). These don't expose vanilla HL7 — you either (a) configure SnibeLis
    to emit HL7/ASTM to your engine, or (b) ingest its export/DB. Highest
    reverse-mapping effort; the repo's SnibeLis manual + Mindray protocol docs are
-   the spec inputs.
+   the spec inputs. *(⮕ Superseded for the MAGLUMI X3, 2026-07-06 / LIS-178: the X3
+   attaches natively — built-in ASTM E1394-97 LIS interface direct to the bridge, no
+   SnibeLis; see §3.4 note and the implementation plan §Stage 3.)*
 4. **Contribute generic mappings upstream** to `openelisglobal-plugins` so you ride
    community maintenance for standards-compliant units and keep only the
    LabSolution-specific tails private.

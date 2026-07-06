@@ -92,13 +92,15 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    | **EDAN H60S** (warehouse) | ✅ HL7 V2.4 / MLLP (TCP) | **v1 anchor** |
    | **EDAN H99S** | HL7 (EDAN H90 family) | **v1** — H90-series result profile shipped; **order-download gate released for LIS-149** |
    | **RAYTO RT-7600** (hematology) | ✅ TCP (Netport), bidirectional; ⚠ message format unconfirmed | **v1** — confirm HL7 vs vendor format |
-   | **SNIBE MAGLUMI X3** | ✅ ASTM E1394 / TCP (via SnibeLis) | **v1.1** — bridge-native ASTM, but +SnibeLis middleware → REQ-PRIV-09 DPA flow-down |
+   | **SNIBE MAGLUMI X3** | ✅ ASTM E1394-97 / TCP — **native built-in LIS interface** (HL7 v2.5 documented alternative) | **v1.1** — direct-attach to the bridge's ASTM listener; **no SnibeLis middleware, no REQ-PRIV-09 DPA flow-down** *(amended 2026-07-06 — see amendment note below)* |
    | **Seamaty SD1** | ✅ HL7 v2.3.1 / MLLP (TCP); RS-232 also; upload-only (ORU+ACK) — vendor LIS manual on file | **v1** (HL7/MLLP result-ingestion) — added 2026-06-29; bench port/framing capture pending |
    | **ERBA EC90** (warehouse) | ✅ RS-232 serial (ASTM-ish) | **deferred** (serial group) |
    | **HETO AU120** (arriving next) | ⚠ "Konig LIS Protocol V2.1" (manual is Konig AP300; AU120 may differ) | **deferred** — confirm on arrival |
 
    **v1 = EDAN H60S/H99S + RAYTO RT-7600 + Seamaty SD1** (HL7/MLLP, result-ingestion; SD1 added 2026-06-29). **v1.1 = MAGLUMI X3** (pull
-   into v1 only if immunoassay is pilot-critical, accepting the SnibeLis middleware + DPA cost).
+   into v1 only if immunoassay is pilot-critical; since the 2026-07-06 amendment below the pull-in
+   no longer carries a SnibeLis middleware or DPA cost — the remaining cost is one TB-1 boundary +
+   one REQ-CONF-01 bench report, like any other unit).
    **Deferred post-pilot under change control (REQ-QMS-03):** ERBA EC90 (RS-232 serial) and HETO
    AU120 (incoming), plus general **bidirectional host-query / order-download** expansion. Each
    deferred/added analyzer is one TB-1 trust boundary + one REQ-CONF-01 signed bench report.
@@ -129,6 +131,27 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    > fleet-wide bidirectional expansion and does **not** mark the path bench-conformant by itself;
    > H99S order-download still needs real wire evidence and validation-owner sign-off before it can be
    > claimed as supported in the pilot dossier.
+
+   > **⮕ DEC-06 amendment (2026-07-06, LIS-178) — MAGLUMI X3 attaches natively; SnibeLis middleware
+   > dropped.** Owner directive (M. Uy, 2026-07-06; Stage-3 epic redesign). The X3 row above
+   > originally read *"ASTM E1394 / TCP (via SnibeLis) … +SnibeLis middleware → REQ-PRIV-09 DPA
+   > flow-down."* Reading the X3's own IFU (v1.4, App. B "Network interfaces") shows the analyzer
+   > has a **native, built-in, bidirectional LIS interface** (`Set → System Setting → Online`)
+   > speaking **ASTM E1394-97** — or **HL7 v2.5** as the documented alternative — over TCP to
+   > *any* host; SnibeLis was only ever the vendor's default host endpoint, not a required broker.
+   > The X3 therefore attaches **directly to the bridge's native ASTM listener** (the analyzer is
+   > the TCP client; our bridge is the host, ID `Lis`), consistent with ADR-0015 Decision 1.
+   > Consequences: **(a)** the SNIBE-proprietary SnibeLis/SnibeLinker middleware leaves the
+   > topology — **one fewer PHI-touching sub-processor**, so the X3's REQ-PRIV-09 DPA flow-down
+   > dissolves and SnibeLis drops off the DEC-17 sub-processor candidate register; **(b)** the
+   > v1.1 placement, TB-1 surface, and REQ-CONF-01 duty are unchanged (still one trust boundary,
+   > one signed bench report); **(c)** the SnibeLis export/DB ingest survives only as a
+   > last-resort contingency (LIS-34, demoted) if the X3 firmware refuses a non-SNIBE host
+   > (unproven). Work tracked as: LIS-75 (bench capture against our bridge — pins framing incl.
+   > the `Enable Checksum` toggle, real Lis-IDs/units), LIS-174 (simplified-envelope framing
+   > receive path), LIS-175 (`bridge.analyzers` channel), LIS-176 (SNIBE HL7-dialect fallback),
+   > LIS-177 (native host-query). This note amends the row; the 2026-06-27 pin itself is not
+   > rewritten.
 
 ## Consequences
 

@@ -135,7 +135,7 @@
 >
 > **Topology framing (ADR-0006).** At the **M1 pilot**, LabSolution holds no PHI, so the only DPA LabSolution needs
 > is a **narrow, scoped support DPA** for any remote-support / break-glass access that *could* touch live PHI
-> (prudent, not for ongoing processing). Any DPA with on-site analyzer middleware (SnibeLis / Mindray DMS, H2/H3)
+> (prudent, not for ongoing processing). Any DPA with on-site analyzer middleware (Mindray DMS, H3; SnibeLis was dropped from the topology 2026-07-06 — see H2)
 > that processes PHI within a site is the **customer lab's** call as PIC. The **head DPA (lab→LabSolution) and
 > back-to-back middleware flow-down are [M3 EXTRA WORK]** (gate doc M3-4/M3-5), arising only when LabSolution
 > becomes a PIP for the sync spoke. The **cloud-host DPA (H1) is parked — M2 is not selected.**
@@ -145,7 +145,7 @@
 | H0 | **Scoped support / break-glass DPA** (M1 pilot) — covers any remote-support access that could touch live PHI; bounds LabSolution to that scope/duration so it does not silently become a PIP (DEC-17). | `[NEEDS-HUMAN]` | Counsel + DPO | Signed support DPA + break-glass controls | REQ-PRIV-09 |
 | H1 | **Cloud host** — ⛔ **PARKED: M2 (public cloud) not selected (ADR-0006).** Not applicable to the M1 pilot or the M3 own-datacenter spoke. Revisit only if a future customer requires cloud residency. | `[PARKED]` | Counsel + DPO | (n/a unless M2 revived) | REQ-PRIV-09, REQ-PRIV-08 |
 | H1b | **Head DPA (lab → LabSolution)** — ✦ **[M3 EXTRA WORK]** the Rule X PIC→PIP contract binding LabSolution for the aggregation processing; mandatory before the M3 spoke (gate doc M3-4). Not needed for the M1 pilot. | `[NEEDS-HUMAN]` (M3) | Counsel + DPO | Signed head DPA | REQ-PRIV-09 |
-| H2 | **SnibeLis / SnibeLinker** instrument middleware — confirm whether PHI flows through vendor middleware; if so, DPA/DSA. (Also named in threat model §3 TB-1 / supply-chain context.) | `[NEEDS-HUMAN]` | Counsel + DPO | Signed vendor DPA | REQ-PRIV-09, REQ-PRIV-07 |
+| H2 | ~~**SnibeLis / SnibeLinker** instrument middleware — confirm whether PHI flows through vendor middleware; if so, DPA/DSA.~~ **Resolved-moot 2026-07-06 (LIS-178 / ADR-0008 amendment):** the MAGLUMI X3 attaches **natively** to the LabSolution bridge (built-in ASTM E1394-97 LIS interface) — SnibeLis is no longer in the topology, so no PHI transits it and no DPA/DSA arises. Re-opens only if the LIS-34 export/DB contingency is ever activated. | ✅ moot | — | ADR-0008 amendment note (2026-07-06) | REQ-PRIV-09, REQ-PRIV-07 |
 | H3 | **Mindray DMS** data-management software — same determination and agreement. (Also named in threat model §3 supply-chain context.) | `[NEEDS-HUMAN]` | Counsel + DPO | Signed vendor DPA | REQ-PRIV-09, REQ-PRIV-07 |
 | H4 | **EMR / HIS** receiving FHIR R4 results — data-sharing agreement covering the outbound result feed (controller-to-controller vs. processor). | `[NEEDS-HUMAN]` | Counsel + DPO | Signed EMR/HIS DSA | REQ-PRIV-09, REQ-PRIV-07 |
 | H5 | **PhilHealth** (claims/reporting) — data-sharing agreement / lawful-basis confirmation for any PHI disclosed for reimbursement. | `[NEEDS-HUMAN]` | Counsel + DPO | Signed PhilHealth DSA / basis memo | REQ-PRIV-09, REQ-PRIV-05 |
@@ -191,7 +191,7 @@
 - **DPO appointment** (B1): a named person must be designated before NPCRS organization/DPO registration.
 - **Erasure vs. medical-record retention** (E4/I3): policy decision reconciling RA 10173 data-subject erasure with ISO 15189 / RA 4688 retention duties.
 - **Minors / incapacitated lawful basis** (E6): counsel decision on RA 10173 grounds and guardian/parental authority for pediatric and incapacitated-patient PHI.
-- **Vendor PHI exposure** (H2/H3): does PHI actually transit SnibeLis/SnibeLinker/Mindray DMS, or only de-identified instrument data? Determines whether DPAs (REQ-PRIV-09) are required.
+- **Vendor PHI exposure** (H3): does PHI actually transit Mindray DMS, or only de-identified instrument data? Determines whether DPAs (REQ-PRIV-09) are required. *(H2/SnibeLis is moot since 2026-07-06 — the X3 attaches natively, LIS-178.)*
 
 ## Reading
 
