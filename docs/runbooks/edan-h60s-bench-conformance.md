@@ -6,6 +6,34 @@ analyzer reaches the LIS edge over MLLP/TCP, that the edge returns the expected
 HL7 original-mode ACK, that raw wire evidence is captured, and that a real H60S
 message can replace the synthetic simulator fixture.
 
+## Bench outcome — 2026-07-06 (signed off; supersedes pre-bench expectations below)
+
+The bench ran and passed. **The physical H60S speaks the EDAN H90-family EDANLAB
+profile, not the clean-HL7 layout this runbook was drafted against.** Where the
+"Expected H60S profile" and pass-criteria sections below assume `MSH-3 H60S` /
+`MSH-4 EDAN` / code in OBX-3 / PID-3 / OBR-3 / `OBX-11=F`, the **confirmed real wire
+supersedes them**:
+
+| Field | Pre-bench assumption | **Confirmed on the wire (2026-07-06)** |
+|---|---|---|
+| `MSH-3` | `H60S` | **`H60^7907`** |
+| `MSH-4` | `EDAN` | **`EDANLAB`** |
+| Analyte code | OBX-3.1 | **OBX-4** (OBX-3 = 0/1 suspect flag) |
+| Patient id | PID-3 | **PID-2** (PID-3 = Age^unit) |
+| Specimen id | OBR-3 | **OBR-2** |
+| Finality | `OBX-11=F` | **empty** — EDAN OBX-11 is a "modified?" flag, no Table-0085 finality → results held back by the sim's finality gate (production FHIR path is not finality-gated) |
+| No-result | (n/a) | `***` sentinel; `MSH-16=2` on the MSH-only connection-test ping; undocumented OBX-12 `value^unit` trailer; ~33 analytes on a full frame |
+
+**Results:** `ACK^R01` / `MSA-1=AA`; a real send staged **mapped** in OpenELIS
+(`read_only=f`, LOINC-resolved WBC/RBC/HGB/PLT) after the OE stack was updated
+(webapp rebuilt from the core pin; `analyzer.bridge.url` set via
+`host.docker.internal:8442` — do NOT attach OE to the bridge's docker network, it
+breaks the bridge→OE FHIR hop; re-register with a warm DB so `testCodeLoinc` is
+pushed). The `edge/sim/fixtures/edan-h60s-oru-r01` fixture was graduated to the real
+EDANLAB wire (the milestone vehicle moved to RAYTO RAC-050). Evidence:
+`~/bench-runs/20260703T134217Z-h60s/` (`FINDINGS.md`, `real-send-mapped-proof.txt`);
+umbrella **PR #91**; **ADR-0013 addendum (2026-07-06)**.
+
 ## References
 
 - Slice: LIS-20, ruled in the Stage 1/2 decision dossier as "H60S retrieved from
@@ -112,9 +140,10 @@ evidence store.
 1. Photograph the H60S nameplate and identity/firmware screen.
 2. Record serial number, software version, LIS protocol document/version, and
    operator names in `identity.md`.
-3. Confirm the unit is EDAN H60S, not an H90-series sibling. The H99S/H90-series
-   parser profile is intentionally different; this bench confirms whether the
-   real H60S uses the standard OBX-3 code layout modeled by the synthetic fixture.
+3. Confirm the unit is EDAN H60S. **Resolved 2026-07-06:** the real H60S does NOT use
+   the standard OBX-3 layout the synthetic seed modeled — it emits the H90-family
+   EDANLAB profile (`MSH-4 EDANLAB`, code in OBX-4), the same parser path as the H99S.
+   The fixture is now graduated to that layout (see Bench outcome above).
 
 Pass criteria:
 
@@ -248,18 +277,20 @@ The bridge pulls analyzer registry and test mappings from OpenELIS. The exact
 stub name/source id should be captured from the first real message; do not guess
 if the bridge auto-creates a `PENDING_REGISTRATION` entry.
 
-Expected H60S profile, based on the synthetic fixture:
+H60S profile — **confirmed on the wire 2026-07-06** (this table originally carried the
+synthetic seed's clean-HL7 guesses; corrected to the real EDANLAB layout):
 
-| Field | Expected value/layout |
+| Field | Confirmed value/layout |
 |---|---|
-| `MSH-3` | `H60S` |
-| `MSH-4` | `EDAN` |
+| `MSH-3` | `H60^7907` |
+| `MSH-4` | `EDANLAB` |
 | Message type | `ORU^R01` |
-| Version | `2.4` |
-| Patient id | `PID-3` |
-| Specimen/sample id | `OBR-3` |
-| Analyzer test code | `OBX-3.1` |
-| Finality | `OBX-11=F` |
+| Version | `2.4` (encoding UTF-8) |
+| Patient id | `PID-2` (PID-3 = Age^unit) |
+| Specimen/sample id | `OBR-2` (OBR-3 = reviewing doctor) |
+| Analyzer test code | `OBX-4` (OBX-3 = 0/1 suspect flag) |
+| Finality | `OBX-11` empty — EDAN "modified?" flag, not Table-0085 finality |
+| No-result / mode | `***` no-result sentinel; `MSH-16=0` data / `=2` connection-test ping |
 
 Target CBC mappings:
 
