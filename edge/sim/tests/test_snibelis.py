@@ -1,5 +1,6 @@
 """SnibeLis ASTM E1394 session/query conformance -- LIS-108 / S3.0a."""
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from edge_sim.astm import ACK, ENQ, EOT, ETX, STX
 from edge_sim.fixtures import load_fixture
 from edge_sim.replay import check_against_expected, deterministic_round_trip
 from edge_sim.snibelis import (
+    _wire_payload_bytes,
     build_order_download_response,
     parse_queries,
     run_fixture_session,
@@ -21,7 +23,46 @@ from edge_sim.transport import LoopbackTransport
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
+RESULT_UNMAPPED = FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped"
 QUERY_REQUEST = FIXTURES_ROOT / "snibelis-maglumi-x3-query-request"
+
+# Cross-language fixture anchors (LIS-174 / D7, memory
+# "port-every-assertion-not-just-self-consistency"): SHA-256 of the NORMALIZED
+# WIRE PAYLOAD -- non-empty records of message.astm CR-joined + one trailing
+# CR, encoded latin-1, i.e. exactly ``_wire_payload_bytes(fixture.message_bytes)``
+# -- pinned per fixture below. These constants are mirrored by inline-payload
+# assertions in the bridge repo (openelis-analyzer-bridge) LIS-174 tests: drift
+# on either side (a fixture edit here, or a stale inline payload there) must
+# break a test, not just self-consistently agree with itself.
+_WIRE_PAYLOAD_SHA256 = {
+    "snibelis-maglumi-x3-result-upload": (
+        "403a123081c02d26a8270785c0a05270b6cf1abbd36c916bfc636f0a09e572db",
+        241,
+    ),
+    "snibelis-maglumi-x3-result-unmapped": (
+        "006c5b2c55112a8405dcd956b9c2283c84f3a0d732320ac1fde190e30bbe7ad5",
+        291,
+    ),
+    "snibelis-maglumi-x3-query-request": (
+        "8f2955010df2e9f719afeda54ac1e777748a9e56e7597dd003fe30f0aa53fcc8",
+        90,
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "fixture_dir",
+    [RESULT_UPLOAD, RESULT_UNMAPPED, QUERY_REQUEST],
+    ids=lambda p: p.name,
+)
+def test_fixture_normalized_wire_payload_matches_pinned_cross_language_anchor(fixture_dir):
+    fx = load_fixture(fixture_dir)
+    expected_digest, expected_len = _WIRE_PAYLOAD_SHA256[fx.id]
+
+    wire_payload = _wire_payload_bytes(fx.message_bytes)
+
+    assert len(wire_payload) == expected_len
+    assert hashlib.sha256(wire_payload).hexdigest() == expected_digest
 
 
 def test_snibelis_result_upload_acks_each_control_step_and_parses_results():
