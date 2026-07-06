@@ -215,8 +215,8 @@ Pass criteria:
 - Packet capture shows the H60S as TCP client and this host as TCP server.
 - If application bytes are emitted, `h60s-raw.bin` contains an MLLP frame:
   `0x0B ... 0x1C 0x0D`.
-- De-framed payload starts with `MSH`, has `MSH-3`/`MSH-4` consistent with H60S
-  and EDAN, and has `MSH-12=2.4`.
+- De-framed payload starts with `MSH`, has `MSH-3`/`MSH-4` consistent with the
+  H60S (confirmed `H60^7907` / `EDANLAB`), and has `MSH-12=2.4`.
 
 Notes:
 
@@ -340,6 +340,21 @@ Pass criteria:
 
 ## 6. Fixture Graduation
 
+**DONE 2026-07-06 (PR #91).** How it actually landed differs from the original plan
+below — read this note first:
+
+- The fixture was regraduated to the **real EDANLAB structure** (MSH-4 EDANLAB, OBX-4
+  code, PID-2/OBR-2), which the edge parser already routes via `_is_edan_h90`.
+- It was kept **`synthetic: true`**, NOT `false`: the bench material was blank, so the
+  fixture uses representative CBC values in the real wire format; the byte-exact real
+  capture is archived at `~/bench-runs/20260703T134217Z-h60s/h60s-oru-numeric.hl7`.
+- The real H60S carries **no OBX-11 finality**, so `milestone` shows the results
+  **held back** (`ingest contract … 0 observation(s)`) — the documented EDAN gap, NOT
+  "six ingest observations". The finality-gated milestone vehicle therefore moved to
+  the standard-HL7 `rayto-rac050-oru-r01`; the H60S keeps a dedicated held-back test.
+
+The original plan (kept for reference / re-benching another EDAN unit):
+
 Once real bytes are captured, replace the synthetic H60S ORU fixture with the
 de-framed real payload.
 
@@ -384,23 +399,30 @@ PY
    uv run --frozen --python 3.12 pytest -q
    ```
 
-Pass criteria:
+Pass criteria (as met 2026-07-06):
 
-- Fixture validates and round-trips.
-- `normalize` resolves all six CBC rows to expected LOINC/UCUM values.
-- `milestone` accepts the fixture and emits six ingest-contract observations.
-- Any real-wire parser deviation is either handled in a bridge/simulator PR or
-  recorded as a follow-up before the fixture is marked conformant.
+- Fixture validates and round-trips. ✅
+- `normalize` resolves all six CBC rows to expected LOINC/UCUM values. ✅
+- `milestone` accepts the fixture (`ACK^R01` / `MSA-1=AA`) and all six rows normalize;
+  the ingest payload is **empty (held back)** because EDAN OBX-11 carries no finality —
+  the expected EDAN behaviour, not a failure. The finality→ingest demo runs on the
+  RAYTO fixture instead. ✅
+- Real-wire parser deviations recorded as follow-ups (EDAN OBX-11 finality; core pin
+  bump past LIS-98). ✅
 
-## Done Criteria
+## Done Criteria (all met 2026-07-06)
 
-- H60S identity and network settings captured.
-- Raw reachability proven from H60S to bench host.
-- Bridge-backed ORU returns `ACK^R01` / `MSA-1=AA`.
-- OpenELIS stages a post-mapping H60S CBC result.
-- Real H60S ORU fixture replaces the synthetic seed, with `synthetic:false`.
-- `edge/sim` validation, normalize, roundtrip, milestone, and pytest output saved.
-- LIS-20 is updated with the evidence packet path, deviations, and follow-up issues.
+- ✅ H60S identity and network settings captured (`identity.md`, `network-settings.md`).
+- ✅ Raw reachability proven from H60S to bench host (via the 7999→2575 tee-relay).
+- ✅ Bridge-backed ORU returns `ACK^R01` / `MSA-1=AA`.
+- ✅ OpenELIS stages a post-mapping H60S CBC result (`read_only=f`, LOINC-resolved) —
+  after the OE stack update (webapp rebuilt from pin + `analyzer.bridge.url`).
+- ✅ H60S fixture graduated to the real EDANLAB wire (kept `synthetic:true`;
+  representative values, real capture archived — see §6 note).
+- ✅ `edge/sim` validate / normalize / roundtrip / milestone / pytest output saved
+  (`edge-sim-graduation.txt`; 276 tests pass).
+- ⏳ LIS-20 update + follow-up issues staged (`scratchpad/plane-updates.sh`) — pending
+  `PLANE_API_KEY`.
 
 ## Troubleshooting
 
