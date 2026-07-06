@@ -44,7 +44,9 @@ Why: greenfish-from-zero spends 80% of the budget rebuilding solved problems
 (message parsing, QC math, audit, RBAC, reporting) and inherits the full ISO
 15189 / RA 10173 validation burden alone. The corpus shows your instruments speak
 **two mainstream standards (HL7 v2.x + ASTM E1394/LIS2-A2) plus two proprietary
-tails (SnibeLis, Mindray labXpert/DMS)** — exactly what OpenELIS's analyzer model
+tails (SnibeLis, Mindray labXpert/DMS)** *(⮕ SnibeLis superseded 2026-07-06,
+LIS-178: the MAGLUMI X3 attaches natively via ASTM E1394-97 — see §3.4 note)* —
+exactly what OpenELIS's analyzer model
 is designed to absorb, and exactly the integration work that no vendor will do
 for you.
 
@@ -219,7 +221,7 @@ flowchart TB
     A1[HL7 v2.x analyzers\nRAC-050, Chemray-120, Aquila,\nBiossays 240, EDAN H60, Mindray labXpert]
     A2[ASTM E1394 analyzers\nDiaSys R920/940, 240C, 420C]
     A3[Serial / vendor units\nERBA, GOLDSITE, HETO, MEDICA, HORRON]
-    A4[Proprietary middleware\nSnibeLis / SnibeLinker, Mindray DMS]
+    A4[Proprietary middleware\nMindray DMS\nSnibeLis dropped 2026-07-06 - X3 native, LIS-178]
   end
   IE["Interface engine\n(Open Integration Engine / custom drivers)\nMLLP listener · ASTM serial · file-watch · store-and-forward queue"]
   A1 --> IE
