@@ -119,6 +119,13 @@ Use bench/test identifiers only. Do not use real patient PHI for this run.
 
 ## Evidence Packet
 
+A fill-in-the-blanks companion form — environment table, capture set, framing
+classification, and field-assertion rows — lives at
+`docs/testing/snibelis-maglumi-x3-bench-evidence-template.md` (re-framed to this
+no-SnibeLis topology by LIS-178; the legacy `snibelis-` filename is kept for link
+stability only). Use this runbook for the procedure and that template for the
+per-run record.
+
 Create one run directory before starting, named with date and serial number:
 
 ```text
