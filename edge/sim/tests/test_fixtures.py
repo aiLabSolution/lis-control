@@ -14,6 +14,7 @@ SNIBELIS_MAGLUMI_X3_FIXTURES = (
     FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload",
     FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped",
     FIXTURES_ROOT / "snibelis-maglumi-x3-query-request",
+    FIXTURES_ROOT / "snibelis-maglumi-x3-calibration",
 )
 
 
