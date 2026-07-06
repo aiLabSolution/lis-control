@@ -269,7 +269,9 @@ def _cmd_worklist_query(args: argparse.Namespace) -> int:
     )
     resp = parse_worklist_query_response(orf)
     correlated = worklist_correlates(query, resp)
-    has_orders = any(order.analyzer_codes for order in resp.orders)
+    # An EDAN H90-series worklist order is panel-level (a panel int in OBR-11, no
+    # per-analyte codes), so a populated panel_code counts as a returned order too.
+    has_orders = any(order.analyzer_codes or order.panel_code for order in resp.orders)
 
     print(
         f"query {qfx.id}: QRY^R02 id={query.query_id} "
@@ -280,9 +282,14 @@ def _cmd_worklist_query(args: argparse.Namespace) -> int:
         f"barcode={resp.subject_id} correlates={correlated}"
     )
     for order_row in resp.orders:
-        tests = ",".join(order_row.analyzer_codes) or "-"
+        tests = ",".join(order_row.analyzer_codes) or (
+            f"panel:{order_row.panel_code}" if order_row.panel_code else "-"
+        )
+        # Generic orders carry the accession in OBR-2/3; EDAN orders carry the scanned
+        # barcode in OBR-20 (the accession stays host-side, off the download wire).
         print(
-            f"  OBR\taccession={order_row.accession_number}\t"
+            f"  OBR\taccession={order_row.accession_number or '-'}\t"
+            f"barcode={order_row.barcode or '-'}\t"
             f"patient={order_row.patient_id or '-'}\ttests={tests}"
         )
     if not has_orders:
