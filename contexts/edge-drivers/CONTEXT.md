@@ -17,7 +17,15 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`ee3ec26`** — LIS-124 serial-HL7 ACK coupling
+- **Pin:** untagged **`bd43706`** — LIS-149 AC1 closed-loop host-query test
+  (PR `openelis-analyzer-bridge#19`, test-only, no production code changed):
+  `HostQueryResultRoundTripTest` chains `Hl7HostQueryResponder`'s ORF^R04 answer
+  into a follow-up ORU^R01 through `HL7ResultParser`, proving the accession a
+  barcode host-query reconciles to is the same accession the analyzer's result
+  attaches to (no orphan sample) — closing the gap the 2026-07-06 ac-verifier
+  pass found on LIS-149 AC1. Sits on top of the intervening pin `f68c5e8`
+  (LIS-125 ASTM/Snibe calibration gate, PR #18) and `ee3ec26` below.
+- **Prior pin:** untagged **`ee3ec26`** — LIS-124 serial-HL7 ACK coupling
   (PR `openelis-analyzer-bridge#17`): the MLLP-over-RS232 HL7 *application* ACK now
   fires **after** routing and is outcome-dependent — `MSA|AA` on delivery success,
   `MSA|AE` NAK on routing failure / handler exception / ACK-budget timeout — mirroring

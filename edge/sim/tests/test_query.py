@@ -236,6 +236,40 @@ def test_h99s_worklist_exchange_over_mllp_framing():
     assert worklist_correlates(parse_query(received[0]), parse_worklist_query_response(received[1]))
 
 
+def test_h99s_worklist_result_closes_loop_no_orphan():
+    """The missing AC1 half: the accession the worklist ORF reconciles to is the
+    same accession the analyzer's follow-up ORU^R01 result lands on, and it
+    normalizes LOINC-mapped — the closed loop, no orphan sample."""
+    q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
+    order = WorklistOrder(accession_number="2", patient_id="17", analyzer_codes=("WBC", "HGB"))
+    orf = build_worklist_query_response(q, (order,), response_datetime=WHEN_H99S, control_id="ORFQ-1")
+    resp = parse_worklist_query_response(orf)
+    assert worklist_correlates(q, resp) is True
+
+    # The analyzer runs the tests and later uploads a SEPARATE ORU^R01 for the
+    # reconciled accession — build it keyed on resp.orders[0], not a hardcoded
+    # literal, so the chain (not just the value) is what's under test. Anchor
+    # the extracted value against the submitted order first: without this, a
+    # worklist answer that dropped the accession (e.g. emitted "") would still
+    # make the downstream self-consistency check below pass vacuously.
+    returned_accession = resp.orders[0].accession_number
+    assert returned_accession == order.accession_number
+    oru = (
+        f"MSH|^~\\&|H90^^507|EDANLAB|||20260703112900||ORU^R01|H99SR1|P|2.4||||0||UTF8\r"
+        f"PID|1|17\r"
+        f"OBR|1|{returned_accession}||EDANLAB^H90|||20260703112700\r"
+        f"OBX||NM|0|WBC|11.9|10\\S\\9/L|4.00-20.00|0|0|0||\r"
+        f"OBX||NM|0|HGB|110|g/L|110-160|0|0|0||\r"
+    ).encode("ascii")
+
+    report = parse_oru_r01(oru)
+    assert report.specimen_id == returned_accession  # same order, no orphan
+    rows = Normalizer().normalize_report(report)
+    assert [r.raw_code for r in rows] == ["WBC", "HGB"]
+    assert [r.loinc for r in rows] == ["6690-2", "718-7"]
+    assert all(r.status == STATUS_NORMALIZED for r in rows)
+
+
 # --- correlation logic (unit-level, incl. the empty-id/subject guards) -------
 
 

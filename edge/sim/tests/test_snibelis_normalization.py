@@ -17,6 +17,7 @@ from pathlib import Path
 from edge_sim.archive import RawMessageArchive
 from edge_sim.e1394 import parse_e1394
 from edge_sim.normalize import (
+    KIND_CALIBRATION,
     KIND_RESULT,
     STATUS_NORMALIZED,
     STATUS_PARTIAL,
@@ -29,6 +30,7 @@ from edge_sim.transport import LoopbackTransport
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
 RESULT_UNMAPPED = FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped"
+CALIBRATION = FIXTURES_ROOT / "snibelis-maglumi-x3-calibration"
 
 
 def _replay(fixture_dir, tmp_path):
@@ -130,6 +132,75 @@ def test_unmapped_fixture_matches_expected_rows(tmp_path):
     fixture = load_fixture(RESULT_UNMAPPED)
     replay = _replay(RESULT_UNMAPPED, tmp_path)
     assert check_against_expected(replay, fixture.expected) == []
+
+
+# --- calibration gate: kept out of the patient result stream (LIS-125) ------
+
+
+def test_calibration_upload_routed_out_of_patient_stream(tmp_path):
+    """A SnibeLis ASTM upload whose Sample ID carries the calibration convention
+    (CAL- prefix) is classified CALIBRATION and every row is re-kinded
+    KIND_CALIBRATION — so none of them is a patient RESULT. ASTM has no MSH-16
+    wire field (KB §5), so the classifier keys on the Sample-ID convention the
+    production bridge exposes as a per-analyzer CALIBRATION_SPECIMEN_ID_PREFIX
+    rule (LIS-125)."""
+    replay = _replay(CALIBRATION, tmp_path)
+
+    rows = replay.observations
+    assert len(rows) == 2  # both rows survive — routed out, never dropped
+    assert all(r.kind == KIND_CALIBRATION for r in rows)
+    # the patient result stream (what milestone.ingest_payload persists) is empty
+    assert [r for r in rows if r.kind == KIND_RESULT] == []
+
+
+def test_calibration_upload_preserves_normalized_provenance(tmp_path):
+    """A calibration row is still normalized to LOINC/UCUM with raw code/unit/value
+    preserved before it is routed out — the same raw-beside-normalized provenance a
+    patient result carries, so a calibrator is auditable, not discarded blind."""
+    replay = _replay(CALIBRATION, tmp_path)
+
+    rows = replay.observations
+    assert [(r.raw_code, r.loinc, r.ucum_value, r.status) for r in rows] == [
+        ("TSH", "3016-3", "u[IU]/mL", STATUS_NORMALIZED),
+        ("FT4", "14920-3", "pmol/L", STATUS_NORMALIZED),
+    ]
+
+
+def test_calibration_fixture_matches_expected_rows(tmp_path):
+    """The manifest asserts an empty ``results`` (KIND_RESULT) subset and the two
+    normalized rows under ``observations`` — a deterministic replay contract that
+    a calibrator produces no patient result."""
+    fixture = load_fixture(CALIBRATION)
+    replay = _replay(CALIBRATION, tmp_path)
+    assert check_against_expected(replay, fixture.expected) == []
+
+
+def test_patient_upload_is_not_calibration(tmp_path):
+    """Contrast: the same-shaped patient upload (Sample ID without the calibration
+    prefix) stays all KIND_RESULT — the gate does not over-capture."""
+    replay = _replay(RESULT_UPLOAD, tmp_path)
+    assert all(r.kind == KIND_RESULT for r in replay.observations)
+
+
+def test_calibration_prefix_requires_the_hyphen_boundary():
+    """A specimen id that merely starts with the letters ``CAL`` (e.g. a Calcium
+    panel labelled ``CALCIUM-01``) is a patient specimen, not calibration — the
+    prefix boundary is ``CAL-``, so the gate never swallows a real analyte."""
+    from edge_sim.oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT
+    from edge_sim.replay import _astm_result_type  # noqa: PLC0415 - test-only introspection
+
+    def result_type(specimen_id):
+        msg = (
+            "H|\\^&||PSWD|Maglumi User|||||Lis||P|E1394-97|20260703\r"
+            "P|1\r"
+            f"O|1|{specimen_id}||^^^TSH|R\r"
+            "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N\r"
+            "L|1|N\r"
+        )
+        return _astm_result_type(parse_e1394(msg.encode("ascii")))
+
+    assert result_type("CALCIUM-01") == RESULT_TYPE_PATIENT
+    assert result_type("CAL-2026-07") == RESULT_TYPE_CALIBRATION
 
 
 def _report_observations(fixture):

@@ -1,0 +1,56 @@
+{
+  "id": "snibelis-maglumi-x3-calibration",
+  "description": "Synthetic SnibeLis ASTM E1394 CALIBRATION upload for MAGLUMI X3: the same H/P/O/R/R/L shape as a patient result, but the Sample ID (O-3) carries the documented calibration convention (CAL- prefix) so the record is routed out of the patient result stream (LIS-125). ASTM has no MSH-16-style wire QC/calibration field (KB §5), so calibration is recognized by the per-analyzer Sample-ID convention. NOT a real instrument capture.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3 via SnibeLis" },
+  "protocol": "astm-e1394",
+  "transport": "astm-tcp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-125 / S3.2); SnibeLis LIS User Manual v1.1 §2.6 QC-material ↔ Sample-ID binding, MAGLUMI X3 User Software Result Def. (calibration is generally not uploaded; when present it is keyed by Sample ID)",
+    "note": "Application payload only. Mirrors the result-upload fixture's session envelope. The calibration classification is the sim's documented default Sample-ID prefix; the production bridge makes the same prefix a per-analyzer CALIBRATION_SPECIMEN_ID_PREFIX profile rule."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibelis-maglumi-x3-astm",
+    "isolation_group": "snibelis-maglumi-x3"
+  },
+  "terminology": {
+    "note": "Same minimal synthetic MAGLUMI X3 immunoassay seed as the result-upload fixture — a calibration row is still normalized to LOINC/UCUM (provenance is preserved) before it is routed out of the patient stream by kind, never silently dropped.",
+    "codes": {
+      "TSH": "3016-3",
+      "FT4": "14920-3"
+    },
+    "units": {
+      "uIU/mL": "u[IU]/mL",
+      "pmol/L": "pmol/L"
+    }
+  },
+  "expected": {
+    "message_type": "ASTM^E1394",
+    "records": 6,
+    "patient_id": "",
+    "specimen_id": "CAL-2026-07",
+    "results": [],
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "2.31",
+        "raw_code": "TSH",
+        "raw_unit": "uIU/mL",
+        "loinc": "3016-3",
+        "ucum_value": "u[IU]/mL",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "2",
+        "value": "14.8",
+        "raw_code": "FT4",
+        "raw_unit": "pmol/L",
+        "loinc": "14920-3",
+        "ucum_value": "pmol/L",
+        "status": "NORMALIZED"
+      }
+    ]
+  }
+}
