@@ -23,6 +23,9 @@ supersedes them**:
 | Specimen id | OBR-3 | **OBR-2** |
 | Finality | `OBX-11=F` | **empty** — EDAN OBX-11 is a "modified?" flag, no Table-0085 finality → results held back by the sim's finality gate (production FHIR path is not finality-gated) |
 | No-result | (n/a) | `***` sentinel; `MSH-16=2` on the MSH-only connection-test ping; undocumented OBX-12 `value^unit` trailer; ~33 analytes on a full frame |
+| Abnormal flags | OBX-8 `L`/`H`/`N` | **OBX-8 carries a numeric code (`0`/`2`), not Table-0078 letters**; out-of-range measured rows additionally carry an undocumented trailing **OBX-13 `L`/`H`** letter (`h60s-oru-numeric.hl7`: WBC/RBC rows). Neither is characterized/consumed yet — LIS-side flag computation is the LIS-112 route |
+| Histogram OBX | (unverified) | **Emitted**: WBC/RBC/PLT/DIFF/BASO histograms staged in OpenELIS as `*_PNG_BASE64` base64 result rows (`openelis-staged-results.txt`); handling (attachment vs result row) tracked under LIS-112 |
+| `MSH-16` on data | `1=QC` (KB) | `0` on patient-mode results, `2` on the connection-test ping — contradicts both the KB (`1=QC`) and the sim's SD1-derived `2=QC` mapping (`oru.py _result_type`); reconciling the EDAN MSH-16 profile is LIS-110 |
 
 **Results:** `ACK^R01` / `MSA-1=AA`; a real send staged **mapped** in OpenELIS
 (`read_only=f`, LOINC-resolved WBC/RBC/HGB/PLT) after the OE stack was updated

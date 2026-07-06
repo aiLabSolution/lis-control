@@ -12,9 +12,11 @@ fields for it:
 
 Proven against the synthetic seed ``edan-h99s-oru-r01`` (device code ``507``,
 MSH-3 ``H90^^507``) — no hardware. The profile is gated on the message announcing
-itself as H90-series (``MSH-3.1 == H90`` or ``MSH-4 == EDANLAB``) so standard-HL7
-analyzers — including the EDAN *H60S* seed (MSH-3 ``H60S`` / MSH-4 ``EDAN``, code
-in OBX-3) — are untouched.
+itself as EDAN (``MSH-3.1 == H90`` or ``MSH-4 == EDANLAB``) so standard-HL7
+analyzers are untouched. The EDAN *H60S* also routes through this profile: the
+2026-07-06 physical bench (LIS-20) proved the real H60S emits the same EDANLAB
+layout (MSH-3 ``H60^7907`` / MSH-4 ``EDANLAB``, code in OBX-4), and its graduated
+fixture is asserted below.
 """
 
 from pathlib import Path

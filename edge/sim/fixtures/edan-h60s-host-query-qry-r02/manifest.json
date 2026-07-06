@@ -8,7 +8,7 @@
   "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
   "source": {
     "reference": "synthetic seed (LIS-18 / S1.6 bidirectional host-query — EDAN H60S LIS interface manual, query/QRD-QRF profile)",
-    "note": "Application payload only (no MLLP framing). The query subject (sample id SPEC-0231) is in QRD-8; the correlation id (Q0231-01) is in QRD-4 and is echoed by the ORF^R04 answer. The live bidirectional host-query deployment to pilot sites is deferred post-pilot under change control (ADR-0008); this fixture proves the QRD/QRF protocol substrate in the simulator. A real EDAN H60S query capture replaces it at bench conformance (LIS-74)."
+    "note": "Application payload only (no MLLP framing). The query subject (sample id SPEC-0231) is in QRD-8; the correlation id (Q0231-01) is in QRD-4 and is echoed by the ORF^R04 answer. The live bidirectional host-query deployment to pilot sites is deferred post-pilot under change control (ADR-0008); this fixture proves the QRD/QRF protocol substrate in the simulator. CAVEAT: the MSH identity here (MSH-3 'H60S' / MSH-4 'EDAN') is the pre-bench synthetic shape — the 2026-07-06 bench (LIS-20) proved the real H60S announces MSH-3 'H60^7907' / MSH-4 'EDANLAB' (see edan-h60s-oru-r01); no real query frame was captured, so this fixture keeps its synthetic identity until a real H60S query capture replaces it."
   },
   "synthetic": true,
   "expected": {

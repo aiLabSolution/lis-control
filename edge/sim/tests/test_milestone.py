@@ -9,8 +9,8 @@ core ingest contract DTO the edge would hand to ``ResultIngestService.ingest``.
 Vehicle: the RAYTO RAC-050 CBC seed (a standard-HL7 analyzer whose OBX-11 carries
 Table-0085 finality ``F``). The EDAN H60S fixture was the original vehicle, but the
 2026-07-06 bench proved the H60S speaks the EDAN H90-family profile (code in OBX-4,
-no OBX-11 finality → results held back); its held-back behaviour is covered by
-``test_edan_h99s.py`` and ``test_edan_h60s.py``.
+no OBX-11 finality → results held back); its held-back behaviour is covered in
+``test_edan_h99s.py``.
 """
 
 from pathlib import Path

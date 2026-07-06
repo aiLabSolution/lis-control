@@ -143,7 +143,7 @@ def _patient_id(pid, edan: bool = False) -> str:
     PID-3.1 (the CX patient identifier list) is the canonical id for most
     analyzers. The Seamaty SD1 instead carries the MRN in PID-2 (manual §3.3), so
     we fall back to PID-2.1 only when PID-3 is absent/blank — a present PID-3 always
-    wins, leaving PID-3 analyzers (e.g. the EDAN H60S) unaffected (LIS-86 / S2.10).
+    wins, leaving PID-3 analyzers (e.g. the RAYTO RAC-050) unaffected (LIS-86 / S2.10).
     Emptiness is tested on the stripped value so a whitespace-only PID-3 does not
     shadow a real PID-2 MRN (the very identifier this fallback exists to preserve).
 
@@ -193,9 +193,9 @@ def _is_blank_sample_obr(obr, u) -> bool:
 
 
 def _observation(seg, u, edan: bool = False) -> RawObservation:
-    # EDAN H90-series: the analyte code/name rides in OBX-4 (OBX-3 is a suspect
-    # flag, KB §5.4). Read the code from OBX-4 there; standard analyzers (and the
-    # EDAN H60S seed) keep the OBX-3.1 observation identifier.
+    # EDAN family (H90-series and, per the 2026-07-06 bench, the H60S): the analyte
+    # code/name rides in OBX-4 (OBX-3 is a suspect flag, KB §5.4). Read the code from
+    # OBX-4 there; standard analyzers keep the OBX-3.1 observation identifier.
     raw_code = u(seg.field(4)) if edan else u(seg.component(3, 1))
     return RawObservation(
         set_id=u(seg.field(1)),
