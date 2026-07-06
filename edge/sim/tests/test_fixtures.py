@@ -10,6 +10,11 @@ from edge_sim.fixtures import FixtureError, load_fixture, load_fixtures
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 EXAMPLE = FIXTURES_ROOT / "_example"
 ERBA = FIXTURES_ROOT / "erba-ec90-astm-panel"
+SNIBELIS_MAGLUMI_X3_FIXTURES = (
+    FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload",
+    FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped",
+    FIXTURES_ROOT / "snibelis-maglumi-x3-query-request",
+)
 
 
 def _valid_manifest():
@@ -58,6 +63,17 @@ def test_erba_fixture_carries_channel_config_and_terminology_data():
     assert fx.terminology["codes"]["NA"] == "2951-2"
     assert fx.terminology["codes"]["K"] == "2823-3"
     assert fx.terminology["units"]["mmol/L"] == "mmol/L"
+
+
+@pytest.mark.parametrize("directory", SNIBELIS_MAGLUMI_X3_FIXTURES, ids=lambda p: p.name)
+def test_snibelis_maglumi_x3_fixtures_carry_bridge_channel_settings(directory):
+    fx = load_fixture(directory)
+
+    # LIS-175 two-level mirror: the sim's per-analyzer channel block carries the
+    # same dedicated-listener port and identity settings the bridge registers
+    # under bridge.analyzers, so the two sides don't drift apart silently.
+    assert fx.channel["tcp"]["port"] == 12021
+    assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
 
 
 def test_missing_manifest(tmp_path):

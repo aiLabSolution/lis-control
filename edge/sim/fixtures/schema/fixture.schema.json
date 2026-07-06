@@ -111,6 +111,46 @@
               }
             }
           }
+        },
+        "tcp": {
+          "type": "object",
+          "description": "Dedicated TCP listener settings for analyzers attached via a per-analyzer TCP/ASTM channel rather than shared serial (LIS-175).",
+          "additionalProperties": false,
+          "required": ["port", "provenance"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "enum": ["bench-capture", "vendor-doc", "bridge-default-bench-pending"],
+              "description": "Where the listener settings came from. 'bridge-default-bench-pending' marks unconfirmed defaults that must be replaced by a bench capture or vendor doc before go-live."
+            },
+            "port": { "type": "integer" },
+            "host": { "type": "string" }
+          }
+        },
+        "identity": {
+          "type": "object",
+          "description": "Analyzer-side Online-screen identity settings and the cross-reference to the bridge's canonical analyzer-channel registry entry (LIS-175).",
+          "additionalProperties": false,
+          "required": ["analyzer_id", "host_id", "provenance"],
+          "properties": {
+            "provenance": {
+              "type": "string",
+              "enum": ["bench-capture", "vendor-doc", "bridge-default-bench-pending"],
+              "description": "Where the identity settings came from. 'bridge-default-bench-pending' marks unconfirmed defaults that must be replaced by a bench capture or vendor doc before go-live."
+            },
+            "analyzer_id": {
+              "type": "string",
+              "description": "The analyzer's 'Analyzer ID' Online-screen setting."
+            },
+            "host_id": {
+              "type": "string",
+              "description": "The analyzer's 'Host ID' Online-screen setting."
+            },
+            "bridge_registry_id": {
+              "type": "string",
+              "description": "Cross-reference to this channel's canonical id in the bridge's bridge.analyzers registry."
+            }
+          }
         }
       }
     },
