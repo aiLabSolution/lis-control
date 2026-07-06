@@ -405,7 +405,7 @@ box); NPC registration before go-live — now governed by **NPC Circular 2022-04
 | **0 — Foundations** | Stand up the core, settle compliance | OpenELIS fork running; data model reviewed; LOINC/UCUM tables seeded; RBAC + audit verified; NPC/ISO plan drafted | 4–6 wks, 2 eng + 1 QA/regulatory |
 | **1 — HL7 v2 edge** | First real results flowing | MLLP listener + HL7 v2.3 parser; RAC-050 + Mindray labXpert end-to-end; normalization to LOINC/UCUM; **"first result through the pipe" milestone** | 4–6 wks, 2 eng |
 | **2 — ASTM/serial edge** | Cover chemistry/electrolyte fleet | ASTM E1394 stack to DiaSys spec; analyzer-bridge serial channels; DiaSys + ERBA + GOLDSITE + HETO + MEDICA live; HORRON verified | 6–8 wks, 2 eng |
-| **3 — Proprietary tails** | MAGLUMI + Mindray hematology | SnibeLis/SnibeLinker integration; Mindray DMS ingest | 4–6 wks, 2 eng |
+| **3 — Proprietary tails** | MAGLUMI + Mindray hematology | ~~SnibeLis/SnibeLinker integration~~ *(⮕ superseded 2026-07-06, LIS-178: the MAGLUMI X3 attaches natively — see §3.4 note)*; Mindray DMS ingest | 4–6 wks, 2 eng |
 | **4 — API + offline** | EMR-ready + rural-ready | FHIR R4 (HAPI FHIR); store-and-forward + site↔central sync; on-prem deploy kit | 4–6 wks, 2 eng |
 | **5 — Validation + pilot** | Production at one site | IQ/OQ/PQ dossier; pilot lab go-live; QC/Westgard tuned | 4–6 wks, cross-functional |
 
@@ -421,7 +421,7 @@ the first analyzer even connects.
 |---|---|
 | **PHI breach / RA 10173 non-compliance** | Encryption + RBAC + audit from sprint 1; NPC registration; breach runbook; pen-test before go-live |
 | Low-cost analyzers deviate from HL7/ASTM spec | Tolerant parsers; per-unit conformance test on the bench; capture raw message for replay |
-| Proprietary tails (SnibeLis, Mindray DMS) resist clean integration | Budget reverse-mapping time; prefer configuring vendor middleware to emit HL7/ASTM over DB scraping |
+| Proprietary tails (Mindray DMS; ~~SnibeLis~~ *— moot 2026-07-06, LIS-178: the X3 attaches natively, no middleware*) resist clean integration | Budget reverse-mapping time; prefer configuring vendor middleware to emit HL7/ASTM over DB scraping |
 | Maintaining a fork drifts from upstream | Contribute generic plugins upstream; keep only LabSolution-specific code in the fork; track upstream releases |
 | Validation/ISO 15189 burden underestimated | Dedicate regulatory/QA owner from Phase 0; validate base + deltas, not a black box |
 | Offline sync data-integrity bugs | Append-only result versions; explicit reconciliation; no last-writer-wins on results |
