@@ -5,14 +5,16 @@
 > `manuals-and-lis-protocol` knowledgebase (KB), and **re-scoped against the units we
 > actually have**.
 >
-> **Status:** drafted 2026-06-26 · **availability received 2026-06-26.**
+> **Status:** drafted 2026-06-26 · **availability received 2026-06-26** ·
+> **Stage 3 re-baselined 2026-07-06 (LIS-178 — SnibeLis dropped, native attach).**
 >
 > **Headline:** the available fleet **covers all three stages** — but **5 of the 7
 > available units are not the machines the plan originally named.** The plan's Stage-1
 > targets (RAC-050, "Mindray labXpert") and most Stage-2/3 targets are **not on hand**,
 > so we substitute available HL7-equivalents. Net effect: a **stronger, multi-vendor
-> Stage 1**, a **thinner Stage 2** (one confirmed-ASTM unit), and a **Stage 3 gated on
-> middleware** (SnibeLis PC + license).
+> Stage 1**, a **thinner Stage 2** (one confirmed-ASTM unit), and a Stage 3 that
+> *was* gated on middleware (SnibeLis PC + license) — **that gate dissolved 2026-07-06**:
+> the MAGLUMI X3 attaches natively to our bridge (see §Stage 3).
 
 ---
 
@@ -22,7 +24,7 @@
 |---|---|---|---|
 | **1 — HL7/MLLP "first result"** | one MLLP listener + HL7 parser, first normalized result | **EDAN H60S** (HL7 v2.4 / MLLP / port 7999) | ✅ unit in warehouse; matches existing edge (LIS-13) |
 | **2 — ASTM / serial** | ASTM E1381/E1394 stack | **ERBA EC90** (ASTM, RS232 or Ethernet) | ✅ unit in warehouse |
-| **3 — proprietary tail** | middleware-brokered result + QC | **SNIBE MAGLUMI X3** + **SnibeLis** | 🟡 analyzer on hand; **blocked on SnibeLis PC + license** |
+| **3 — proprietary tail** | native-interface result + QC | **SNIBE MAGLUMI X3** (native `Online` ASTM E1394-97 → our bridge) | 🟢 analyzer on hand; work = **stand up our bridge as the ASTM host** + LIS-75 capture *(SnibeLis gate dropped 2026-07-06, LIS-178)* |
 
 **Bonus coverage now possible:** **HETO AU120** gives a *second-vendor* HL7/MLLP unit for
 Stage 1 (proves the parser isn't EDAN-specific); **RAYTO RT-7600** is a second
@@ -43,7 +45,7 @@ Availability tiers from your 2026-06-26 status: **on hand** · **in warehouse** 
 |---|---|---|---|---|---|
 | **EDAN H60S** | In warehouse | Hematology (CBC) | **HL7 v2.4 over MLLP/TCP**, **port 7999**, bidirectional; analyzer = **TCP client**, LIS listens. ✅ clean. | **1** | ✅ **Best Stage-1 target.** Retrieve from warehouse. Our edge runs the listener. |
 | **ERBA EC90** | In warehouse | Electrolyte / ISE | **ASTM E1381 + E1394**; RS232 **or** Ethernet; **unidirectional** upload. ✅ | **2** | ✅ Only confirmed-ASTM unit available. Capture RS232 baud/pinout on bench. |
-| **SNIBE MAGLUMI X3** | On hand | Immunoassay (CLIA) | **ASTM E1394 via SnibeLis** middleware; bidirectional + **QC upload** ✅ | **3** | 🟡 **Needs SnibeLis PC + vendor license (machine-code→Reg-Code); SnibeLis→OpenELIS relay undocumented.** |
+| **SNIBE MAGLUMI X3** | On hand | Immunoassay (CLIA) | **ASTM E1394-97 native** — built-in LIS interface (`Set → System Setting → Online`), analyzer = **TCP client**, host = whoever it's pointed at; HL7 v2.5 documented alternative; bidirectional + **QC upload** ✅ | **3** | 🟢 **On hand; needs our bridge standing as the ASTM host + the X3's `Online` screen pointed at it (LIS-75).** *(Re-baselined 2026-07-06 — formerly "needs SnibeLis PC + vendor license"; that gate is gone, LIS-178.)* |
 | **HETO AU120** | Incoming (~next wk) | Clinical chemistry | **HL7 v2.3.1 (doc also says v2.5) over MLLP/TCP**, bidirectional. ⚠️ **family doc only** — examples use **AU400**, no AU120-specific doc. | **1** | 🟡 Confirm on arrival the AU120 exposes this same HETO HL7 screen; port/listener-role undocumented. |
 | **RAYTO RT-7600** | On hand | Hematology (CBC) | ❌ **No HL7/ASTM in docs.** Proprietary **TCP "Netport"** record stream (vendor LIS-sim, port configurable) **or** RS232 (115200/8/N/1). Bidirectional-capable. | **3** (prov.) | 🟡 **Byte-capture a "Send" to identify the wire format** before staging. Moves to St.1 if HL7, St.2 if serial/ASTM. |
 | **Seamaty SD1** | On hand | Dry/whole-blood biochem | ✅ **SD1 LIS Interface Manual on file** (`SEAMATY/lis-protocol.pdf`, Ed. B/0) — **HL7 v2.3.1**, **MLLP over TCP/IP** (RS-232 also), **upload-only** (ORU^R01 + ACK, no worklist). Quirks: MRN in **PID-2** (not PID-3); biochem codes + `U/L` unit need LOINC/UCUM maps. | **1** | 🟡 **Real-instrument capture** to lock the operator-set **TCP port** + confirm MLLP framing/encoding; seed fixture `seamaty-sd1-oru-r01` already lands the parse path. |
@@ -82,16 +84,23 @@ available, so Stage-2 bench breadth is reduced to one analyzer.
   NAK-retransmit negative test? (See Action #5.)
 - 📄 [ERBA EC90 LIS Interface V1.01 p.4 (ASTM E1381/E1394)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/ERBA/EC90/EC90-LIS-communication.pdf#page=4)
 
-### Stage 3 — proprietary tail → **SNIBE MAGLUMI X3 + SnibeLis**
-Analyzer ↔ **SnibeLis middleware PC** speaks ASTM E1394 (TCP or RS232); SnibeLis is the
-LIS client and also flags QC (Westgard). The analyzer is on hand — **the work and the risk
-are the middleware**, not the instrument.
-- **Access to confirm (the real blockers):** a **SnibeLis/SnibeLinker Windows PC** ·
-  **SnibeLis install + vendor activation** (machine-code → Reg-Code from SNIBE) · confirm
-  how SnibeLis **forwards to OpenELIS** (relay vs DB/export — undocumented in KB; ask SNIBE).
+### Stage 3 — proprietary tail → **SNIBE MAGLUMI X3, native attach** *(re-baselined 2026-07-06, LIS-178 — SnibeLis dropped)*
+The X3's **built-in LIS interface** (`Set → System Setting → Online`) speaks **ASTM
+E1394-97** (HL7 v2.5 documented alternative) over TCP — the analyzer is the **TCP client**
+and whatever host it is pointed at is the LIS (Host ID `Lis`; site-chosen port, serial COM
+fallback 9600/8/N/1). That host is **our bridge**: no SnibeLis PC, license, or relay is on
+the wire (SnibeLis was only the vendor's default host endpoint; its export/DB route survives
+solely as the LIS-34 contingency). The analyzer is on hand — the work is **standing up our
+bridge as the ASTM host** and pointing the X3's `Online` screen at it.
+- **Access to confirm:** bridge reachable from the analyzer LAN (listen port site-chosen) ·
+  X3 `Online` screen access (Online Setting, Host Comm. Protocol, `Enable Checksum` toggle) ·
+  LIS-75 bench-capture window (framing incl. checksum on/off, real Lis-IDs/units) · engineer
+  sign-off for QC interpretation — QC has **no ASTM wire discriminator**, classification is
+  host-side (LIS-33). Then: framing receive path (LIS-174) + analyzer channel (LIS-175);
+  critical path LIS-75 → {LIS-174, LIS-175} → LIS-32 → LIS-38.
 - **Second tail (bonus):** **RAYTO RT-7600**'s proprietary TCP "Netport" stream is another
   reverse-mapping exercise for the same Stage-3 muscle.
-- 📄 [SnibeLis LIS User Manual V1.1 App.A (ASTM E1394) p.73](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=73) · [Guidance of LIS p.3 (TCP/IP mode + Upload QC)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/Guidance-of-Snbie-LIS.pdf#page=3)
+- 📄 [MAGLUMI X3 IFU v1.4 App. B "Network interfaces" p.131 (native ASTM E1394-97 + HL7 v2.5)](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/437-2-MAGLUMI-X3-IFU-en-V1.4.pdf#page=131) · [X3 User Manual §5.8.2.4 `Online` settings screen p.100](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/MAGLUMI-X3-user-manual.pdf#page=100) · [SnibeLis LIS User Manual V1.1 App.A (ASTM record layouts) p.73](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=73)
 
 ---
 
@@ -109,9 +118,12 @@ are the middleware**, not the instrument.
 
 1. **Retrieve from warehouse:** EDAN H60S (Stage 1) and ERBA EC90 (Stage 2) are the two
    primary vehicles and are both in the warehouse — pull them first.
-2. **Stage 3 unblock (critical path):** source a **SnibeLis PC**, get the **vendor license**
-   (machine-code→Reg-Code), and ask SNIBE how SnibeLis **forwards results to OpenELIS**.
-   Without this, MAGLUMI X3 can't be tested past the SnibeLis boundary.
+2. **Stage 3 unblock (critical path) — re-scoped 2026-07-06 (LIS-178):** stand up **our
+   bridge as the ASTM host** and point the X3's `Online` screen at it, then run the
+   **LIS-75** bench capture (framing incl. `Enable Checksum` on/off, timestamp indexing,
+   real Lis-IDs/units). *The former blocker — sourcing a SnibeLis PC + vendor license +
+   confirming the SnibeLis→OpenELIS relay — is dissolved: the X3 attaches natively.*
+   Critical path: LIS-75 → {LIS-174, LIS-175} → LIS-32 → LIS-38.
 3. **EDAN H99S — ✅ doc obtained / bench ready:** H99S is covered by the EDAN
    H90-series LIS protocol KB (`EDAN\WI\82-01.54.460907`, v1.0). Remaining: run the
    H99S bench conformance runbook, capture the physical nameplate/SN and firmware, confirm

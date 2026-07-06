@@ -1,6 +1,6 @@
 # ADR-0013 — Stage-1 milestone E2E + edge↔core ingest-contract correspondence
 
-- **Status:** Proposed (pending review — LIS-17)
+- **Status:** Accepted (signed off 2026-07-06, M. Uy — owner; as amended by the 2026-07-06 LIS-20 bench addendum: milestone E2E vehicle moved to RAYTO RAC-050, H60S kept as a held-back assertion, live cross-process leg proven on the bench)
 - **Date:** 2026-06-28
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the simulator harness) + the edge↔core seam

@@ -44,7 +44,9 @@ Why: greenfish-from-zero spends 80% of the budget rebuilding solved problems
 (message parsing, QC math, audit, RBAC, reporting) and inherits the full ISO
 15189 / RA 10173 validation burden alone. The corpus shows your instruments speak
 **two mainstream standards (HL7 v2.x + ASTM E1394/LIS2-A2) plus two proprietary
-tails (SnibeLis, Mindray labXpert/DMS)** — exactly what OpenELIS's analyzer model
+tails (SnibeLis, Mindray labXpert/DMS)** *(⮕ SnibeLis superseded 2026-07-06,
+LIS-178: the MAGLUMI X3 attaches natively via ASTM E1394-97 — see §3.4 note)* —
+exactly what OpenELIS's analyzer model
 is designed to absorb, and exactly the integration work that no vendor will do
 for you.
 
@@ -136,7 +138,7 @@ line.
 
 | Vendor | Scope | Reality | Evidence |
 |---|---|---|---|
-| SNIBE | MAGLUMI X3 / X6 / 800 (CLIA immunoassay) | Snibe ships its **own LIS middleware — "SnibeLis" / "SnibeLinker"** (registered trademarks; applicable SW 1.18.8.27+). MAGLUMI ↔ LIS goes **through Snibe's layer**, not raw HL7. You integrate to SnibeLis (or reverse its output), you don't get a clean vanilla HL7 socket. | [SNIBE SnibeLis User Manual v1.1 p.1](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=1) |
+| SNIBE | MAGLUMI X3 / X6 / 800 (CLIA immunoassay) | Snibe ships its **own LIS middleware — "SnibeLis" / "SnibeLinker"** (registered trademarks; applicable SW 1.18.8.27+). MAGLUMI ↔ LIS goes **through Snibe's layer**, not raw HL7. You integrate to SnibeLis (or reverse its output), you don't get a clean vanilla HL7 socket. **⮕ Superseded 2026-07-06 (LIS-178):** the X3's own IFU (v1.4, App. B) documents a **native built-in LIS interface** — ASTM E1394-97 (or HL7 v2.5, SNIBE dialect) over TCP direct to *any* host; SnibeLis is optional middleware, not a required broker. The LIS attaches the X3 natively (ADR-0008/0015 amendments). | [SNIBE SnibeLis User Manual v1.1 p.1](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/SnibeLisLIS-User-ManualV1.1_EN-version_20191015.pdf#page=1) · [MAGLUMI X3 IFU v1.4 App. B p.131](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/SNIBE/MAGLUMI-X3/437-2-MAGLUMI-X3-IFU-en-V1.4.pdf#page=131) |
 | MINDRAY | BC hematology series, etc. | Mindray's **labXpert / DMS** middleware. The urine line (§3.1) is clean HL7 v2.x; hematology integration is typically via Mindray DMS export. | [MINDRAY BC-760/780 Operator's Manual — Communication section](file:///home/marloeu/projects/manuals-and-lis-protocol/manuals-and-lis-protocol/MINDRAY/BC-760-780/BC-760%26780_Operator_s-Manual_EN_V7.0.textified.md) |
 
 ### 3.5 Coverage gap — flag, don't assume
@@ -219,7 +221,7 @@ flowchart TB
     A1[HL7 v2.x analyzers\nRAC-050, Chemray-120, Aquila,\nBiossays 240, EDAN H60, Mindray labXpert]
     A2[ASTM E1394 analyzers\nDiaSys R920/940, 240C, 420C]
     A3[Serial / vendor units\nERBA, GOLDSITE, HETO, MEDICA, HORRON]
-    A4[Proprietary middleware\nSnibeLis / SnibeLinker, Mindray DMS]
+    A4[Proprietary middleware\nMindray DMS\nSnibeLis dropped 2026-07-06 - X3 native, LIS-178]
   end
   IE["Interface engine\n(Open Integration Engine / custom drivers)\nMLLP listener · ASTM serial · file-watch · store-and-forward queue"]
   A1 --> IE
@@ -340,7 +342,9 @@ for a company whose product *is* integration).
    hematology). These don't expose vanilla HL7 — you either (a) configure SnibeLis
    to emit HL7/ASTM to your engine, or (b) ingest its export/DB. Highest
    reverse-mapping effort; the repo's SnibeLis manual + Mindray protocol docs are
-   the spec inputs.
+   the spec inputs. *(⮕ Superseded for the MAGLUMI X3, 2026-07-06 / LIS-178: the X3
+   attaches natively — built-in ASTM E1394-97 LIS interface direct to the bridge, no
+   SnibeLis; see §3.4 note and the implementation plan §Stage 3.)*
 4. **Contribute generic mappings upstream** to `openelisglobal-plugins` so you ride
    community maintenance for standards-compliant units and keep only the
    LabSolution-specific tails private.
@@ -403,7 +407,7 @@ box); NPC registration before go-live — now governed by **NPC Circular 2022-04
 | **0 — Foundations** | Stand up the core, settle compliance | OpenELIS fork running; data model reviewed; LOINC/UCUM tables seeded; RBAC + audit verified; NPC/ISO plan drafted | 4–6 wks, 2 eng + 1 QA/regulatory |
 | **1 — HL7 v2 edge** | First real results flowing | MLLP listener + HL7 v2.3 parser; RAC-050 + Mindray labXpert end-to-end; normalization to LOINC/UCUM; **"first result through the pipe" milestone** | 4–6 wks, 2 eng |
 | **2 — ASTM/serial edge** | Cover chemistry/electrolyte fleet | ASTM E1394 stack to DiaSys spec; analyzer-bridge serial channels; DiaSys + ERBA + GOLDSITE + HETO + MEDICA live; HORRON verified | 6–8 wks, 2 eng |
-| **3 — Proprietary tails** | MAGLUMI + Mindray hematology | SnibeLis/SnibeLinker integration; Mindray DMS ingest | 4–6 wks, 2 eng |
+| **3 — Proprietary tails** | MAGLUMI + Mindray hematology | ~~SnibeLis/SnibeLinker integration~~ *(⮕ superseded 2026-07-06, LIS-178: the MAGLUMI X3 attaches natively — see §3.4 note)*; Mindray DMS ingest | 4–6 wks, 2 eng |
 | **4 — API + offline** | EMR-ready + rural-ready | FHIR R4 (HAPI FHIR); store-and-forward + site↔central sync; on-prem deploy kit | 4–6 wks, 2 eng |
 | **5 — Validation + pilot** | Production at one site | IQ/OQ/PQ dossier; pilot lab go-live; QC/Westgard tuned | 4–6 wks, cross-functional |
 
@@ -419,7 +423,7 @@ the first analyzer even connects.
 |---|---|
 | **PHI breach / RA 10173 non-compliance** | Encryption + RBAC + audit from sprint 1; NPC registration; breach runbook; pen-test before go-live |
 | Low-cost analyzers deviate from HL7/ASTM spec | Tolerant parsers; per-unit conformance test on the bench; capture raw message for replay |
-| Proprietary tails (SnibeLis, Mindray DMS) resist clean integration | Budget reverse-mapping time; prefer configuring vendor middleware to emit HL7/ASTM over DB scraping |
+| Proprietary tails (Mindray DMS; ~~SnibeLis~~ *— moot 2026-07-06, LIS-178: the X3 attaches natively, no middleware*) resist clean integration | Budget reverse-mapping time; prefer configuring vendor middleware to emit HL7/ASTM over DB scraping |
 | Maintaining a fork drifts from upstream | Contribute generic plugins upstream; keep only LabSolution-specific code in the fork; track upstream releases |
 | Validation/ISO 15189 burden underestimated | Dedicate regulatory/QA owner from Phase 0; validate base + deltas, not a black box |
 | Offline sync data-integrity bugs | Append-only result versions; explicit reconciliation; no last-writer-wins on results |

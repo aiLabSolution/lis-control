@@ -35,9 +35,28 @@ For the pilot and the v1/v1.1 fleet (ADR-0008 / DEC-06):
 |---|---|---|---|---|---|
 | **1 — pilot** | EDAN H60S (anchor), H99S, Seamaty SD1, RAYTO RT-7600 | **MLLP** | HL7 v2.3.1–v2.4 | `HapiMLLPListener` (HAPI `SimpleServer`) | analyzer = TCP client → bridge listens (EDAN port **7999**; bridge default 2575) |
 | **2 — post-pilot v1.1** | ERBA EC90 | **SERIAL** (RS-232) and/or **TCP** | ASTM E1381/E1394 | `SerialPortListener` + `SerialFrameBuffer`; or `ASTMServlet` (LIS01-A / E1381-95) | serial port binding; or ASTM-TCP listen-server |
-| **3 — post-pilot** | SNIBE MAGLUMI X3 + SnibeLis | **FILE** (middleware export) | CSV / ASTM | `FileWatcher` (watch dir + SQLite dedup) | SnibeLis-PC writes to a watched directory |
+| **3 — post-pilot** | SNIBE MAGLUMI X3 *(amended 2026-07-06 — see note below)* | **TCP** (ASTM); MLLP for the HL7 fallback | ASTM E1394-97 (HL7 v2.5 documented alternative) | `ASTMServlet` listen-server (LIS01-A) + dedicated X3 framing profile (LIS-174) | analyzer = TCP client → bridge listens; the X3's native `Online` LIS interface is pointed at our bridge (**direct-attach, no middleware**) |
 
-The MLLP path is the **pilot substrate** and is the only transport that must be *enabled and bench-proven for go-live*; serial/ASTM and file are the **recorded forward path** for Stage 2/3, bench-validated now (against the ASTM/file simulators) but post-pilot for the live fleet under change control (DEC-06, SD-0). Enabling a transport is a config flag (`*.enabled=true`) + a restart; it ships no new code.
+The MLLP path is the **pilot substrate** and is the only transport that must be *enabled and bench-proven for go-live*; serial/ASTM (Stage 2) and the X3's ASTM-over-TCP direct attach (Stage 3) are the **recorded forward path**, bench-validated now (against the ASTM simulators) but post-pilot for the live fleet under change control (DEC-06, SD-0). Enabling a transport is a config flag (`*.enabled=true`) + a restart; it ships no new code.
+
+> **⮕ Amendment (2026-07-06, LIS-178) — Stage-3 X3 row re-baselined to native direct-attach.**
+> The Stage-3 row originally read *"SNIBE MAGLUMI X3 + SnibeLis / FILE (middleware export) /
+> CSV·ASTM / `FileWatcher` (watch dir + SQLite dedup) / SnibeLis-PC writes to a watched
+> directory."* The owner directive of 2026-07-06 (Stage-3 epic redesign) drops the SnibeLis
+> middleware entirely: the X3's built-in LIS interface (`Set → System Setting → Online`) speaks
+> **ASTM E1394-97** (or **HL7 v2.5**) over TCP directly to whatever host it is pointed at, so
+> the analyzer attaches to the bridge's native listeners like every other unit — which is
+> exactly this ADR's **Decision 1** (direct attachment; no shim, no sidecar, no middleware).
+> The FILE/`FileWatcher` route survives only as the LIS-34 last-resort contingency (if the X3
+> firmware refuses a non-SNIBE host — unproven). Deltas the native path still needs: the X3's
+> **simplified `ENQ/STX…ETX/EOT` session framing** (ACK per control token; no NAK/checksum/frame
+> numbers by default, with an `Enable Checksum` analyzer-side toggle) requires a dedicated
+> framing profile — **LIS-174**; channel registration (`bridge.analyzers`) — **LIS-175**; the
+> HL7 fallback is a **proprietary SNIBE dialect** (`OUL^R22`/`OML^O33` on MLLP, *not* `ORU^R01`),
+> so it needs its own parse path — **LIS-176**; native host-query/order-download — **LIS-177**;
+> the bench capture that pins framing, timestamp indexing, and real Lis-IDs/units — **LIS-75**.
+> Critical path: LIS-75 → {LIS-174, LIS-175} → LIS-32 → LIS-38. Fleet-scope side of the same
+> amendment: ADR-0008 (DEC-06 amendment note, incl. the REQ-PRIV-09/DEC-17 DPA simplification).
 
 **Rejected: an MLLP→HTTP shim / per-channel serial sidecar / standalone file poller** in front of an "HTTP-only" bridge (the dossier's hypothesis). It is unnecessary — the native listeners already exist — and it would add a second hop, a second process to validate (enlarging the L1/L2 surface ADR-0008 minimized), and a second place for framing/ACK bugs. The one place a thin terminator *could* still earn its keep — stronger per-channel OS-level isolation — is addressed as a **residual** under §Decision 4, not adopted for the pilot.
 

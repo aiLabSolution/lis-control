@@ -57,7 +57,7 @@ Full requirement-by-requirement analysis and citations:
 | # | Extra-work item | Status | Owner | Req ID |
 |---|---|---|---|---|
 | M3-4 | **Execute the head PIC→PIP DPA** (lab → LabSolution) per IRR Rule X (Secs. 43–45): process only on documented instructions; confidentiality; security measures; further-processor only with prior authorization; assist with data-subject rights + breach; delete/return on termination; submit to audits; flag unlawful instructions; state subject-matter/duration/data types/data-subject categories/geographic location. **Use a DPA, not a DSA.** | `[GATE]` `[NEEDS-HUMAN]` | Counsel + DPO | REQ-PRIV-09 |
-| M3-5 | **Back-to-back flow-down to any PHI-touching analyzer middleware** (e.g. SnibeLis / SnibeLinker / Mindray DMS) that transits the sync path. M3 has the **shortest** sub-processor chain (no public-cloud IaaS provider) — typically the head DPA only, plus middleware where PHI actually transits. | `[GATE]` `[NEEDS-HUMAN]` | Counsel + DPO | REQ-PRIV-09 |
+| M3-5 | **Back-to-back flow-down to any PHI-touching analyzer middleware** (e.g. Mindray DMS — SnibeLis/SnibeLinker dropped from the topology 2026-07-06, LIS-178) that transits the sync path. M3 has the **shortest** sub-processor chain (no public-cloud IaaS provider) — typically the head DPA only, plus middleware where PHI actually transits. | `[GATE]` `[NEEDS-HUMAN]` | Counsel + DPO | REQ-PRIV-09 |
 | M3-6 | Confirm the **vendor PHI boundary per middleware component** — does PHI actually transit it, or only de-identified instrument data? Determines whether a flow-down DPA is required (DEC-17). | `[NEEDS-HUMAN]` | DPO + eng | REQ-PRIV-09 |
 
 ## 3. Breach apparatus (LabSolution's own, as PIP)
