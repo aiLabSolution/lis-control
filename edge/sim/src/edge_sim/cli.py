@@ -27,11 +27,22 @@ from .query import (
     worklist_correlates,
 )
 from .replay import check_against_expected, deterministic_round_trip, replay
-from .transport import AstmTransport, LoopbackTransport, MllpTransport
+from .transport import (
+    AstmTransport,
+    LoopbackTransport,
+    MllpTransport,
+    SnibeLisTcpTransport,
+    TransportError,
+)
 
 __all__ = ["main"]
 
-_TRANSPORTS = {"loopback": LoopbackTransport, "mllp": MllpTransport, "astm": AstmTransport}
+_TRANSPORTS = {
+    "loopback": LoopbackTransport,
+    "mllp": MllpTransport,
+    "astm": AstmTransport,
+    "snibelis-astm": SnibeLisTcpTransport,
+}
 
 # Default scratch archive for the CLI (gitignored; content-addressed so re-runs of
 # the same fixture are idempotent rather than accumulating).
@@ -76,9 +87,23 @@ def _replay_and_report(fx, transport) -> int:
     return 0 if result.round_trip_ok else 1
 
 
+def _build_transport(args: argparse.Namespace):
+    """Construct the transport named by ``args.transport``. ``snibelis-astm`` is a
+    real TCP client (LIS-174 / D6) so it alone takes the ``--host``/``--port``/
+    ``--timeout`` options; the in-memory transports keep their zero-arg form."""
+    cls = _TRANSPORTS[args.transport]
+    if cls is SnibeLisTcpTransport:
+        return cls(host=args.host, port=args.port, timeout=args.timeout)
+    return cls()
+
+
 def _cmd_replay(args: argparse.Namespace) -> int:
     fx = _resolve(args.root, args.fixture)
-    return _replay_and_report(fx, _TRANSPORTS[args.transport]())
+    transport = _build_transport(args)
+    try:
+        return _replay_and_report(fx, transport)
+    finally:
+        transport.close()  # a real-socket transport (snibelis-astm) must not leak its connection
 
 
 def _cmd_archive(args: argparse.Namespace) -> int:
@@ -96,14 +121,18 @@ def _cmd_roundtrip(args: argparse.Namespace) -> int:
     normalized Result against the manifest's asserted ``expected`` rows. Exit 1 if
     the bytes don't survive the wire or the Result doesn't match expected."""
     fx = _resolve(args.root, args.fixture)
+    transport = _build_transport(args)
     try:
-        res = deterministic_round_trip(
-            fx, _TRANSPORTS[args.transport](), archive=RawMessageArchive(args.dir),
-            received_at=_now_iso(),
-        )
-    except OruParseError as exc:
-        print(f"error: cannot replay {fx.id} as ORU^R01: {exc}", file=sys.stderr)
-        return 2
+        try:
+            res = deterministic_round_trip(
+                fx, transport, archive=RawMessageArchive(args.dir),
+                received_at=_now_iso(),
+            )
+        except OruParseError as exc:
+            print(f"error: cannot replay {fx.id} as ORU^R01: {exc}", file=sys.stderr)
+            return 2
+    finally:
+        transport.close()  # a real-socket transport (snibelis-astm) must not leak its connection
 
     bytes_status = "OK" if res.round_trip_ok else "MISMATCH"
     print(
@@ -315,6 +344,25 @@ def _cmd_parse_astm(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_snibelis_tcp_args(parser: argparse.ArgumentParser) -> None:
+    """``--host``/``--port``/``--timeout``: only meaningful for ``--transport
+    snibelis-astm`` (:class:`~edge_sim.transport.SnibeLisTcpTransport`, LIS-174 /
+    D6), the one transport that dials a real socket instead of replaying
+    in-memory. Harmless no-ops for every other transport choice."""
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="host to dial for --transport snibelis-astm (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port", type=int, default=None,
+        help="port to dial for --transport snibelis-astm (required for that transport)",
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=10.0,
+        help="seconds to wait for each ACK with --transport snibelis-astm (default: 10.0)",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="edge-sim",
@@ -337,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         default="loopback",
         help="transport to replay through (default: loopback)",
     )
+    _add_snibelis_tcp_args(replay_parser)
     replay_parser.set_defaults(func=_cmd_replay)
     archive_parser = sub.add_parser(
         "archive", help="archive a fixture's captured message (content-addressed)"
@@ -360,6 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         "--dir", type=Path, default=DEFAULT_ARCHIVE_DIR,
         help=f"raw-message archive directory (default: {DEFAULT_ARCHIVE_DIR})",
     )
+    _add_snibelis_tcp_args(roundtrip_parser)
     roundtrip_parser.set_defaults(func=_cmd_roundtrip)
     ack_parser = sub.add_parser("ack", help="print the HL7 ACK for a fixture's message")
     ack_parser.add_argument("fixture", help="fixture id or directory path")
@@ -416,6 +466,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except FixtureError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except TransportError as exc:
+        # e.g. --transport snibelis-astm with no --port, or a dead link talking
+        # to a live bridge (LIS-174 / D6) -- a clean CLI error, not a traceback.
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
