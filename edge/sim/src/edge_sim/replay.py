@@ -28,7 +28,19 @@ from .fixtures import Fixture
 from .e1394 import AstmMessage, parse_e1394
 from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
 from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
+from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT
 from .transport import Transport
+
+# ASTM carries no wire QC/calibration typing field the way HL7 does in MSH-16
+# (KB §5): a control or calibrator upload looks byte-identical to a patient
+# result on the H/P/O/R stream. The documented convention is a Sample-ID (O-3)
+# prefix — an order whose specimen id begins with the calibration prefix is a
+# calibration upload and is routed out of the patient result stream (LIS-125).
+# The production bridge makes this prefix a per-analyzer profile rule
+# (CALIBRATION_SPECIMEN_ID_PREFIX); the sim bakes the documented default so the
+# conformance fixture is deterministic — the same default-vs-profile split as
+# the RAYTO terminology seed in normalize.py.
+_CALIBRATION_SPECIMEN_PREFIX = "CAL"
 
 __all__ = [
     "ReplayResult",
@@ -269,7 +281,25 @@ def _astm_report(msg: AstmMessage) -> OruReport:
         specimen_id=first_order.specimen_id if first_order else "",
         order_code=first_order.test_code if first_order else "",
         observations=tuple(observations),
+        result_type=_astm_result_type(msg),
     )
+
+
+def _astm_result_type(msg: AstmMessage) -> str:
+    """Classify an ASTM message as a patient or calibration upload.
+
+    ASTM has no MSH-16-style wire field, so calibration is recognized from the
+    documented Sample-ID convention (:data:`_CALIBRATION_SPECIMEN_PREFIX`): any
+    order whose specimen id (O-3) begins with the calibration prefix marks the
+    message a calibration upload, which the normalizer re-kinds to
+    ``KIND_CALIBRATION`` so it never lands as a patient result (LIS-125). Like
+    the HL7 MSH-16 path, the result type is message-level."""
+    for patient in msg.patients:
+        for order in patient.orders:
+            specimen_id = (order.specimen_id or "").strip().upper()
+            if specimen_id.startswith(_CALIBRATION_SPECIMEN_PREFIX):
+                return RESULT_TYPE_CALIBRATION
+    return RESULT_TYPE_PATIENT
 
 
 def _result_digest(observations: tuple[NormalizedObservation, ...]) -> str:
