@@ -91,6 +91,22 @@ class Record:
         comps = [c for c in value.split(self.delimiters.component) if c]
         return comps[-1] if comps else value
 
+    def test_codes(self, n: int) -> tuple[str, ...]:
+        """Every analyzer test code from a *repeating* universal-test-id field ``n``.
+
+        SnibeLis packs a multi-assay order into O-5 as ``^^^A\\^^^B`` where ``\\`` is
+        the ASTM repetition delimiter (KB §5.3/§7); each repeat is a ``^^^``-prefixed
+        code. Returns each code with its ``^^^`` prefix stripped, in transmission
+        order, skipping empty repeats — a one-tuple for a single assay, empty for a
+        blank field."""
+        codes: list[str] = []
+        for item in self.field(n).split(self.delimiters.repeat):
+            comps = [c for c in item.split(self.delimiters.component) if c]
+            code = comps[-1] if comps else item
+            if code:
+                codes.append(code)
+        return tuple(codes)
+
 
 @dataclass(frozen=True)
 class Header:
@@ -110,6 +126,7 @@ class AstmResult:
     reference_range: str  # R-6
     abnormal_flags: str  # R-7
     status: str  # R-9
+    completion_time: str  # R-13 (YYYYMMDDHHMMSS), "" when absent
     raw: str
 
 
@@ -117,7 +134,8 @@ class AstmResult:
 class AstmOrder:
     seq: str  # O-2
     specimen_id: str  # O-3
-    test_code: str  # O-5 (universal test id)
+    test_code: str  # O-5 (universal test id; last code if repeated)
+    assays: tuple[str, ...]  # O-5 split on the repeat delimiter (multi-assay orders)
     priority: str  # O-6
     results: tuple[AstmResult, ...]
     raw: str
@@ -234,8 +252,27 @@ def _result(rec: Record) -> AstmResult:
         reference_range=rec.field(6),
         abnormal_flags=rec.field(7),
         status=rec.field(9),
+        completion_time=_completion_time(rec),
         raw=rec.delimiters.field.join(rec.fields),
     )
+
+
+def _completion_time(rec: Record) -> str:
+    """The ASTM R-13 test-completion timestamp (``YYYYMMDDHHMMSS``).
+
+    SnibeLis documents the completion time at R-13 (KB §5.3, ASTM 10.1.13) but the
+    vendor manual's worked example emits it one field earlier — an ASTM-doc
+    inconsistency (KB gotcha #7/#9) we can't tie-break without a live capture
+    (LIS-75). So we prefer the spec R-13 field and, when it is empty, recover the
+    record's sole timestamp-shaped (14-digit) field — tolerant of either wire
+    reality, in keeping with this module's spec-deviation tolerance."""
+    spec = rec.field(13)
+    if spec:
+        return spec
+    for value in rec.fields[7:]:  # after R-7 (flag); codes/values/ranges precede it
+        if len(value) == 14 and value.isdigit():
+            return value
+    return ""
 
 
 def _patient(p: dict) -> AstmPatient:
@@ -256,11 +293,14 @@ def _order(o: dict) -> AstmOrder:
     rec: Record | None = o["rec"]
     results = tuple(o["results"])
     if rec is None:
-        return AstmOrder(seq="", specimen_id="", test_code="", priority="", results=results, raw="")
+        return AstmOrder(
+            seq="", specimen_id="", test_code="", assays=(), priority="", results=results, raw=""
+        )
     return AstmOrder(
         seq=rec.field(2),
         specimen_id=rec.field(3),
         test_code=rec.test_code(5),
+        assays=rec.test_codes(5),
         priority=rec.field(6),
         results=results,
         raw=rec.delimiters.field.join(rec.fields),

@@ -1,0 +1,28 @@
+#!/bin/sh
+# Reject direct pushes to the umbrella's protected branch(es).
+#
+# This runs client-side (git's own pre-push hook), NOT as a Claude Code PreToolUse
+# gate: the `git push` simply exits non-zero, and the caller — human or autonomous
+# agent — re-routes through a slice branch + PR. The agent loop is never gated or
+# paused; it just sees a failed command and self-corrects.
+#
+# Enable once per clone (covers all its worktrees):
+#   scripts/setup-githooks.sh      # or: git config core.hooksPath .githooks
+#
+# git feeds one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>
+# Checking <remote ref> catches every form — `git push origin main`,
+# `git push origin HEAD:main`, a tracking-branch push, a delete, or a force-push.
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+	case "$remote_ref" in
+	refs/heads/main | refs/heads/master)
+		echo "pre-push: blocked direct push to $remote_ref." >&2
+		echo "  Protocol: slice branch -> PR -> main (docs/agents/slice-loop.md)." >&2
+		echo "  Push your slice branch and open a PR instead." >&2
+		status=1
+		;;
+	esac
+done
+
+exit $status

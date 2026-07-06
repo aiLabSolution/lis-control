@@ -31,7 +31,9 @@ open a PR. Non-negotiables:
   primary checkout's branch — sessions share it.
 - **Slice branch → PR → `main`. Never commit on `main` or `git push origin main`.** A reviewed
   PR is the auditable `LIS-NN` ↔ `main` link for the ISO traceability story (ADR-0001); merge
-  once reviewed and CI is green.
+  once reviewed and CI is green. Run `scripts/setup-githooks.sh` once per clone to enable the
+  tracked `.githooks/pre-push` guard, which rejects direct pushes to `main` locally (a git
+  hook, not a Claude PreToolUse — a blocked push just fails and you re-route to a PR).
 - **Submodule changes are two-level**: PR the component repo first, then bump the pin in the
   umbrella PR.
 - **Coordinate across sessions via the Plane issue** — assignee = the *taken* flag, plus a

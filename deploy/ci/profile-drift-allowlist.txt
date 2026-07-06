@@ -1,0 +1,9 @@
+# Acknowledged divergences between deploy/kit/configs/analyzer-profiles/ and
+# core/openelis/projects/analyzer-profiles/ at the pinned submodule SHAs
+# (checked by .github/workflows/deploy-kit-config.yml — LIS-116).
+#
+# One entry per line: <path relative to the profile roots> <reason / issue ref>
+# Example:
+#   hl7/seamaty-sd1.json LIS-1234 kit intentionally ahead pending core PR
+#
+# Empty = kit and core mirrors must be identical for every file the kit carries.

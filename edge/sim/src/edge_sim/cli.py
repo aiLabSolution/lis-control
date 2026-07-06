@@ -13,14 +13,18 @@ from .archive import RawMessageArchive, archive_fixture
 from .e1394 import parse_e1394
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .milestone import run_milestone
-from .normalize import KIND_WARNING, Normalizer
+from .normalize import KIND_ANOMALY, KIND_BLANK, KIND_RESULT, KIND_WARNING, Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .query import (
     QueryError,
+    WorklistOrder,
+    build_worklist_query_response,
     build_query_response,
     correlates,
     parse_query,
     parse_query_response,
+    parse_worklist_query_response,
+    worklist_correlates,
 )
 from .replay import check_against_expected, deterministic_round_trip, replay
 from .transport import AstmTransport, LoopbackTransport, MllpTransport
@@ -150,9 +154,9 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     rows = Normalizer().normalize_report(report)
     print(f"{fx.id}\t{report.message_type}\tpatient={report.patient_id}\tspecimen={report.specimen_id}")
     for r in rows:
-        if r.kind == KIND_WARNING:
-            # In-band instrument warning routed as a note, not a result (LIS-86).
-            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [WARNING note] {r.value}")
+        label = _non_result_label(r.kind)
+        if label:
+            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [{label}] {r.value}")
             continue
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
@@ -184,9 +188,9 @@ def _cmd_milestone(args: argparse.Namespace) -> int:
     )
     all_normalized = True
     for o, fin in zip(out.observations, out.result_statuses):
-        if o.kind == KIND_WARNING:
-            # Routed as a note, not a result — does not count toward result normalization.
-            print(f"  OBX-{o.set_id}\t{o.raw_code}\t-> [WARNING note] {o.value}")
+        label = _non_result_label(o.kind)
+        if label:
+            print(f"  OBX-{o.set_id}\t{o.raw_code}\t-> [{label}] {o.value}")
             continue
         all_normalized = all_normalized and bool(o.loinc and o.ucum_value)
         print(
@@ -227,8 +231,13 @@ def _cmd_query(args: argparse.Namespace) -> int:
         f"answer {rfx.id}: ORF^R04 MSA-1={resp.ack_code} echoed-id={resp.query_id} "
         f"specimen={resp.report.specimen_id} correlates={correlated}"
     )
-    all_normalized = bool(rows)  # an answer with no result rows is not a success
+    result_rows = [r for r in rows if r.kind == KIND_RESULT]
+    all_normalized = bool(result_rows)  # an answer with no result rows is not a success
     for r in rows:
+        label = _non_result_label(r.kind)
+        if label:
+            print(f"  OBX-{r.set_id}\t{r.raw_code}\t-> [{label}] {r.value}")
+            continue
         all_normalized = all_normalized and bool(r.loinc and r.ucum_value)
         print(
             f"  OBX-{r.set_id}\t{r.raw_code} {r.value} {r.raw_unit}"
@@ -237,6 +246,58 @@ def _cmd_query(args: argparse.Namespace) -> int:
     if not rows:
         print("  (no result rows returned)")
     return 0 if correlated and all_normalized else 1
+
+
+def _cmd_worklist_query(args: argparse.Namespace) -> int:
+    """H99S order-download query: parse a QRY^R02 barcode query, have the host answer
+    with ORF^R04 PID/OBR order rows, and print the barcode -> accession reconciliation."""
+    qfx = _resolve(args.root, args.query)
+    try:
+        query = parse_query(qfx.message_bytes)
+    except QueryError as exc:
+        print(f"error: cannot run worklist query exchange: {exc}", file=sys.stderr)
+        return 2
+
+    codes = tuple(code.strip() for code in args.codes.split(",") if code.strip())
+    order = WorklistOrder(
+        accession_number=args.accession,
+        patient_id=args.patient,
+        analyzer_codes=codes,
+    )
+    orf = build_worklist_query_response(
+        query, (order,), response_datetime=query.query_datetime, control_id=f"ORF{query.query_id}"
+    )
+    resp = parse_worklist_query_response(orf)
+    correlated = worklist_correlates(query, resp)
+    has_orders = any(order.analyzer_codes for order in resp.orders)
+
+    print(
+        f"query {qfx.id}: QRY^R02 id={query.query_id} "
+        f"barcode={query.subject_id} what={query.what_subject}"
+    )
+    print(
+        f"answer worklist: ORF^R04 MSA-1={resp.ack_code} echoed-id={resp.query_id} "
+        f"barcode={resp.subject_id} correlates={correlated}"
+    )
+    for order_row in resp.orders:
+        tests = ",".join(order_row.analyzer_codes) or "-"
+        print(
+            f"  OBR\taccession={order_row.accession_number}\t"
+            f"patient={order_row.patient_id or '-'}\ttests={tests}"
+        )
+    if not has_orders:
+        print("  (no order rows returned)")
+    return 0 if correlated and has_orders else 1
+
+
+def _non_result_label(kind: str) -> str:
+    if kind == KIND_WARNING:
+        return "WARNING note"
+    if kind == KIND_ANOMALY:
+        return "ANOMALY note"
+    if kind == KIND_BLANK:
+        return "BLANK material"
+    return ""
 
 
 def _cmd_parse_astm(args: argparse.Namespace) -> int:
@@ -324,6 +385,27 @@ def main(argv: list[str] | None = None) -> int:
         help="result fixture the host answers with (default: edan-h60s-oru-r01)",
     )
     query_parser.set_defaults(func=_cmd_query)
+    worklist_query_parser = sub.add_parser(
+        "worklist-query",
+        help="order-download host-query: answer QRY^R02 -> ORF^R04 PID/OBR worklist rows",
+    )
+    worklist_query_parser.add_argument("query", help="QRY^R02 query fixture id or directory path")
+    worklist_query_parser.add_argument(
+        "--accession",
+        required=True,
+        help="host accession number returned in OBR-2/3",
+    )
+    worklist_query_parser.add_argument(
+        "--patient",
+        required=True,
+        help="patient id returned in PID-3",
+    )
+    worklist_query_parser.add_argument(
+        "--codes",
+        required=True,
+        help="comma-separated analyzer test codes returned as OBR rows",
+    )
+    worklist_query_parser.set_defaults(func=_cmd_worklist_query)
     parse_astm_parser = sub.add_parser(
         "parse-astm", help="parse a fixture's ASTM E1394 records and print the record tree"
     )

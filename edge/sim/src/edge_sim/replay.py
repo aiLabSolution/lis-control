@@ -255,6 +255,7 @@ def _astm_report(msg: AstmMessage) -> OruReport:
                         reference_range=result.reference_range,
                         abnormal_flags=result.abnormal_flags,
                         status=result.status,
+                        completion_time=result.completion_time,
                     )
                 )
     header = msg.header

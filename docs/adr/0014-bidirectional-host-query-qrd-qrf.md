@@ -57,6 +57,14 @@ simulator:
    result normalizes through the S1.2 pipeline. The `edge-sim query <qry-fixture>` CLI is the demo
    path, and exits non-zero unless the answer correlates and returns at least one normalized row.
 
+**Update 2026-07-04 (LIS-149 / DEC-06):** this ADR remains the decision record for the
+EDAN H60S **results-query** substrate. DEC-06 now separately releases the EDAN H99S
+**order-download / worklist** path into active build and bench scope: `edge_sim.query`
+also models an H99S `QRY^R02` barcode query answered by `ORF^R04` `PID`/`OBR` order rows
+(`edge-sim worklist-query edan-h99s-worklist-query-qry-r02 ...`). That release is
+narrow to H99S and does not promote generic bidirectional fleet expansion without the
+same change-control and bench-evidence gate.
+
 **Verifiable output (S1.6 exit):** `test_query.py` proves, on the captured query fixture, that the
 host-query is parsed (QRD/QRF), `build_query` round-trips, the host answers (`ORF^R04`, `MSA-1=AA`,
 query id echoed) and **a result returns** that normalizes to the EDAN H60S Result rows; that the

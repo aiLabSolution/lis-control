@@ -1,0 +1,128 @@
+# LIS-116 — deploy-kit config integrity, checked umbrella-side.
+#
+# The kit repo (aiLabSolution/lis-deploy-kit) has no CI of its own; the umbrella
+# pins both the kit and the OpenELIS core mirror, so the umbrella is the one
+# place where kit-vs-core profile drift is machine-visible (ADR-0016: the kit
+# copy is what deployed environments actually read — LIS-107 showed it silently
+# lagging the bench-validated core capture). This job:
+#   1. fails when a profile present in BOTH trees differs (kit must equal core,
+#      or the divergence must be acknowledged with a reason in
+#      deploy/ci/profile-drift-allowlist.txt);
+#   2. fails when the kit carries a profile the core mirror doesn't have;
+#      core-only profiles (not yet adopted for deployment) are informational;
+#   3. shellchecks the kit's wrapper + proof scripts;
+#   4. renders `compose config` for all three wrapper modes (deployed,
+#      bootstrap-digests, local-proof — the proof overlay's !override needs
+#      Compose >= 2.24.4, satisfied on ubuntu-latest runners).
+name: Deploy-kit config integrity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/openelis            # submodule pin bump
+      - deploy/kit               # submodule pin bump
+      - deploy/ci/**
+      - .github/workflows/deploy-kit-config.yml
+  pull_request:
+    paths:
+      - core/openelis
+      - deploy/kit
+      - deploy/ci/**
+      - .github/workflows/deploy-kit-config.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-kit-config-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kit-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out umbrella
+        uses: actions/checkout@v4
+        # default token reads this repo; submodules fetched explicitly below
+
+      - name: Resolve pinned SHAs
+        id: pins
+        run: |
+          echo "core=$(git rev-parse HEAD:core/openelis)" >> "$GITHUB_OUTPUT"
+          echo "kit=$(git rev-parse HEAD:deploy/kit)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out deploy-kit at the pin (private repo)
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/lis-deploy-kit
+          ref: ${{ steps.pins.outputs.kit }}
+          path: deploy/kit
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Check out core analyzer-profiles + compose files at the pin (sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/OpenELIS-Global-2
+          ref: ${{ steps.pins.outputs.core }}
+          path: core/openelis
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+          sparse-checkout: |
+            /projects/analyzer-profiles/
+            /docker-compose.yml
+            /build.docker-compose.yml
+            /volume/database/database.env
+          sparse-checkout-cone-mode: false
+
+      - name: Profile drift check (kit vs core mirror)
+        run: |
+          set -euo pipefail
+          core_dir=core/openelis/projects/analyzer-profiles
+          kit_dir=deploy/kit/configs/analyzer-profiles
+          allowlist=deploy/ci/profile-drift-allowlist.txt
+          fail=0
+          while IFS= read -r rel; do
+            allowed=""
+            if [ -f "$allowlist" ] && grep -qE "^$rel([[:space:]]|\$)" "$allowlist"; then
+              allowed=" (allowlisted: $(grep -E "^$rel([[:space:]]|\$)" "$allowlist" | head -1))"
+            fi
+            if [ ! -f "$core_dir/$rel" ]; then
+              if [ -n "$allowed" ]; then
+                echo "ALLOWED kit-only profile: $rel$allowed"
+              else
+                echo "::error::kit-only profile not present in the core mirror: $rel"
+                fail=1
+              fi
+            elif ! cmp -s "$kit_dir/$rel" "$core_dir/$rel"; then
+              if [ -n "$allowed" ]; then
+                echo "ALLOWED divergence: $rel$allowed"
+              else
+                echo "::error::profile drift (kit != core @ pinned SHAs): $rel"
+                diff -u "$core_dir/$rel" "$kit_dir/$rel" | head -40 || true
+                fail=1
+              fi
+            else
+              echo "OK in-sync: $rel"
+            fi
+          done < <(cd "$kit_dir" && find . -type f -printf '%P\n' | sort)
+          # Core-only profiles are not deployed yet — informational, not drift.
+          comm -23 \
+            <(cd "$core_dir" && find . -type f -name '*.json' -not -path './schema/*' -printf '%P\n' | sort) \
+            <(cd "$kit_dir" && find . -type f -printf '%P\n' | sort) \
+            | sed 's/^/NOTE core-only (not adopted by the kit): /'
+          exit "$fail"
+
+      - name: Shellcheck kit scripts
+        run: shellcheck deploy/kit/scripts/*.sh
+
+      - name: Render compose config for all wrapper modes
+        run: |
+          set -euo pipefail
+          docker compose version
+          w=deploy/kit/scripts/compose-openelis.sh
+          chmod +x "$w"
+          echo "--- deployed"
+          "$w" config -q
+          echo "--- bootstrap digests"
+          LIS_DEPLOY_USE_BOOTSTRAP_DIGESTS=true "$w" config -q
+          echo "--- local proof (!override)"
+          LIS_DEPLOY_USE_LOCAL_PROOF=true "$w" config -q

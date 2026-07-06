@@ -15,6 +15,12 @@ control (ADR-0008); building the QRD/QRF correlation here de-risks that rollout 
 gives a conformance fixture pair, exactly as Stage 2's bidirectional ASTM path stays
 simulator-driven until a bidirectional unit is on hand.
 
+LIS-149 / DEC-06 adds the EDAN H99S **order-download / worklist** direction on the
+same QRD substrate: the analyzer asks for the order selection for a barcode and the
+host answers with `ORF^R04` carrying `PID` + `OBR` order rows. The query subject stays
+the barcode in QRD-8; the returned accession in OBR-2/3 may differ after host-side
+barcode -> accession reconciliation.
+
 Tolerant, like the rest of the harness: a missing QRD/QRF/MSA field yields `""`; only
 a message with no `MSH` is rejected (it cannot be identified). Builders emit canonical
 `\\r`-separated segments and apply no wire framing — the MLLP transport does that, so a
@@ -33,16 +39,23 @@ __all__ = [
     "QueryResponse",
     "QueryError",
     "WHAT_RESULTS",
+    "WHAT_WORKLIST",
+    "WorklistOrder",
+    "WorklistQueryResponse",
     "parse_query",
     "build_query",
     "parse_query_response",
     "build_query_response",
+    "parse_worklist_query_response",
+    "build_worklist_query_response",
     "correlates",
+    "worklist_correlates",
 ]
 
 _SEG = "\r"
 _DEFAULT_ENCODING_CHARS = "^~\\&"
 WHAT_RESULTS = "RES"  # QRD-9 "What Subject Filter" code for a results query
+WHAT_WORKLIST = "OTH"  # EDAN H90-series QRD-9 for host-order/worklist query
 
 
 class QueryError(Exception):
@@ -72,6 +85,25 @@ class QueryResponse:
     ack_code: str  # MSA-1 (AA on accept)
     query_id: str  # QRD-4 echoed from the request
     report: OruReport  # the OBR/OBX result the response returned
+
+
+@dataclass(frozen=True)
+class WorklistOrder:
+    """One host order returned to an analyzer worklist query."""
+
+    accession_number: str
+    patient_id: str
+    analyzer_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorklistQueryResponse:
+    """The `ORF^R04` answer to an analyzer order-download query."""
+
+    ack_code: str  # MSA-1
+    query_id: str  # QRD-4 echoed from the request
+    subject_id: str  # QRD-8 echoed from the request, usually the barcode
+    orders: tuple[WorklistOrder, ...]
 
 
 def _u(msg: Message, value: str) -> str:
@@ -200,6 +232,94 @@ def build_query_response(
     return _SEG.join(segs).encode("latin-1")
 
 
+def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQueryResponse:
+    """Parse an `ORF^R04` worklist/order-download answer.
+
+    The response echoes QRD-4/QRD-8 for correlation. Each OBR row carries one analyzer
+    test code in OBR-4 (`^^^WBC^WBC`) and the host accession in OBR-2/3. This is not a
+    result parser: there are no OBX rows in the order-download payload.
+    """
+    msg = message if isinstance(message, Message) else parse_message(message)
+    msh = msg.first("MSH")
+    if msh is None:
+        raise QueryError("message has no MSH segment; cannot identify as a worklist response")
+    msa = msg.first("MSA")
+    qrd = msg.first("QRD")
+    pid = msg.first("PID")
+    patient_id = ""
+    if pid:
+        patient_id = _u(msg, pid.component(3, 1) or pid.component(2, 1))
+
+    orders: list[WorklistOrder] = []
+    for obr in msg.all("OBR"):
+        accession = _u(msg, obr.field(2) or obr.field(3))
+        code = _u(msg, obr.component(4, 4) or obr.component(4, 1))
+        if accession or code:
+            orders.append(
+                WorklistOrder(
+                    accession_number=accession,
+                    patient_id=patient_id,
+                    analyzer_codes=(code,) if code else (),
+                )
+            )
+
+    return WorklistQueryResponse(
+        ack_code=_u(msg, msa.field(1)) if msa else "",
+        query_id=_u(msg, qrd.field(4)) if qrd else "",
+        subject_id=_u(msg, qrd.component(8, 1)) if qrd else "",
+        orders=tuple(orders),
+    )
+
+
+def build_worklist_query_response(
+    query: QueryRecord,
+    orders: tuple[WorklistOrder, ...] | list[WorklistOrder],
+    *,
+    sending_app: str = "LIS",
+    sending_facility: str = "LAB",
+    response_datetime: str,
+    control_id: str,
+    ack_code: str = "AA",
+    version: str = "2.4",
+    processing_id: str = "P",
+    application_ack_type: str = "3",
+) -> bytes:
+    """Build the host's H99S `ORF^R04` order-download answer.
+
+    `QRD-8` echoes the analyzer's barcode subject for correlation. The returned
+    `OBR-2/3` carry the host accession, so a barcode like `DEV01260000000000002`
+    can legitimately return accession `2`.
+    """
+    order_rows = tuple(orders)
+    patient_id = next((order.patient_id for order in order_rows if order.patient_id), "")
+    msh = "|".join(
+        ["MSH", _DEFAULT_ENCODING_CHARS, sending_app, sending_facility,
+         query.sending_app, query.sending_facility, response_datetime, "",
+         "ORF^R04", control_id, processing_id, version, "", "", "", application_ack_type]
+    )
+    msa = "|".join(["MSA", ack_code, query.control_id])
+    qrd = "|".join(
+        ["QRD", query.query_datetime, query.format_code or "R", query.priority or "I",
+         query.query_id, "", "", "", query.subject_id, query.what_subject or WHAT_WORKLIST]
+    )
+    segs = [msh, msa, qrd, "|".join(["PID", "1", "", _esc(patient_id)])]
+
+    set_id = 1
+    for order in order_rows:
+        for code in order.analyzer_codes:
+            if not code:
+                continue
+            segs.append(
+                "|".join(
+                    ["OBR", str(set_id), _esc(order.accession_number),
+                     _esc(order.accession_number), _esc_component("", "", "", code, code),
+                     "", "", "", "", "", "", "A"]
+                )
+            )
+            set_id += 1
+    return _SEG.join(segs).encode("latin-1")
+
+
 def correlates(query: QueryRecord, response: QueryResponse) -> bool:
     """True when ``response`` is an accepted answer to ``query``: the response echoes
     the request's query id, was accepted (`MSA-1 = AA`), and returned the queried
@@ -215,6 +335,22 @@ def correlates(query: QueryRecord, response: QueryResponse) -> bool:
         and query.query_id == response.query_id
         and response.ack_code == "AA"
         and query.subject_id == response.report.specimen_id
+    )
+
+
+def worklist_correlates(query: QueryRecord, response: WorklistQueryResponse) -> bool:
+    """True when an order-download answer is accepted and echoes the query identity.
+
+    Unlike a results-query, the returned accession may differ from the barcode in
+    QRD-8 after host reconciliation, so correlation uses the echoed QRD subject, not
+    OBR-2/3.
+    """
+    return (
+        bool(query.query_id)
+        and bool(query.subject_id)
+        and query.query_id == response.query_id
+        and query.subject_id == response.subject_id
+        and response.ack_code == "AA"
     )
 
 

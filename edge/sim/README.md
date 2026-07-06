@@ -65,6 +65,7 @@ edge/sim/
     astm.py                 # ASTM E1381 codec: frame/checksum + ENQ/ACK/NAK/EOT session (S2.1)
     astm_simulator.py       # analyzer-side ASTM session harness + corruption injection (S2.3)
     e1394.py                # ASTM E1394 record parser: H>P>O>R>L -> typed record tree (S2.2)
+    snibelis.py             # SnibeLis simplified ASTM E1394 session + Q -> H/P/O/L exchange (S3.0a)
     archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
     milestone.py            # Stage-1 milestone E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) (S1.5)
@@ -82,6 +83,8 @@ edge/sim/
     edan-h60s-oru-r01/           # synthetic EDAN H60S ORU^R01 (HL7 v2.4) — Stage-1 milestone vehicle (S1.5)
     edan-h60s-host-query-qry-r02/ # synthetic EDAN H60S QRY^R02 host-query (QRD/QRF) (S1.6)
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
+    snibelis-maglumi-x3-result-upload/ # synthetic SnibeLis H/P/O/R/L result upload (S3.0a)
+    snibelis-maglumi-x3-query-request/ # synthetic SnibeLis Q -> H/P/O/L query exchange (S3.0a)
 ```
 
 ## Run

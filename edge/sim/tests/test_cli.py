@@ -158,3 +158,26 @@ def test_query_exit_one_when_answer_has_no_rows(tmp_path, capsys):
     qpath = str(DEFAULT_FIXTURES_ROOT / "edan-h60s-host-query-qry-r02")
     assert main(["query", qpath, "--result", str(rdst)]) == 1
     assert "(no result rows returned)" in capsys.readouterr().out
+
+
+def test_worklist_query_exchange_exit_zero(capsys):
+    assert main(
+        [
+            "worklist-query",
+            "edan-h99s-worklist-query-qry-r02",
+            "--accession",
+            "2",
+            "--patient",
+            "17",
+            "--codes",
+            "WBC,HGB",
+        ]
+    ) == 0
+    out = capsys.readouterr().out
+    assert "QRY^R02 id=Q-1" in out
+    assert "barcode=DEV01260000000000002" in out
+    assert "ORF^R04 MSA-1=AA" in out
+    assert "correlates=True" in out
+    assert "accession=2" in out
+    assert "WBC" in out
+    assert "HGB" in out

@@ -210,6 +210,69 @@ def test_trailing_empty_component_yields_empty_field():
     assert msg.header.sender_model == ""
 
 
+# --- SnibeLis/MAGLUMI immunoassay parse semantics (LIS-32 / S3.1) -----------
+
+
+def test_result_preserves_r13_completion_time():
+    """A SnibeLis MAGLUMI ``R`` record carries the test-completion timestamp in
+    R-13 (``YYYYMMDDHHMMSS``); the parser preserves it verbatim for provenance
+    (KB §7; ISO 15189 4.13). Earlier ASTM fixtures (DiaSys/ERBA) omitted R-13, so
+    the field defaulted to ``""``; this pins that it is now captured beside the
+    R-6 reference range and R-7 abnormal flag."""
+    msg = parse_e1394(
+        "H|\\^&||PSWD|Maglumi User|||||Lis||P|E1394-97|20260703\r"
+        "P|1\rO|1|SNB-1||^^^TSH|R\r"
+        "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N|||||20260703101530\rL|1|N"
+    )
+    result = msg.patients[0].orders[0].results[0]
+    assert result.completion_time == "20260703101530"
+    assert result.reference_range == "0.27 to 4.20"
+    assert result.abnormal_flags == "N"
+
+
+def test_result_reads_completion_time_at_spec_r13_position():
+    """When the timestamp sits at the true ASTM R-13 position (one field later than
+    the manual's example), it is read there directly — the spec position is
+    preferred over the tolerant scan."""
+    msg = parse_e1394(
+        "H|\\^&\rP|1\rO|1|S1||^^^FT4|R\r"
+        "R|1|^^^FT4|14.8|pmol/L|12 to 22|N||||||20260703101530\rL|1|N"
+    )
+    assert msg.patients[0].orders[0].results[0].completion_time == "20260703101530"
+
+
+def test_result_completion_time_defaults_blank_when_absent():
+    """An ``R`` record without any timestamp field yields ``""`` — not a crash, and
+    the tolerant scan does not misread the value/range/flag fields."""
+    msg = parse_e1394("H|\\^&\rP|1\rO|1|S1||^^^GLU|R\rR|1|^^^GLU|5.2|mmol/L||N||F\rL|1|N")
+    assert msg.patients[0].orders[0].results[0].completion_time == ""
+
+
+def test_order_splits_multi_assay_o5_on_repeat_delimiter():
+    """SnibeLis packs a multi-assay order into O-5 as ``^^^A\\^^^B`` (``\\`` =
+    ASTM repetition). The order exposes each analyzer-native assay code with the
+    mandatory ``^^^`` prefix stripped, in transmission order (KB §5.3/§7, gotcha #6)."""
+    msg = parse_e1394(
+        "H|\\^&\rP|1\rO|1|SNB-108-001||^^^TSH\\^^^FT4|R\r"
+        "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N|||||20260703101530\r"
+        "R|2|^^^FT4|14.8|pmol/L|12 to 22|N|||||20260703101530\rL|1|N"
+    )
+    order = msg.patients[0].orders[0]
+    assert order.assays == ("TSH", "FT4")
+
+
+def test_order_single_assay_o5_is_a_one_tuple():
+    """A single-assay O-5 (``^^^ALT``) exposes a one-element ``assays`` tuple."""
+    msg = parse_e1394("H|\\^&\rP|1\rO|1|S1||^^^ALT|R\rL|1|N")
+    assert msg.patients[0].orders[0].assays == ("ALT",)
+
+
+def test_order_empty_o5_yields_no_assays():
+    """An order with no O-5 universal test id yields an empty ``assays`` tuple."""
+    msg = parse_e1394("H|\\^&\rP|1\rO|1|S1||\rL|1|N")
+    assert msg.patients[0].orders[0].assays == ()
+
+
 def test_blank_input_raises():
     with pytest.raises(E1394Error):
         parse_e1394("   ")
