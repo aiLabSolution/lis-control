@@ -410,7 +410,10 @@ Pass criteria (as met 2026-07-06):
 - Real-wire parser deviations recorded as follow-ups (EDAN OBX-11 finality; core pin
   bump past LIS-98). ✅
 
-## Done Criteria (all met 2026-07-06)
+## Done Criteria (bench + graduation complete 2026-07-06; one item pending)
+
+All technical criteria met; only the Plane tracker update remains (blocked on
+`PLANE_API_KEY`), marked ⏳ below.
 
 - ✅ H60S identity and network settings captured (`identity.md`, `network-settings.md`).
 - ✅ Raw reachability proven from H60S to bench host (via the 7999→2575 tee-relay).
