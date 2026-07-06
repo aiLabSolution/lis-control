@@ -1,8 +1,17 @@
 # SnibeLis / MAGLUMI X3 Bench Evidence Template
 
-> Slice: LIS-108 / S3.0a. Use this when LIS-75 unblocks the SnibeLis PC/license
-> and LIS-38 needs live bench evidence. Keep raw captures with the issue/PR
-> artifact bundle; do not paste patient-identifying data into tracker comments.
+> **⚠ SUPERSEDED (2026-07-06, LIS-75).** The SnibeLis middleware premise is dropped
+> (owner directive): the X3 now attaches its native `Online` ASTM E1394-97
+> interface **directly** to our host, with **no** SnibeLis PC / license / DB on the
+> wire. The current bench instrument is **`docs/runbooks/snibe-maglumi-x3-bench.md`**
+> (no-SnibeLis), whose embedded evidence packet replaces the tables below. This file
+> is kept only for historical reference and is formally retired by **LIS-178**
+> (Stage-3 doc re-baseline). Do not fill this in for a native-ASTM bench.
+
+> Slice: LIS-108 / S3.0a (historical). Originally: use this when LIS-75 unblocks the
+> SnibeLis PC/license and LIS-38 needs live bench evidence. Keep raw captures with
+> the issue/PR artifact bundle; do not paste patient-identifying data into tracker
+> comments.
 
 ## Scope
 
