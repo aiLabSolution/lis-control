@@ -73,7 +73,7 @@ and becomes the spine of the validation dossier in Stage 5.
 | **0 — Foundations & compliance scaffold** | Core boots reproducibly; audit/RBAC proven; compliance plan drafted | 1,2,6 | 4–6 wks |
 | **1 — HL7 v2 edge** | *First result through the pipe* — **EDAN H60S** (+ HETO AU120); RAC-050 / labXpert deferred | 1,2,3,4 | 4–6 wks |
 | **2 — ASTM/serial edge** | Chemistry/electrolyte — **ERBA EC90** (sole available ASTM unit); DiaSys + serial fleet deferred | 1,2,3,4 | 6–8 wks |
-| **3 — Proprietary tails** | **MAGLUMI X3** (SnibeLis) + RT-7600 candidate; Mindray BC deferred | 2,3,4 | 4–6 wks |
+| **3 — Proprietary tails** | **MAGLUMI X3** (native ASTM direct-attach — SnibeLis dropped 2026-07-06) + RT-7600 candidate; Mindray BC deferred | 2,3,4 | 4–6 wks |
 | **4 — FHIR API + offline** | EMR-ready + outage-proof + on-prem deploy kit *(site↔central sync descoped to the M3 spoke)* | 1,4,5 | 4–6 wks |
 | **5 — Validation + pilot (M1, fully onsite)** | IQ/OQ/PQ signed on M1; pilot go-live; **lab files PIC NPC registration** | 3,4,5,6 | 4–6 wks |
 | **M3 — On-prem central-sync spoke (post-pilot)** | site↔central sync to LabSolution's own in-PH server; **gated by the [compliance extra-work checklist](docs/compliance/m3-sync-compliance-gate.md)** + a change-control validation delta on the M1 base | 4,5,6 | after pilot |
@@ -82,7 +82,9 @@ and becomes the spine of the validation dossier in Stage 5.
 > **⚠️ Availability re-scope (2026-06-26).** The physically-available test fleet
 > (confirmed by Pinote/LabSolution) does **not** include most of the machines named in
 > Stages 1–3. They are re-scoped onto available equivalents — **Stage 1 → EDAN H60S**
-> (HL7/MLLP), **Stage 2 → ERBA EC90** (ASTM), **Stage 3 → SNIBE MAGLUMI X3** (SnibeLis).
+> (HL7/MLLP), **Stage 2 → ERBA EC90** (ASTM), **Stage 3 → SNIBE MAGLUMI X3** (native ASTM
+> E1394-97 direct-attach — the SnibeLis middleware originally named here was dropped
+> 2026-07-06, see §Stage 3).
 > The named-but-unavailable machines (RAC-050, "Mindray labXpert", DiaSys R920, the
 > serial fleet, Mindray BC) are **deferred, not dropped** — they re-enter when the
 > hardware is on hand. The **protocol contract per stage is unchanged**; only the named
@@ -189,27 +191,38 @@ See the [access checklist](docs/testing/stage-1-3-machine-access-checklist.md) /
 
 ---
 
-### Stage 3 — Proprietary middleware tails
-**Goal:** the proprietary middleware tails at highest reverse-mapping effort.
-**Re-scoped vehicle (2026-06):** **SNIBE MAGLUMI X3 via SnibeLis** (ASTM E1394; bidirectional
-+ QC) is the available tail. *Mindray BC/DMS is deferred (not available); **RAYTO RT-7600**
-— available hematology with a proprietary TCP "Netport" stream — is the candidate 2nd tail,
-pending a wire-format capture (LIS-76). See the
+### Stage 3 — Proprietary tails
+**Goal:** the remaining analyzer tails at highest reverse-mapping effort.
+**Re-scoped vehicle (2026-06; topology re-baselined 2026-07-06, LIS-178):** **SNIBE MAGLUMI X3
+via its native built-in LIS interface** (ASTM E1394-97 over TCP, direct to our bridge;
+bidirectional + QC) is the available tail. The SNIBE-proprietary **SnibeLis middleware is
+dropped** (owner directive 2026-07-06): the X3's `Online` screen (`Set → System Setting →
+Online`) points the analyzer — a TCP client — at any host, and **our bridge is that host**
+(Host ID `Lis`; site-chosen port, serial COM fallback). *Mindray BC/DMS is deferred (not
+available); **RAYTO RT-7600** — available hematology with a proprietary TCP "Netport" stream —
+is the genuine remaining proprietary tail, pending a wire-format capture (LIS-76). See the
 [access checklist](docs/testing/stage-1-3-machine-access-checklist.md) / LIS-74.*
 
 **Key tasks**
-- Stand up the **SnibeLis** middleware PC (vendor license) and prefer configuring it to emit
-  to the engine; **fallback = ingest its export/DB** *(the SnibeLis→engine relay is
-  undocumented — confirm with SNIBE; LIS-75)*.
+- Stand up **our bridge as the ASTM host** and point the X3's `Online` screen at it;
+  bench-capture the native `Online` ASTM output — framing (incl. the analyzer-side
+  `Enable Checksum` toggle), timestamp indexing, real Lis-IDs/units *(LIS-75)* — then land the
+  simplified-envelope framing receive path *(LIS-174)* and the X3 `bridge.analyzers` channel
+  *(LIS-175)*. **HL7 v2.5 is the documented fallback lever** if ASTM framing proves troublesome
+  on the bench — a proprietary SNIBE dialect (`OUL^R22`/`OML^O33` on MLLP, not `ORU^R01`;
+  LIS-176). **The SnibeLis export/DB route is a last-resort contingency only** *(LIS-34,
+  demoted — relevant only if the X3 firmware refuses a non-SNIBE host, unproven)*.
 - **RAYTO RT-7600:** byte-capture the Netport/serial stream, then reverse-map its CBC fields
   *(replaces the deferred Mindray DMS BC-hematology ingest; LIS-76)*.
 - Budget explicit reverse-engineering time; capture raw for replay.
 
-**Deliverables:** SnibeLis channel; RT-7600 ingest; mapping tables.
+**Deliverables:** X3 native-ASTM channel (framing profile + registry entry + Lis-ID→LOINC /
+unit→UCUM maps); RT-7600 ingest; mapping tables.
 
 **✅ Verifiable output (exit gate)**
-- A **MAGLUMI X3** immunoassay result flows MAGLUMI → SnibeLis → engine → normalized
-  Result (LOINC/UCUM), asserted E2E; **QC results flagged** correctly.
+- A **MAGLUMI X3** immunoassay result flows X3 → (native `Online` ASTM) → engine → normalized
+  Result (LOINC/UCUM), asserted E2E; **QC results flagged** correctly *(no ASTM wire
+  discriminator — host-side classification, LIS-33)*.
 - A **RAYTO RT-7600** result produces a normalized **CBC panel** covering the documented
   analytes *(or a Mindray BC via DMS, when available)*.
 - Any unit lacking a clean interface has a **documented fallback** (export/DB parser) with a conformance test.
