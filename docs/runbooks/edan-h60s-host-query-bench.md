@@ -40,12 +40,19 @@ answered from the wire. Confirmed facts (see `identity.md`):
 rebuilt bridge (`edge/drivers` `30b11c8`, LIS-149 + LIS-118 infra), a barcode host-query
 in the H60S QRD-8 layout was answered from a **real OpenELIS pending order** with an
 `ORF^R04` worklist (`OePendingOrderResolver` → 9 order codes for accession
-`DEV01260000000000011`) — through the **shared** EDAN H90 responder, with **no divergent
-H60S profile branch required** (settles that half of Step 6 / AC "field positions"). The
-returned physical `ORU^R01` filed all 33 observations under the **barcode** accession, not
-the OBR-2 counter — the LIS-182 wrong-patient-attach fix confirmed on live wire. (6/33
-analytes mapped; the other 27 are `unmapped_loinc`, = the CBC-6 registration limit,
-**LIS-112**, not an attach fault.)
+`DEV01260000000000011`, per the bridge session log — **not** saved to the packet) —
+through the **shared** EDAN H90 responder, with **no divergent H60S profile branch
+required** (settles that half of Step 6 / AC "field positions"). The returned physical
+`ORU^R01` filed all 33 observations under the **barcode** accession, not the OBR-2 counter.
+
+> **Where the attach-fix proof lives:** the packet's `identity.md` / `openelis-attach-evidence.md`
+> record the **pre-fix** misfile (results under OBR-2 = `3`) — they predate the fix. The
+> post-fix confirmation is *outside* this packet: LIS-182 was already fixed by LIS-149's
+> OBR-20 reconcile (`a2152a6`), verified this session by a live OE DB re-query (33 rows under
+> the barcode accession, 0 under any counter) and pinned by the real-wire regression test
+> `HL7ResultParserLis182Test` (bridge `15feb08`, umbrella PR #102 = this branch's base
+> `cc4ad52`). 6/33 analytes mapped; the other 27 are `unmapped_loinc` = the CBC-6
+> registration limit (**LIS-112**), not an attach fault.
 
 > **Honesty caveats (why this is not yet Full support):** the demonstrated ORF answer was
 > issued to a query from the **NAT'd bench host** (`172.21.0.1`), so it proves the
