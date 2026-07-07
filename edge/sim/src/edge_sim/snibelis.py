@@ -15,11 +15,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .astm import ACK, ENQ, EOT, ETX, STX
+from .astm import ACK, CR, ENQ, EOT, ETX, LF, STX
 from .e1394 import AstmMessage, Record, parse_e1394
 from .fixtures import Fixture
 
 __all__ = [
+    "SnibeLisReceiverError",
+    "SnibeLisReceiver",
     "SnibeLisSessionEvent",
     "SnibeLisSessionResult",
     "SnibeLisQuery",
@@ -33,6 +35,135 @@ __all__ = [
     "build_order_download_response",
     "run_query_exchange",
 ]
+
+# The first byte of the very first record after STX being an ASCII digit 0-7
+# would be an E1381 frame number (``STX FN text ...`` -- astm.py's build_frame),
+# never a legitimate E1394 record-type letter (H/P/O/R/C/M/Q/L). SnibeLisReceiver
+# uses this to cleanly reject a checksummed E1381 session mistakenly aimed at a
+# SnibeLis-configured (``checksum: false``) receiver -- KB §4 / plan D4.
+_E1381_FRAME_DIGITS = frozenset(ord(str(n)) for n in range(8))
+
+
+class SnibeLisReceiverError(Exception):
+    """Raised when the inbound byte stream violates the documented SnibeLis
+    simplified envelope (KB §4): a control byte arrives out of the
+    ENQ/STX/…/ETX/EOT order, or the very first byte after ``STX`` is an E1381
+    frame-number digit (a checksummed session aimed at this receiver). The
+    receiver never NAKs and never asks for a retransmit -- the wire contract's
+    answer to any violation is "the link is dead"; the caller closes it."""
+
+
+class SnibeLisReceiver:
+    """The SnibeLis simplified-envelope receiver half (host side): the byte-driven
+    mirror of :class:`edge_sim.astm.AstmReceiver`, but for the documented SnibeLis
+    wire contract (KB §4) instead of full E1381.
+
+    ACKs at exactly the four token points (``ENQ``, ``STX``, ``ETX``, ``EOT``);
+    the CR-separated E1394 records in between are consumed but never individually
+    ACKed. There is no NAK vocabulary here: any wire violation raises
+    :class:`SnibeLisReceiverError` so the caller can close the link (KB §4:
+    "reconnect, never retransmit"). Tolerant of an optional LF after CR
+    (stripped) and of empty records (skipped) -- Postel's law over the
+    documented envelope, mirroring the production bridge's ``SnibeAstmCommunicator``
+    tolerances (plan D1). After an ``EOT`` the receiver resets to await the next
+    ``ENQ``, so one instance can serve multiple envelopes on the same connection.
+    """
+
+    def __init__(self) -> None:
+        self.envelopes: list[bytes] = []
+        self.state = "AWAIT_ENQ"
+        self._buffer = bytearray()
+        self._pending: bytes | None = None
+        self._last_byte: int | None = None
+
+    @property
+    def complete(self) -> bool:
+        """True once at least one full envelope (ENQ..EOT) has been received."""
+        return bool(self.envelopes)
+
+    @property
+    def envelope_count(self) -> int:
+        return len(self.envelopes)
+
+    @property
+    def payload(self) -> bytes:
+        """The most recently completed envelope's E1394 payload (CR-joined, no
+        forced trailing CR) -- the common single-envelope session."""
+        return self.envelopes[-1] if self.envelopes else b""
+
+    @property
+    def records(self) -> list[str]:
+        """The most recently completed envelope's E1394 records."""
+        return self.payload.decode("latin-1").split("\r") if self.payload else []
+
+    def feed(self, data: bytes) -> bytes:
+        """Process a chunk of the inbound session byte stream and return the ACK
+        bytes for however many control tokens completed within it (empty if
+        ``data`` only extended the in-progress record content)."""
+        acks = bytearray()
+        for byte in data:
+            ack = self._feed_byte(byte)
+            if ack is not None:
+                acks.extend(ack)
+        return bytes(acks)
+
+    def _feed_byte(self, byte: int) -> bytes | None:
+        if self.state == "AWAIT_ENQ":
+            if byte != ENQ:
+                raise SnibeLisReceiverError(f"expected ENQ, got 0x{byte:02X}")
+            self.state = "AWAIT_STX"
+            return bytes([ACK])
+        if self.state == "AWAIT_STX":
+            if byte != STX:
+                raise SnibeLisReceiverError(f"expected STX, got 0x{byte:02X}")
+            self.state = "RECORDS"
+            self._buffer.clear()
+            self._last_byte = None
+            return bytes([ACK])
+        if self.state == "RECORDS":
+            if byte == ETX:
+                extracted = self._extract_records()
+                if not extracted:
+                    # Parity with the bridge's SnibeAstmCommunicator (PR #21 review
+                    # fix e4e5577): a zero-record envelope is rejected BEFORE the
+                    # ETX-ACK, so a degenerate payload rehearsed sim-vs-sim fails
+                    # exactly like it would against the live bridge.
+                    raise SnibeLisReceiverError(
+                        "empty simplified envelope (no records) rejected before ETX-ACK"
+                    )
+                self._pending = extracted
+                self.state = "AWAIT_EOT"
+                return bytes([ACK])
+            if not self._buffer and byte in _E1381_FRAME_DIGITS:
+                raise SnibeLisReceiverError(
+                    "byte after STX is an E1381 frame-number digit, not a "
+                    "SnibeLis record (checksummed session on a snibelis-only link)"
+                )
+            if byte == LF and self._last_byte == CR:
+                # Tolerate (and strip) an LF that follows a CR -- the wire
+                # contract has no LF, but a real link may add one.
+                self._last_byte = byte
+                return None
+            self._buffer.append(byte)
+            self._last_byte = byte
+            return None
+        if self.state == "AWAIT_EOT":
+            if byte != EOT:
+                raise SnibeLisReceiverError(f"expected EOT, got 0x{byte:02X}")
+            assert self._pending is not None  # set when ETX was processed
+            self.envelopes.append(self._pending)
+            self._pending = None
+            self.state = "AWAIT_ENQ"  # ready for the next envelope on this link
+            return bytes([ACK])
+        raise SnibeLisReceiverError(  # pragma: no cover - defensive, unreachable
+            "SnibeLisReceiver fed a byte in an unreachable state"
+        )
+
+    def _extract_records(self) -> bytes:
+        text = bytes(self._buffer).decode("latin-1")
+        records = [record for record in text.split("\r") if record]
+        return "\r".join(records).encode("latin-1")
+
 
 _CONTROL_SEQUENCE = (
     ("ENQ", ENQ),
@@ -113,7 +244,10 @@ def run_fixture_session(fixture: Fixture, *, actor: str = "snibelis") -> SnibeLi
 
 
 def run_snibelis_session(payload: bytes | str, *, actor: str = "snibelis") -> SnibeLisSessionResult:
-    """Drive one documented SnibeLis session and ACK each control code.
+    """Drive one documented SnibeLis session over an in-memory wire: a
+    :class:`SnibeLisReceiver` genuinely consumes the framed bytes and ACKs
+    ENQ/STX/ETX/EOT (never the records themselves) -- there is no fabricated
+    ACK list here (LIS-174 / D5).
 
     The payload bytes are normalized to CR-separated E1394 records because the
     ASTM record terminator is CR even when a checked-in synthetic fixture uses
@@ -121,15 +255,30 @@ def run_snibelis_session(payload: bytes | str, *, actor: str = "snibelis") -> Sn
     """
 
     body = _payload_bytes(payload)
-    events = [
-        SnibeLisSessionEvent(control, bytes([byte]), bytes([ACK]), actor)
-        for control, byte in _CONTROL_SEQUENCE
-    ]
+    wire = snibelis_frame(body)
+    record_bytes = wire[2:-2]  # everything between STX and ETX -- not individually ACKed
+
+    receiver = SnibeLisReceiver()
+    events: list[SnibeLisSessionEvent] = []
+    aborted = False
+    try:
+        for control, byte in _CONTROL_SEQUENCE:
+            if control == "ETX":
+                # The CR-separated record content is fed (and consumed) here,
+                # ahead of ETX, without generating its own event -- the wire
+                # contract never ACKs a record on its own.
+                receiver.feed(record_bytes)
+            response = receiver.feed(bytes([byte]))
+            events.append(SnibeLisSessionEvent(control, bytes([byte]), response, actor))
+    except SnibeLisReceiverError:
+        aborted = True
+
     return SnibeLisSessionResult(
         payload=body,
-        wire=snibelis_frame(body),
-        message=parse_e1394(body),
-        complete=True,
+        wire=wire,
+        message=parse_e1394(body) if not aborted else None,
+        complete=receiver.complete and not aborted,
+        aborted=aborted,
         events=events,
     )
 
