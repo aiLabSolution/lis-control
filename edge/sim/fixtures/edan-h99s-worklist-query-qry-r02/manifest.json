@@ -1,26 +1,29 @@
 {
   "id": "edan-h99s-worklist-query-qry-r02",
-  "description": "Synthetic HL7 v2.4 QRY^R02 worklist/order-download host-query from an EDAN H99S/H90-series analyzer. The analyzer asks the host for orders for barcode DEV01260000000000002 (QRD-8, QRD-9 = OTH) and expects an ORF^R04 answer with MSH-16=3 carrying PID/OBR order rows. NOT a real instrument capture.",
+  "description": "EDAN H99S/H90-series QRY^R02 worklist/order-download host-query. The QRY message bytes are REAL de-framed bench wire (pcap frame 0, 2026-07-06): the analyzer asks the host for the order selection for barcode DEV01260000000000002 (QRD-8) carrying its own sample number 1 (QRD-9), and expects an ORF^R04 answer (MSH-16=3) with a PID and a single EDAN panel OBR. The expected RESPONSE fields below are the sim's protocol scaffold, not bench-signed (the worklist-response fix is not yet hardware-verified — LIS-149 AC3).",
   "analyzer": { "vendor": "EDAN", "model": "H99S" },
   "protocol": "hl7v2",
   "transport": "mllp",
   "direction": "bidirectional",
   "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
   "source": {
-    "reference": "synthetic seed (LIS-149 / DEC-06 H99S order-download - EDAN H90 LIS Communication Protocol, QRY^R02 / ORF^R04 worklist profile)",
-    "note": "Application payload only (no MLLP framing). QRD-8 carries the analyzer barcode DEV01260000000000002; the host response may return the reconciled OpenELIS accession 2 in OBR-2/3. Replace with real H99S bench wire capture before treating this as signed conformance evidence."
+    "reference": "Real de-framed bench wire — ~/bench-runs/bridge-h99s/evidence/edan-h99s/20260706-DEV01260000000000002/h99s-mllp-resume-oru.pcap frame 0 (analyzer 192.168.50.50, serial 861429-M26416640001). EDAN H90-series LIS Communication Protocol §3.2.3 (OBR repurposing) / §6.2 worklist worked example.",
+    "note": "Application payload only (no MLLP framing). The earlier synthetic guess (QRD-4 Q-1, QRD-9 OTH, control-id H99SQ1) was wrong; real wire is QRD-4=1, QRD-9=1 (the analyzer sample number, NOT a filter code), control-id=3, MSH-3=H90^861429-M26416640001^507, MSH-4=EDANLAB. The reconciled_accession/patient_id below are the sim scaffold; on the real bench this barcode reconciled to accession 2 / patient 5. Replace with signed conformance evidence once the ORF worklist is accepted by the analyzer on the bench (AC3)."
   },
   "synthetic": true,
   "expected": {
     "message_type": "QRY^R02",
-    "query_id": "Q-1",
-    "control_id": "H99SQ1",
+    "query_id": "1",
+    "control_id": "3",
     "barcode": "DEV01260000000000002",
-    "what_subject": "OTH",
+    "sample_number": "1",
+    "sending_app_msh3_1": "H90",
+    "sending_facility": "EDANLAB",
     "response_message_type": "ORF^R04",
     "response_msh16": "3",
     "reconciled_accession": "2",
     "patient_id": "17",
+    "panel_code": "1",
     "analyzer_codes": ["WBC", "HGB"]
   }
 }
