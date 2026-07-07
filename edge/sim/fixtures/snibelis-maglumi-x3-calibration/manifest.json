@@ -13,7 +13,14 @@
   "synthetic": true,
   "channel": {
     "id": "snibelis-maglumi-x3-astm",
-    "isolation_group": "snibelis-maglumi-x3"
+    "isolation_group": "snibelis-maglumi-x3",
+    "tcp": { "port": 12021, "provenance": "bridge-default-bench-pending" },
+    "identity": {
+      "analyzer_id": "Maglumi User",
+      "host_id": "Lis",
+      "bridge_registry_id": "SNIBE-MAGLUMI-X3-001",
+      "provenance": "bridge-default-bench-pending"
+    }
   },
   "terminology": {
     "note": "Same minimal synthetic MAGLUMI X3 immunoassay seed as the result-upload fixture — a calibration row is still normalized to LOINC/UCUM (provenance is preserved) before it is routed out of the patient stream by kind, never silently dropped.",

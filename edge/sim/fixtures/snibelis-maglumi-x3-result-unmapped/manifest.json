@@ -8,12 +8,19 @@
   "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
   "source": {
     "reference": "synthetic seed (LIS-32 / S3.1); SnibeLis LIS User Manual v1.1 Appendix A result transmission example, plus deliberately-unmapped assays to exercise the missing-mapping review path",
-    "note": "Application payload only, simplified SnibeLis ENQ/STX/content/ETX/EOT envelope. AFP and CEA are intentionally absent from the terminology block, and U/mL from the unit map, to assert the flag-for-review contract. NOT a real instrument capture."
+    "note": "Application payload only, simplified SnibeLis ENQ/STX/content/ETX/EOT envelope. AFP and CEA are intentionally absent from the terminology block, and U/mL from the unit map, to assert the flag-for-review contract. NOT a real instrument capture. channel.tcp.port 12021 mirrors the planned dedicated X3 listener (LIS-174 plan D3, org.itech.ahb.listen-astm-server.snibe); channel.identity analyzer_id/host_id ('Maglumi User'/'Lis') are vision-extracted vendor-doc screenshot values, unverified — LIS-75 bench capture pins all of these (LIS-175)."
   },
   "synthetic": true,
   "channel": {
     "id": "snibelis-maglumi-x3-astm",
-    "isolation_group": "snibelis-maglumi-x3"
+    "isolation_group": "snibelis-maglumi-x3",
+    "tcp": { "port": 12021, "provenance": "bridge-default-bench-pending" },
+    "identity": {
+      "analyzer_id": "Maglumi User",
+      "host_id": "Lis",
+      "bridge_registry_id": "SNIBE-MAGLUMI-X3-001",
+      "provenance": "bridge-default-bench-pending"
+    }
   },
   "terminology": {
     "note": "Minimal synthetic MAGLUMI X3 seed (LIS-32) mapping ONLY TSH and the uIU/mL, ng/mL units — AFP, CEA and U/mL are deliberately omitted so their rows normalize to PARTIAL/UNMAPPED. NOT a complete or site-verified MAGLUMI dictionary.",

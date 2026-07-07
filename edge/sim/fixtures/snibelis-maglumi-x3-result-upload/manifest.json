@@ -8,12 +8,19 @@
   "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
   "source": {
     "reference": "synthetic seed (LIS-108 / S3.0a); SnibeLis LIS User Manual v1.1 Appendix A Network Interface, result transmission example",
-    "note": "Application payload only. The SnibeLis simulator applies the manual's simplified ENQ/STX/content/ETX/EOT envelope and ACKs ENQ, STX, ETX and EOT. The manual examples omit E1381 frame numbers and checksums; live SnibeLis capture must confirm whether production uses this simplified envelope or full E1381 framing."
+    "note": "Application payload only. The SnibeLis simulator applies the manual's simplified ENQ/STX/content/ETX/EOT envelope and ACKs ENQ, STX, ETX and EOT. The manual examples omit E1381 frame numbers and checksums; live SnibeLis capture must confirm whether production uses this simplified envelope or full E1381 framing. channel.tcp.port 12021 mirrors the planned dedicated X3 listener (LIS-174 plan D3, org.itech.ahb.listen-astm-server.snibe); channel.identity analyzer_id/host_id ('Maglumi User'/'Lis') are vision-extracted vendor-doc screenshot values, unverified — LIS-75 bench capture pins all of these (LIS-175)."
   },
   "synthetic": true,
   "channel": {
     "id": "snibelis-maglumi-x3-astm",
-    "isolation_group": "snibelis-maglumi-x3"
+    "isolation_group": "snibelis-maglumi-x3",
+    "tcp": { "port": 12021, "provenance": "bridge-default-bench-pending" },
+    "identity": {
+      "analyzer_id": "Maglumi User",
+      "host_id": "Lis",
+      "bridge_registry_id": "SNIBE-MAGLUMI-X3-001",
+      "provenance": "bridge-default-bench-pending"
+    }
   },
   "terminology": {
     "note": "Minimal synthetic MAGLUMI X3 immunoassay seed (LIS-32) — the two assays in this fixture only. Codes come solely from this channel block (bridge contract: codeToLoinc is per-analyzer data, never a shared seed). NOT a complete or site-verified MAGLUMI assay dictionary; real code strings + units graduate with a SnibeLis capture (LIS-75/LIS-38).",
