@@ -63,6 +63,19 @@ release. The path is not bench-conformant until the request/response wire bytes,
 OpenELIS pending-order lookup, and validation-owner sign-off are in the evidence
 packet.
 
+**BENCH RESULT (2026-07-07 / LIS-149): PASSED — the order-download path is
+bench-conformant.** All three gating conditions above are satisfied. The physical
+H99S `QRY^R02` / `ORF^R04` worklist exchange and the follow-up `ORU^R01` were
+captured on real wire; the OpenELIS `order-menu` reconciliation resolved the
+scanned barcode to the order; and the validation owner (Pinote / DEC-01) signed the
+change-control evidence on 2026-07-07. The result-to-order **return leg** is proven:
+a real ORU carried the analyzer's own sample counter in `OBR-2` (`15`) and the
+scanned barcode in `OBR-20` (`DEV01260000000000011`); the merged bridge preferred
+`OBR-20`, reconciled it to the OpenELIS accession, and staged the CBC results onto
+the correct order (sample 21) with **no orphan**. Implementation recorded by SHA:
+`edge/drivers` `30b11c8` (bridge PR #24), umbrella `5def550` (PR #101). Per-criterion
+record in §7 and the Exit Criteria below.
+
 ## Readiness and EDAN H90-series parse profile (READ BEFORE THE BENCH)
 
 Transport + ACK are ready, and **result parsing/normalization is ready in both the
@@ -360,8 +373,9 @@ Pass criteria:
 ### 7. Worklist query change-control gate (LIS-149)
 
 Run after the ORU path is stable and only with bench-only identifiers. This is a
-DEC-06 released implementation gate for H99S, but it still requires real wire
-evidence before support is claimed.
+DEC-06 released implementation gate for H99S. **STATUS: PASSED on real wire
+2026-07-07 (LIS-149)** — see the bench-result record near the top of this runbook;
+the steps below remain the procedure for re-verification.
 
 1. Configure a bench-only OpenELIS order with a known barcode and accession. The
    LIS-149 synthetic fixture uses barcode `DEV01260000000000002`, reconciled to
@@ -441,6 +455,17 @@ the sample-result evidence above:
   barcode-to-accession reconciliation.
 - The bridge/OpenELIS implementation used for the run is recorded by git SHA.
 - The validation owner signs the LIS-149 change-control evidence.
+
+**STATUS: MET 2026-07-07 (LIS-149).** `qry-worklist.hl7` / `orf-worklist.hl7` and the
+real `ORU^R01` are in the bench evidence packet
+(`~/bench-runs/bridge-h99s/evidence/edan-h99s/20260706-DEV01260000000000002/`); the §7
+pass criteria (incl. `MSA-2` echo and barcode-to-accession reconciliation) are
+satisfied; implementation recorded at `edge/drivers` `30b11c8` / umbrella `5def550`;
+validation owner (Pinote) signed the change-control evidence. **Follow-up (not a
+gate):** the analyzer emits the full CBC + 5-part-diff panel and OpenELIS accepts it
+(a CD-mode run posted 83 observations, accepted), but only the registered CBC-6 codes
+map to `result` rows — extend the analyzer `testCodeLoinc`/`testMappings` map to widen
+coverage (code→LOINC follow-up; most target tests already exist in OpenELIS with LOINCs).
 
 ## Follow-Up Slices to File if Needed
 
