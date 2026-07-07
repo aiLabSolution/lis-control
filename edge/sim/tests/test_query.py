@@ -176,19 +176,22 @@ def test_response_msa2_echoes_query_control_id():
 
 
 def test_h99s_worklist_query_fixture_reads_barcode_subject():
-    q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
-    exp = load_fixture(H99S_WORKLIST_QRY).expected
-    assert q.query_id == exp["query_id"]
+    fx = load_fixture(H99S_WORKLIST_QRY)
+    q = parse_query(fx.message_bytes)
+    exp = fx.expected
+    assert q.query_id == exp["query_id"]  # QRD-4 = "1" on the real wire
     assert q.subject_id == "DEV01260000000000002"
     assert q.subject_id == exp["barcode"]
-    assert q.what_subject == "OTH"
-    assert q.control_id == "H99SQ1"
-    assert q.sending_app == "H90"
-    assert q.sending_facility == "EDANLAB"
+    assert q.what_subject == exp["sample_number"]  # QRD-9 = analyzer sample number "1"
+    assert q.control_id == exp["control_id"]  # MSH-10 = "3"
+    assert q.sending_app.split("^", 1)[0] == exp["sending_app_msh3_1"]  # MSH-3.1 = "H90"
+    assert q.sending_facility == exp["sending_facility"]  # MSH-4 = "EDANLAB"
 
 
-def test_h99s_worklist_answer_reconciles_barcode_to_accession_orders():
+def test_h99s_worklist_answer_echoes_barcode_and_panel():
     q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
+    # accession_number is unused for an EDAN build (the barcode comes from the query, and
+    # the accession never rides the download wire); the codes derive the CBC panel.
     order = WorklistOrder(
         accession_number="2",
         patient_id="17",
@@ -201,21 +204,26 @@ def test_h99s_worklist_answer_reconciles_barcode_to_accession_orders():
     resp = parse_worklist_query_response(orf)
 
     assert b"ORF^R04" in orf
-    assert b"|P|2.4||||3\r" in orf  # EDAN H90-series MSH-16 query response type
-    assert b"MSA|AA|H99SQ1\r" in orf
-    assert b"QRD|20260703112800|R|I|Q-1||||DEV01260000000000002|OTH\r" in orf
+    assert b"|P|2.4||||3\r" in orf  # EDAN H90-series MSH-16 query-response type
+    assert b"MSA|AA|3\r" in orf  # MSA-2 echoes the query control id (MSH-10 = 3)
+    assert b"QRD|20260706|R|1|1||||DEV01260000000000002|1\r" in orf  # echoed QRD
     assert b"PID|1||17\r" in orf
-    assert b"OBR|1|2|2|^^^WBC^WBC|||||||A" in orf
-    assert b"OBR|2|2|2|^^^HGB^HGB|||||||A" in orf
+    # ONE EDAN panel OBR (last segment, no trailing CR; spec §6.2): OBR-2 = sample no (1),
+    # OBR-4 empty, OBR-11 = CBC (1), OBR-19 = whole blood (0), OBR-20 = the barcode (QRD-8).
+    assert b"OBR|1|1|||||||||1||||||||0|DEV01260000000000002" in orf
+    assert b"OBR|2|" not in orf  # WBC+HGB collapse to one panel, not per-analyte
+    assert b"^^^WBC^WBC" not in orf  # no generic per-analyte encoding
+    assert b"EDANLAB^H90" not in orf  # OBR-4 empty in the download direction
 
     assert resp.ack_code == "AA"
-    assert resp.query_id == "Q-1"
+    assert resp.query_id == "1"
     assert resp.subject_id == "DEV01260000000000002"
     assert worklist_correlates(q, resp) is True
-    assert [(o.accession_number, o.patient_id, o.analyzer_codes) for o in resp.orders] == [
-        ("2", "17", ("WBC",)),
-        ("2", "17", ("HGB",)),
-    ]
+    assert len(resp.orders) == 1
+    assert resp.orders[0].barcode == "DEV01260000000000002"  # OBR-20 (the join key)
+    assert resp.orders[0].panel_code == "1"  # CBC, from OBR-11
+    assert resp.orders[0].accession_number == ""  # accession not on the download wire
+    assert resp.orders[0].analyzer_codes == ()  # panel-level, not per-analyte
 
 
 def test_h99s_worklist_exchange_over_mllp_framing():
@@ -236,38 +244,55 @@ def test_h99s_worklist_exchange_over_mllp_framing():
     assert worklist_correlates(parse_query(received[0]), parse_worklist_query_response(received[1]))
 
 
-def test_h99s_worklist_result_closes_loop_no_orphan():
-    """The missing AC1 half: the accession the worklist ORF reconciles to is the
-    same accession the analyzer's follow-up ORU^R01 result lands on, and it
-    normalizes LOINC-mapped — the closed loop, no orphan sample."""
+def test_worklist_answer_non_edan_uses_generic_per_analyte_obr():
+    """A non-EDAN-H90 querier (not H90 in MSH-3.1, not EDANLAB in MSH-4) keeps the generic
+    per-analyte ORF: accession in OBR-2/3, code in OBR-4, one OBR per code — no EDAN panel
+    repurposing. Guards the non-EDAN host-query users against regression (mirror of the
+    bridge's nonEdanKeepsGenericPerTestOrf)."""
+    q = QueryRecord(
+        query_datetime="20260706", format_code="R", priority="I", query_id="Q9",
+        subject_id="SPEC-9", what_subject="RES", control_id="C9",
+        sending_app="ACME", sending_facility="ACMEDX",
+    )
+    order = WorklistOrder(accession_number="2", patient_id="17", analyzer_codes=("WBC", "HGB"))
+    orf = build_worklist_query_response(q, (order,), response_datetime=WHEN_H99S, control_id="ORF9")
+    resp = parse_worklist_query_response(orf)
+
+    assert b"OBR|1|2|2|^^^WBC^WBC|||||||A" in orf
+    assert b"OBR|2|2|2|^^^HGB^HGB|||||||A" in orf
+    assert b"EDANLAB^H90" not in orf
+    # generic parse recovers the per-analyte codes and the accession from OBR-2/3
+    assert [(o.accession_number, o.analyzer_codes) for o in resp.orders] == [
+        ("2", ("WBC",)),
+        ("2", ("HGB",)),
+    ]
+    assert all(o.panel_code == "" and o.barcode == "" for o in resp.orders)
+
+
+def test_h99s_worklist_answer_echoes_barcode_join_key_in_obr20():
+    """LIS-149 AC1 (forward half): the EDAN worklist ORF echoes the scanned barcode in
+    OBR-20 (the "Patient ID or Barcode" field, spec §6.2) so the analyzer's follow-up ORU
+    can be reconciled back to the same OpenELIS order — no orphan sample. The barcode is
+    read back out of the parsed response (not a literal) and anchored against the query
+    subject, so a dropped barcode (emitted "") cannot pass vacuously. The internal accession
+    never rides the wire; the host reconciles the barcode to it on each leg.
+
+    Deferred (ORU result-attach leg): the verified return half — a real result-bearing
+    ORU^R01 reconciled back to the accession via its OBR-20 barcode — is not asserted here
+    (the owner scoped this slice to the worklist-accept half). The ORU parser still keys on
+    OBR-2, so it needs to learn the OBR-20 barcode reconciliation, and that is not yet
+    validated on real H99S result wire (the H99S ORUs captured so far are MSH-only
+    connection-test pings; the sibling H60S and spec §6.1 show the layout)."""
     q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
     order = WorklistOrder(accession_number="2", patient_id="17", analyzer_codes=("WBC", "HGB"))
     orf = build_worklist_query_response(q, (order,), response_datetime=WHEN_H99S, control_id="ORFQ-1")
     resp = parse_worklist_query_response(orf)
+
     assert worklist_correlates(q, resp) is True
-
-    # The analyzer runs the tests and later uploads a SEPARATE ORU^R01 for the
-    # reconciled accession — build it keyed on resp.orders[0], not a hardcoded
-    # literal, so the chain (not just the value) is what's under test. Anchor
-    # the extracted value against the submitted order first: without this, a
-    # worklist answer that dropped the accession (e.g. emitted "") would still
-    # make the downstream self-consistency check below pass vacuously.
-    returned_accession = resp.orders[0].accession_number
-    assert returned_accession == order.accession_number
-    oru = (
-        f"MSH|^~\\&|H90^^507|EDANLAB|||20260703112900||ORU^R01|H99SR1|P|2.4||||0||UTF8\r"
-        f"PID|1|17\r"
-        f"OBR|1|{returned_accession}||EDANLAB^H90|||20260703112700\r"
-        f"OBX||NM|0|WBC|11.9|10\\S\\9/L|4.00-20.00|0|0|0||\r"
-        f"OBX||NM|0|HGB|110|g/L|110-160|0|0|0||\r"
-    ).encode("ascii")
-
-    report = parse_oru_r01(oru)
-    assert report.specimen_id == returned_accession  # same order, no orphan
-    rows = Normalizer().normalize_report(report)
-    assert [r.raw_code for r in rows] == ["WBC", "HGB"]
-    assert [r.loinc for r in rows] == ["6690-2", "718-7"]
-    assert all(r.status == STATUS_NORMALIZED for r in rows)
+    assert len(resp.orders) == 1
+    assert resp.orders[0].barcode == q.subject_id  # OBR-20 echoes the queried barcode
+    assert resp.orders[0].accession_number == ""  # accession stays host-side, off the wire
+    assert resp.orders[0].panel_code == "1"  # CBC measurement panel (OBR-11)
 
 
 # --- correlation logic (unit-level, incl. the empty-id/subject guards) -------

@@ -174,10 +174,12 @@ def test_worklist_query_exchange_exit_zero(capsys):
         ]
     ) == 0
     out = capsys.readouterr().out
-    assert "QRY^R02 id=Q-1" in out
+    assert "QRY^R02 id=1" in out  # regraded to real wire (QRD-4 = 1)
     assert "barcode=DEV01260000000000002" in out
     assert "ORF^R04 MSA-1=AA" in out
     assert "correlates=True" in out
-    assert "accession=2" in out
-    assert "WBC" in out
-    assert "HGB" in out
+    # EDAN H90-series worklist echoes the scanned barcode in OBR-20 (accession stays
+    # host-side) and is panel-level: the WBC/HGB codes derive the CBC panel (1, in OBR-11),
+    # not per-analyte test codes.
+    assert "OBR\taccession=-\tbarcode=DEV01260000000000002" in out
+    assert "panel:1" in out
