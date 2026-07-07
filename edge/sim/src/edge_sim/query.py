@@ -60,12 +60,18 @@ _DEFAULT_ENCODING_CHARS = "^~\\&"
 WHAT_RESULTS = "RES"  # QRD-9 "What Subject Filter" code for a results query
 WHAT_WORKLIST = "OTH"  # QRD-9 default for a generic host-order/worklist query
 
-# EDAN H90-series worklist ORF field values (spec §3.2.3 semantics, §6.2 accepted download
-# shape). The analyzer downloads a measurement PANEL, not per-analyte tests: OBR-4 is EMPTY
-# in the download direction (EDANLAB^equipment is the device-REPORTING/ORU convention),
-# OBR-11 = panel integer, OBR-19 = sample type, OBR-20 = the scanned barcode.
+# EDAN H90-series worklist ORF field values, replicating the vendor's accepted §6.2 download
+# example field-for-field (semantics §3.2.3). The analyzer downloads a measurement PANEL, not
+# per-analyte tests. OBR-4 is EMPTY in the download (EDANLAB^equipment is the device-REPORTING
+# convention). The DECISIVE field is OBR-31, the measurement-item NAME the LIS transmits on a
+# download (§3.2.3 "Reason for Study") — the panel int in OBR-11 alone is rejected as "not
+# matched" (confirmed on the H99S bench).
+_EDAN_REFERENCE_GROUP = "0"  # OBR-5
+_EDAN_ANALYSIS_DOCTOR = "Administrator"  # OBR-18 (per §6.2 example)
 _EDAN_SAMPLE_TYPE_WHOLE_BLOOD = "0"  # OBR-19
+_EDAN_LOADING_METHOD = "1"  # OBR-30 (per §6.2 example)
 _EDAN_PANEL_CBC = "1"  # OBR-11: CBC=1, CD=0, RET=2, ESR=23, … (only CBC implemented)
+_EDAN_PANEL_CBC_NAME = "CBC"  # OBR-31 measurement-item name
 
 
 def _is_edan_h90(query: QueryRecord) -> bool:
@@ -81,6 +87,13 @@ def _edan_panel_code(analyzer_codes: tuple[str, ...]) -> str:
     H99S bench runs CBC; the full panel table (RET/CD/ESR/…) is deferred, so any order
     maps to CBC rather than emitting no panel (which the analyzer rejects)."""
     return _EDAN_PANEL_CBC
+
+
+def _edan_panel_name(analyzer_codes: tuple[str, ...]) -> str:
+    """EDAN OBR-31 measurement-item name (spec §3.2.3 "Reason for Study"): the field the LIS
+    transmits the measurement item through on a worklist download. Only CBC is implemented;
+    multiple items would be ``+``-separated."""
+    return _EDAN_PANEL_CBC_NAME
 
 
 class QueryError(Exception):
@@ -117,16 +130,17 @@ class WorklistOrder:
     """One host order returned to an analyzer worklist query.
 
     ``analyzer_codes`` are the per-analyte codes the generic ORF carries (accession in
-    OBR-2/3). The EDAN H90-series worklist is panel-level instead (spec §3.2.3 / §6.2): one
-    OBR whose OBR-11 is a measurement-panel integer (``panel_code``) and whose OBR-20 is the
-    scanned ``barcode`` — the accession is not on the download wire. So an EDAN order parses
-    back with empty ``analyzer_codes``/``accession_number`` and a populated ``panel_code``
-    (CBC = ``"1"``) and ``barcode``."""
+    OBR-2/3). The EDAN H90-series worklist is panel-level instead (spec §3.2.3 / §6.2): one OBR
+    whose OBR-11 is a measurement-panel integer (``panel_code``), OBR-31 the measurement-item
+    name (``panel_name``), and OBR-20 the scanned ``barcode`` — the accession is not on the
+    download wire. So an EDAN order parses back with empty ``analyzer_codes``/``accession_number``
+    and a populated ``panel_code`` (CBC = ``"1"``), ``panel_name`` (``"CBC"``) and ``barcode``."""
 
     accession_number: str
     patient_id: str
     analyzer_codes: tuple[str, ...]
     panel_code: str = ""
+    panel_name: str = ""
     barcode: str = ""
 
 
@@ -272,8 +286,9 @@ def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQue
     The response echoes QRD-4/QRD-8 for correlation. A generic OBR carries one analyzer
     test code in OBR-4 (`^^^WBC^WBC`) and the accession in OBR-2/3; an EDAN H90-series OBR
     leaves OBR-4 empty and is panel-level, with the scanned barcode in OBR-20, the panel
-    integer in OBR-11, and no accession on the download wire (spec §3.2.3 / §6.2). This is
-    not a result parser: there are no OBX rows in the order-download payload.
+    integer in OBR-11, the measurement-item name in OBR-31, and no accession on the download
+    wire (spec §3.2.3 / §6.2). This is not a result parser: there are no OBX rows in the
+    order-download payload.
     """
     msg = message if isinstance(message, Message) else parse_message(message)
     msh = msg.first("MSH")
@@ -307,6 +322,7 @@ def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQue
         else:
             barcode = _u(msg, obr.field(20))
             panel = _u(msg, obr.field(11))
+            panel_name = _u(msg, obr.field(31))
             if barcode or panel:
                 orders.append(
                     WorklistOrder(
@@ -314,6 +330,7 @@ def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQue
                         patient_id=patient_id,
                         analyzer_codes=(),
                         panel_code=panel,
+                        panel_name=panel_name,
                         barcode=barcode,
                     )
                 )
@@ -342,12 +359,13 @@ def build_worklist_query_response(
     """Build the host's H99S `ORF^R04` order-download answer.
 
     `QRD-8` echoes the analyzer's barcode subject for correlation. For an EDAN H90-series
-    querier the reply is the panel-level EDAN OBR (spec §6.2 accepted download): one OBR per
-    order carrying the analyzer's sample number (echoed QRD-9) in OBR-2, an empty OBR-4, the
-    panel integer in OBR-11, sample type in OBR-19, and the scanned barcode (echoed QRD-8)
-    in OBR-20 — the join key the analyzer's follow-up ORU echoes; the accession never rides
-    the wire. A non-EDAN querier keeps the generic per-analyte OBR (accession in OBR-2/3,
-    code in OBR-4).
+    querier the reply replicates the vendor's accepted §6.2 download OBR field-for-field: the
+    analyzer's sample number (echoed QRD-9) in OBR-2, an empty OBR-4, the panel integer in
+    OBR-11, the scanned barcode (echoed QRD-8) in OBR-20 — the join key the follow-up ORU
+    echoes; the accession never rides the wire — and the measurement-item NAME in OBR-31, the
+    field §3.2.3 says the LIS transmits the item through on a download (the field the H99S
+    reads to accept; OBR-11's int alone is rejected as "not matched"). A non-EDAN querier
+    keeps the generic per-analyte OBR (accession in OBR-2/3, code in OBR-4).
     """
     order_rows = tuple(orders)
     patient_id = next((order.patient_id for order in order_rows if order.patient_id), "")
@@ -370,20 +388,23 @@ def build_worklist_query_response(
         if edan:
             if not codes:
                 continue
-            # One EDAN panel OBR (spec §6.2 accepted download shape): OBR-2 = the analyzer's
-            # own sample number (echoed QRD-9), OBR-4 = empty (EDANLAB^equipment is the
-            # ORU-reporting convention, not the download), OBR-11 = panel int, OBR-19 =
-            # sample type, OBR-20 = the scanned barcode (echoed QRD-8) — the join key; the
-            # accession never rides the download wire.
-            obr = [""] * 21
+            # One EDAN panel OBR replicating the vendor's accepted §6.2 download field-for-field
+            # (OBR-1 empty): OBR-2 = the analyzer's own sample number (echoed QRD-9), OBR-4 empty
+            # (EDANLAB^equipment is the ORU-reporting convention), OBR-5 = reference group,
+            # OBR-11 = panel int, OBR-18 = analysis doctor, OBR-19 = sample type, OBR-20 = the
+            # scanned barcode (echoed QRD-8; the join key, accession stays host-side), OBR-30 =
+            # loading method, OBR-31 = the measurement-item NAME the LIS transmits on a download.
+            obr = [""] * 32
             obr[0] = "OBR"
-            obr[1] = str(set_id)
             obr[2] = _esc(query.what_subject)
+            obr[5] = _EDAN_REFERENCE_GROUP
             obr[11] = _edan_panel_code(codes)
+            obr[18] = _EDAN_ANALYSIS_DOCTOR
             obr[19] = _EDAN_SAMPLE_TYPE_WHOLE_BLOOD
             obr[20] = _esc(query.subject_id)
+            obr[30] = _EDAN_LOADING_METHOD
+            obr[31] = _edan_panel_name(codes)
             segs.append("|".join(obr))
-            set_id += 1
         else:
             for code in codes:
                 segs.append(

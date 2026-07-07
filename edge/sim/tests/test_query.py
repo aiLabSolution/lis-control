@@ -208,10 +208,11 @@ def test_h99s_worklist_answer_echoes_barcode_and_panel():
     assert b"MSA|AA|3\r" in orf  # MSA-2 echoes the query control id (MSH-10 = 3)
     assert b"QRD|20260706|R|1|1||||DEV01260000000000002|1\r" in orf  # echoed QRD
     assert b"PID|1||17\r" in orf
-    # ONE EDAN panel OBR (last segment, no trailing CR; spec §6.2): OBR-2 = sample no (1),
-    # OBR-4 empty, OBR-11 = CBC (1), OBR-19 = whole blood (0), OBR-20 = the barcode (QRD-8).
-    assert b"OBR|1|1|||||||||1||||||||0|DEV01260000000000002" in orf
-    assert b"OBR|2|" not in orf  # WBC+HGB collapse to one panel, not per-analyte
+    # ONE EDAN panel OBR replicating the accepted §6.2 download field-for-field: OBR-2 =
+    # sample no (1), OBR-5 = 0, OBR-11 = CBC int (1), OBR-18 = Administrator, OBR-19 = 0,
+    # OBR-20 = barcode (QRD-8), OBR-30 = 1, OBR-31 = CBC name (the accept key).
+    assert b"OBR||1|||0||||||1|||||||Administrator|0|DEV01260000000000002||||||||||1|CBC" in orf
+    assert orf.count(b"OBR|") == 1  # WBC+HGB collapse to one panel, not per-analyte
     assert b"^^^WBC^WBC" not in orf  # no generic per-analyte encoding
     assert b"EDANLAB^H90" not in orf  # OBR-4 empty in the download direction
 
@@ -221,7 +222,8 @@ def test_h99s_worklist_answer_echoes_barcode_and_panel():
     assert worklist_correlates(q, resp) is True
     assert len(resp.orders) == 1
     assert resp.orders[0].barcode == "DEV01260000000000002"  # OBR-20 (the join key)
-    assert resp.orders[0].panel_code == "1"  # CBC, from OBR-11
+    assert resp.orders[0].panel_code == "1"  # CBC int, from OBR-11
+    assert resp.orders[0].panel_name == "CBC"  # measurement-item name, from OBR-31
     assert resp.orders[0].accession_number == ""  # accession not on the download wire
     assert resp.orders[0].analyzer_codes == ()  # panel-level, not per-analyte
 
@@ -266,7 +268,7 @@ def test_worklist_answer_non_edan_uses_generic_per_analyte_obr():
         ("2", ("WBC",)),
         ("2", ("HGB",)),
     ]
-    assert all(o.panel_code == "" and o.barcode == "" for o in resp.orders)
+    assert all(o.panel_code == "" and o.panel_name == "" and o.barcode == "" for o in resp.orders)
 
 
 def test_h99s_worklist_answer_echoes_barcode_join_key_in_obr20():
@@ -292,7 +294,8 @@ def test_h99s_worklist_answer_echoes_barcode_join_key_in_obr20():
     assert len(resp.orders) == 1
     assert resp.orders[0].barcode == q.subject_id  # OBR-20 echoes the queried barcode
     assert resp.orders[0].accession_number == ""  # accession stays host-side, off the wire
-    assert resp.orders[0].panel_code == "1"  # CBC measurement panel (OBR-11)
+    assert resp.orders[0].panel_code == "1"  # CBC panel int (OBR-11)
+    assert resp.orders[0].panel_name == "CBC"  # measurement-item name (OBR-31, the accept key)
 
 
 # --- correlation logic (unit-level, incl. the empty-id/subject guards) -------
