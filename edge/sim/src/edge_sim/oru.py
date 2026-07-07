@@ -71,7 +71,7 @@ class OruReport:
     order_code: str  # OBR-4.1
     observations: tuple[RawObservation, ...]
     result_type: str = RESULT_TYPE_PATIENT  # MSH-16: PATIENT / CALIBRATION / QC
-    qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads
+    qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads; always "" for EDAN (a timestamp, see gate)
     qc_type: str = ""  # OBR-20 for SD1 QC type / level; always "" for EDAN (see barcode)
     barcode: str = ""  # EDAN OBR-20 scanned barcode (LIS-149 AC3, see _edan_obr20); "" for non-EDAN or a blank OBR-20
 
@@ -110,7 +110,10 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         specimen_id=u(_specimen_id(obr, edan)) if obr else "",
         order_code=u(obr.component(4, 1)) if obr else "",
         result_type=result_type,
-        qc_lot_number=u(obr.field(14)) if obr else "",
+        # EDAN repurposes OBR-14 as a timestamp (H90 §3.2.3 "Specimen Received
+        # Date/Time"), not the SD1 QC lot number — force it blank there so a timestamp
+        # can never be misread as a QC lot. Non-EDAN analyzers are unaffected.
+        qc_lot_number="" if edan else (u(obr.field(14)) if obr else ""),
         # EDAN repurposes OBR-20 as the scanned barcode (see barcode below), not the
         # SD1 QC type/level — force it blank there so a barcode can never be misread
         # as a QC type. Non-EDAN analyzers are unaffected.
