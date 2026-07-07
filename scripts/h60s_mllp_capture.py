@@ -446,8 +446,12 @@ class MllpCaptureServer:
 
 
 def _replay(path: str) -> int:
-    with open(path, "rb") as f:
-        raw = f.read()
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except OSError as e:
+        print(f"error: cannot read capture file: {e}", file=sys.stderr)
+        return 1
     analysis = CaptureAnalysis(raw)
     print(f"# replay analysis of {path} ({len(raw)} bytes)\n")
     print(analysis.summary())

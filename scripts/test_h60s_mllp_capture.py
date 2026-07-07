@@ -33,7 +33,7 @@ def mllp(*segments: str) -> bytes:
 
 # --- manual §6.1 "Send test results" ORU example (H60, verbatim) -------------
 MANUAL_ORU_MSH = "MSH|^~\\&|H60|EDANLAB|||20220701171827||ORU^R01|8|P|2.3.1||||||UTF8"
-MANUAL_ORU_PID = "PID|6||null ^ 0|||M|||||||||||||||"
+MANUAL_ORU_PID = "PID|6||null ^ 0|||||M|||||||||||||||||"
 MANUAL_ORU_OBR = "OBR||1||EDANLAB^H60^Sample|||20200531141107||0|||||19700101080000|||||||"
 MANUAL_ORU_OBX_WBC = "OBX||NM|1|WBC|0.00|10^9/L|4.0-10.0||||F"
 
@@ -93,6 +93,7 @@ class MshFieldOffsetTests(unittest.TestCase):
     def test_pid_and_obr_positions_from_manual(self):
         pid = hc.Segment(MANUAL_ORU_PID)
         self.assertEqual(pid.field(3), "null ^ 0")  # age^unit lives in PID-3
+        self.assertEqual(pid.field(8), "M")  # sex is PID-8 (§3.2.2 table + §6.1 example agree)
         obr = hc.Segment(MANUAL_ORU_OBR)
         self.assertEqual(obr.field(2), "1")
         self.assertEqual(obr.field(4), "EDANLAB^H60^Sample")
