@@ -268,6 +268,37 @@ def test_h99s_edan_qc_type_is_blank_even_with_obr20_populated():
     assert report.barcode == "DEV01260000000000005"  # OBR-20 still surfaces as the barcode
 
 
+def test_h99s_edan_qc_lot_number_is_blank_even_with_obr14_populated():
+    """OBR-14 is the Seamaty SD1's QC lot-number field (``qc_lot_number``); for EDAN it
+    is a timestamp (H90 §3.2.3 "Specimen Received Date/Time"; real H60S capture carries
+    ``20260628092700``) and must never be misread as a QC lot — even when the message is
+    itself QC-classified (MSH-16=2). Sibling of the OBR-20 ``qc_type`` gate above."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260706094500||ORU^R01|9|P|2.4||||2||UTF8\r"
+        "PID|6|17|^0||DOE^JOHN||19900101|M\r"
+        "OBR|1|13||EDANLAB^H90|||20260706094500|||||||20260628092700||||||DEV01260000000000005\r"
+        "OBX||NM|0|WBC|7.1|10\\S\\9/L|4.0-10.0|0|0|0||7.1^10\\S\\9/L"
+    ).encode("utf-8")
+    report = parse_oru_r01(msg)
+    assert report.qc_lot_number == ""
+    assert report.barcode == "DEV01260000000000005"  # OBR-20 still surfaces as the barcode
+
+
+def test_non_edan_obr14_still_reads_as_qc_lot_number():
+    """A non-EDAN analyzer (Seamaty SD1 shape) keeps OBR-14 as its QC lot number — this
+    profile must not touch it. The guard against over-gating the EDAN OBR-14 split."""
+    msg = (
+        "MSH|^~\\&|SMT|SD1|||20201207144113||ORU^R01|1|P|2.3.1||||2||ASCII\r"
+        "PID|1|SD1-0042|||DELA CRUZ^JUAN||1990|M\r"
+        "OBR|1||SD1-SPEC-0007|SD1||||||||||SD1-LOT-2026A||||||QC-NORMAL\r"
+        "OBX|1|NM|GLU|GLU|95|mg/dL|70-110|N|||F"
+    ).encode("ascii")
+    report = parse_oru_r01(msg)
+    assert report.qc_lot_number == "SD1-LOT-2026A"
+    assert report.qc_type == "QC-NORMAL"  # OBR-20 QC type unaffected
+    assert report.barcode == ""
+
+
 def test_non_edan_obr20_still_reads_as_qc_type_and_carries_no_barcode():
     """A non-EDAN analyzer (Seamaty SD1 shape) keeps OBR-20 as its QC type/level —
     this profile must not touch it — and never populates ``barcode`` (EDAN-only
