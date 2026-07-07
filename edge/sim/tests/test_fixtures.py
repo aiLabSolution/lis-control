@@ -74,6 +74,8 @@ def test_snibelis_maglumi_x3_fixtures_carry_bridge_channel_settings(directory):
     # same dedicated-listener port and identity settings the bridge registers
     # under bridge.analyzers, so the two sides don't drift apart silently.
     assert fx.channel["tcp"]["port"] == 12021
+    assert fx.channel["identity"]["analyzer_id"] == "Maglumi User"
+    assert fx.channel["identity"]["host_id"] == "Lis"
     assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
 
 
