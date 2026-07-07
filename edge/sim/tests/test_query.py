@@ -279,12 +279,12 @@ def test_h99s_worklist_answer_echoes_barcode_join_key_in_obr20():
     subject, so a dropped barcode (emitted "") cannot pass vacuously. The internal accession
     never rides the wire; the host reconciles the barcode to it on each leg.
 
-    Deferred (ORU result-attach leg): the verified return half — a real result-bearing
-    ORU^R01 reconciled back to the accession via its OBR-20 barcode — is not asserted here
-    (the owner scoped this slice to the worklist-accept half). The ORU parser still keys on
-    OBR-2, so it needs to learn the OBR-20 barcode reconciliation, and that is not yet
-    validated on real H99S result wire (the H99S ORUs captured so far are MSH-only
-    connection-test pings; the sibling H60S and spec §6.1 show the layout)."""
+    The return half (a real result-bearing ORU^R01 reconciled back via its OBR-20 barcode)
+    is now closed by its sibling below,
+    ``test_h99s_worklist_result_closes_loop_no_orphan`` — the ORU parser learned the OBR-20
+    barcode preference (LIS-149 AC3). Still not validated on real H99S result wire (the
+    H99S ORUs captured so far are MSH-only connection-test pings; the sibling H60S and spec
+    §6.1 show the layout) — spec-backed + H60S-corroborated only, per that test's docstring."""
     q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
     order = WorklistOrder(accession_number="2", patient_id="17", analyzer_codes=("WBC", "HGB"))
     orf = build_worklist_query_response(q, (order,), response_datetime=WHEN_H99S, control_id="ORFQ-1")
@@ -296,6 +296,51 @@ def test_h99s_worklist_answer_echoes_barcode_join_key_in_obr20():
     assert resp.orders[0].accession_number == ""  # accession stays host-side, off the wire
     assert resp.orders[0].panel_code == "1"  # CBC panel int (OBR-11)
     assert resp.orders[0].panel_name == "CBC"  # measurement-item name (OBR-31, the accept key)
+
+
+def test_h99s_worklist_result_closes_loop_no_orphan():
+    """LIS-149 AC3 return leg: the analyzer's follow-up result ORU^R01 reports against
+    its OWN sample counter in OBR-2 (meaningless off-instrument) but echoes the SAME
+    barcode the worklist ORF gave it (above) in OBR-20 — the only reliable join key back
+    to the originally-submitted order (spec §3.2.3 / §6.1; H60S-corroborated; NOT yet
+    captured on real H99S wire — the H99S ORUs captured so far are MSH-only
+    connection-test pings). The sim has no OE order-menu lookup (unlike the production
+    bridge's ``BarcodeAccessionResolver``) — the barcode IS the join key here, so the
+    originally-submitted order's ``accession_number`` is modelled as the barcode itself.
+
+    Ports the bridge ``HostQueryResultRoundTripTest`` return-half assertion (see the
+    design spec's bridge test list). A self-consistency check alone — comparing two
+    values both DERIVED by the code under test (the ORF-parsed barcode vs. the
+    ORU-parsed specimen_id) — would be vacuous if a bug affected both derivations the
+    same way, so this also anchors to ``order.accession_number``: a ground-truth value
+    fixed BEFORE any parsing happens and never even serialized onto the EDAN worklist
+    wire (``build_worklist_query_response`` ignores it for EDAN), so it cannot leak in
+    from the code under test."""
+    barcode = load_fixture(H99S_WORKLIST_QRY).expected["barcode"]  # real bench-captured ground truth
+    q = parse_query(load_fixture(H99S_WORKLIST_QRY).message_bytes)
+    # The originally-submitted order: on this deployment the barcode IS the join key
+    # (no separate OE-side numeric accession in the sim world), so its accession is
+    # anchored to that same ground-truth barcode.
+    order = WorklistOrder(accession_number=barcode, patient_id="17", analyzer_codes=("WBC", "HGB"))
+    orf = build_worklist_query_response(q, (order,), response_datetime=WHEN_H99S, control_id="ORFQ-1")
+    resp = parse_worklist_query_response(orf)
+    assert resp.orders[0].barcode == q.subject_id  # forward leg (AC1) still holds
+
+    # The analyzer's own result ORU: OBR-2 is its private sample counter (13, unrelated
+    # to anything host-side); OBR-20 echoes the same barcode the worklist gave it.
+    counter = "13"
+    result_msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260706213000||ORU^R01|10|P|2.4||||0||UTF8\r"
+        f"PID|1|{order.patient_id}\r"
+        f"OBR|1|{counter}||EDANLAB^H90|||20260706213000|||||||||||||{resp.orders[0].barcode}\r"
+        "OBX||NM|0|WBC|7.1|10\\S\\9/L|4.0-10.0|0|0|0||7.1^10\\S\\9/L"
+    ).encode("utf-8")
+    report = parse_oru_r01(result_msg)
+
+    assert report.specimen_id != counter  # must NOT orphan on the analyzer's own OBR-2 counter
+    assert report.specimen_id == resp.orders[0].barcode  # self-consistency: OBR-20 read back matches the ORF echo
+    assert report.specimen_id == order.accession_number  # anchor-to-source: the non-vacuous half
+    assert report.barcode == resp.orders[0].barcode
 
 
 # --- correlation logic (unit-level, incl. the empty-id/subject guards) -------

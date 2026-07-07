@@ -17,6 +17,21 @@ analyzers are untouched. The EDAN *H60S* also routes through this profile: the
 2026-07-06 physical bench (LIS-20) proved the real H60S emits the same EDANLAB
 layout (MSH-3 ``H60^7907`` / MSH-4 ``EDANLAB``, code in OBX-4), and its graduated
 fixture is asserted below.
+
+LIS-149 AC3 (return leg) adds a second identifier wrinkle on top of the above: a
+**worklist-driven** result (the analyzer accepted an order-download, see
+``edan-h99s-worklist-query-qry-r02``) reports against its OWN sample counter in
+OBR-2 (meaningless off-instrument) while the scanned barcode — the join key the
+worklist ORF echoed — rides in OBR-20 (KB §3.2.3; worked example §6.1;
+corroborated by the real H60S bench, where OBR-20 == OBR-2). The **direct-attach**
+shape (no worklist, ``edan-h99s-oru-r01``) has no OBR-20 at all and must keep
+keying on OBR-2, so ``_specimen_id`` prefers a stripped-non-blank OBR-20 and falls
+back to OBR-2 only when it is absent/blank. OBR-20 is also the Seamaty SD1's QC
+type/level field (``qc_type``); for EDAN it means something else entirely, so
+``qc_type`` is forced blank there — non-EDAN analyzers are untouched. NOT yet
+captured on real H99S wire (only blank/connection-test ORUs so far); spec-backed
++ H60S-corroborated. The sim has no OE order-menu lookup — unlike the production
+bridge (``BarcodeAccessionResolver``), the barcode IS the join key here.
 """
 
 from pathlib import Path
@@ -29,6 +44,7 @@ from edge_sim.oru import RESULT_TYPE_BLANK, parse_oru_r01
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 H99S = FIXTURES_ROOT / "edan-h99s-oru-r01"
+H99S_WORKLIST = FIXTURES_ROOT / "edan-h99s-oru-r01-worklist"
 H60S = FIXTURES_ROOT / "edan-h60s-oru-r01"
 
 
@@ -194,4 +210,109 @@ def test_cli_normalize_renders_h99s_panel(capsys):
     assert rc == 0
     assert "patient=H99S-PT-01" in out
     assert "specimen=H99S-SPEC-01" in out
+    assert out.count("[NORMALIZED]") == 6
+
+
+# --- LIS-149 AC3 return leg: EDAN OBR-20 barcode reconcile -------------------
+
+
+def test_h99s_worklist_driven_specimen_id_prefers_obr20_barcode_over_obr2_counter():
+    """A worklist-driven EDAN result carries the analyzer's OWN sample counter in
+    OBR-2 (``13``, meaningless off-instrument) and the scanned barcode — the join
+    key the worklist ORF echoed (KB §3.2.3; worked example §6.1) — in OBR-20.
+    ``specimen_id`` must key on the barcode, not the counter, or a worklist-driven
+    result orphans; ``barcode`` surfaces the same value separately."""
+    report = _report(H99S_WORKLIST)
+    fx_expected = load_fixture(H99S_WORKLIST).expected
+    assert report.specimen_id == "DEV01260000000000005"
+    assert report.specimen_id == fx_expected["specimen_id"]
+    assert report.specimen_id != fx_expected["obr2_sample_counter"]  # not the OBR-2 counter
+    assert report.barcode == "DEV01260000000000005"
+
+
+def test_h99s_worklist_panel_normalizes_fully_to_loinc():
+    """The worklist-driven shape carries the same CBC panel as the direct-attach
+    seed (OBX-4 code repurposing is orthogonal to the OBR-2/OBR-20 identifier
+    wrinkle) — it must normalize identically."""
+    expected = {o["obx4_code"]: o for o in load_fixture(H99S_WORKLIST).expected["observations"]}
+    results = {r.raw_code: r for r in _normalized(H99S_WORKLIST) if r.kind == KIND_RESULT}
+    assert set(results) == set(expected)
+    for code, exp in expected.items():
+        row = results[code]
+        assert row.loinc == exp["target_loinc"], code
+        assert row.ucum_value == exp["target_ucum"], code
+        assert row.status == STATUS_NORMALIZED, code
+
+
+def test_h99s_direct_attach_carries_no_barcode():
+    """The direct-attach shape (no worklist; OBR-2 IS the accession) has no OBR-20
+    at all, so ``barcode`` stays blank — the flag distinguishing it from a
+    worklist-driven result. Must NOT regress: ``specimen_id`` still reads OBR-2."""
+    report = _report(H99S)
+    assert report.specimen_id == "H99S-SPEC-01"
+    assert report.barcode == ""
+
+
+def test_h99s_edan_qc_type_is_blank_even_with_obr20_populated():
+    """OBR-20 is the Seamaty SD1's QC type/level field (``qc_type``); for EDAN it is
+    the scanned barcode instead and must never be misread as a QC type/level — even
+    when the message is itself QC-classified (MSH-16=2)."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260706094500||ORU^R01|9|P|2.4||||2||UTF8\r"
+        "PID|6|17|^0||DOE^JOHN||19900101|M\r"
+        "OBR|1|13||EDANLAB^H90|||20260706094500|||||||||||||DEV01260000000000005\r"
+        "OBX||NM|0|WBC|7.1|10\\S\\9/L|4.0-10.0|0|0|0||7.1^10\\S\\9/L"
+    ).encode("utf-8")
+    report = parse_oru_r01(msg)
+    assert report.qc_type == ""
+    assert report.barcode == "DEV01260000000000005"  # OBR-20 still surfaces as the barcode
+
+
+def test_non_edan_obr20_still_reads_as_qc_type_and_carries_no_barcode():
+    """A non-EDAN analyzer (Seamaty SD1 shape) keeps OBR-20 as its QC type/level —
+    this profile must not touch it — and never populates ``barcode`` (EDAN-only
+    field), even though the message is itself QC-classified (MSH-16=2)."""
+    msg = (
+        "MSH|^~\\&|SMT|SD1|||20201207144113||ORU^R01|1|P|2.3.1||||2||ASCII\r"
+        "PID|1|SD1-0042|||DELA CRUZ^JUAN||1990|M\r"
+        "OBR|1||SD1-SPEC-0007|SD1||||||||||||||||QC-NORMAL\r"
+        "OBX|1|NM|GLU|GLU|95|mg/dL|70-110|N|||F"
+    ).encode("ascii")
+    report = parse_oru_r01(msg)
+    assert report.qc_type == "QC-NORMAL"
+    assert report.barcode == ""
+
+
+def test_h99s_edan_whitespace_obr20_falls_back_to_obr2():
+    """A whitespace-only OBR-20 must be treated as absent (like a blank field), not
+    as an empty/present barcode — falling back to the OBR-2 sample id exactly like
+    the direct-attach shape."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260706094500||ORU^R01|9|P|2.4||||0||UTF8\r"
+        "PID|6|17|^0||DOE^JOHN||19900101|M\r"
+        "OBR|1|H99S-SPEC-99||EDANLAB^H90|||20260706094500|||||||||||||   \r"
+        "OBX||NM|0|WBC|7.1|10\\S\\9/L|4.0-10.0|0|0|0||7.1^10\\S\\9/L"
+    ).encode("utf-8")
+    report = parse_oru_r01(msg)
+    assert report.specimen_id == "H99S-SPEC-99"
+    assert report.barcode == ""
+
+
+def test_h60s_obr20_now_surfaces_as_barcode_and_blanks_qc_type():
+    """The graduated H60S fixture's OBR-20 happens to equal OBR-2 (both
+    ``SPEC-0231``) so ``specimen_id`` is UNCHANGED by this profile — but OBR-20 is
+    now surfaced separately as ``barcode`` (also ``SPEC-0231``), and ``qc_type``
+    (which used to read OBR-20 verbatim, i.e. ``SPEC-0231``) flips to blank like
+    every other EDAN message."""
+    report = _report(H60S)
+    assert report.specimen_id == "SPEC-0231"  # unchanged: OBR-20 == OBR-2 here
+    assert report.barcode == "SPEC-0231"  # NEW: OBR-20 now surfaces as barcode
+    assert report.qc_type == ""  # NEW: was "SPEC-0231" before this profile
+
+
+def test_cli_normalize_renders_h99s_worklist_panel(capsys):
+    rc = cli_main(["normalize", "edan-h99s-oru-r01-worklist"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "specimen=DEV01260000000000005" in out
     assert out.count("[NORMALIZED]") == 6

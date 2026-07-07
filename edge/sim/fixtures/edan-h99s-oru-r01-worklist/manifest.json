@@ -1,0 +1,53 @@
+{
+  "id": "edan-h99s-oru-r01-worklist",
+  "description": "Synthetic HL7 v2.4 ORU^R01 CBC result from an EDAN H99S analyzer completing a WORKLIST-DRIVEN sample (LIS-149 AC3 return leg), modelled on the EDAN H90-series LIS Communication Protocol KB §3.2.3 (OBR-20 'Patient ID or Barcode') and the §6.1 worked example. Sibling of edan-h99s-oru-r01 (the direct-attach shape, OBR-2 IS the accession, no OBR-20): here OBR-2 carries the analyzer's OWN sample counter (13, meaningless off-instrument) and OBR-20 carries the barcode the host scanned and echoed back on the worklist ORF (see edan-h99s-worklist-query-qry-r02) — the join key the analyzer hands back unmodified. NOT yet captured on real H99S wire (the H99S ORUs captured so far are MSH-only connection-test pings); spec-backed + H60S-corroborated (the real H60S bench OBR-20 == OBR-2, i.e. carries the same identifier as the accession, consistent with OBR-20 being the scanned-barcode field there too). Replaced by a real non-blank bench capture at conformance (LIS-75).",
+  "analyzer": { "vendor": "EDAN", "model": "H99S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "utf-8", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-149 AC3 — EDAN H90-series LIS Communication Protocol KB EDAN\\WI\\82-01.54.460907 v1.0, §3.2.3 OBR-20 repurposing / §6.1 ORU worked example). Device sub-type 507 per §7.",
+    "note": "Application payload only (no MLLP framing). Models the worklist-driven shape: the analyzer accepted an order-download (see edan-h99s-worklist-query-qry-r02) whose ORF echoed barcode DEV01260000000000005 in OBR-20, and now reports the result against its OWN sample counter (OBR-2 = 13) while OBR-20 still carries that same barcode — the only reliable join key back to the OpenELIS order (the OBR-2 counter resets/collides across runs and is never an accession). CBC panel/values reused from edan-h99s-oru-r01 for parity. A real EDAN H99S bench capture of a worklist-driven result replaces this at conformance, per docs/runbooks/edan-h99s-bench-conformance.md."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "device_subtype": "507",
+    "specimen_id": "DEV01260000000000005",
+    "barcode": "DEV01260000000000005",
+    "obr2_sample_counter": "13",
+    "current_parse": {
+      "edge_sim": "specimen=DEV01260000000000005 (OBR-20, preferred over the OBR-2 sample counter '13' for EDAN worklist-driven results); barcode=DEV01260000000000005 (same field, surfaced separately so a caller can tell a worklist-driven result from a direct-attach one, where barcode is blank); qc_type='' (OBR-20 is the barcode here, not an SD1 QC type/level); all 6 OBX read the code from OBX-4 -> WBC/RBC/HGB/HCT/MCV/PLT, each NORMALIZED to LOINC/UCUM.",
+      "bridge": "accession reconciled from barcode DEV01260000000000005 via the OE order-menu lookup (BarcodeAccessionResolver); controlLevel=null (the barcode must never leak into the SD1 QC-level field)."
+    },
+    "observations": [
+      { "obx4_code": "WBC", "value": "12.17", "raw_unit": "10^9/L",  "target_loinc": "6690-2", "target_ucum": "10*9/L" },
+      { "obx4_code": "RBC", "value": "3.06",  "raw_unit": "10^12/L", "target_loinc": "789-8",  "target_ucum": "10*12/L" },
+      { "obx4_code": "HGB", "value": "113",   "raw_unit": "g/L",     "target_loinc": "718-7",  "target_ucum": "g/L" },
+      { "obx4_code": "HCT", "value": "38.5",  "raw_unit": "%",       "target_loinc": "4544-3", "target_ucum": "%" },
+      { "obx4_code": "MCV", "value": "88.0",  "raw_unit": "fL",      "target_loinc": "787-2",  "target_ucum": "fL" },
+      { "obx4_code": "PLT", "value": "193",   "raw_unit": "10^9/L",  "target_loinc": "777-3",  "target_ucum": "10*9/L" }
+    ],
+    "parser_gaps": [
+      {
+        "id": "EDAN-OBR20-BARCODE-PREFERENCE",
+        "severity": "blocker",
+        "status": "closed",
+        "unconditional": false,
+        "field": "OBR-2 vs OBR-20",
+        "kb": "§3.2.3 / §6.1",
+        "detail": "A worklist-driven EDAN H90-series result carries the analyzer's OWN sample counter in OBR-2 (here '13') and the scanned barcode (the join key echoed on the worklist ORF) in OBR-20. BEFORE this profile, oru.py._specimen_id(edan) read OBR-2 unconditionally, so a worklist-driven result would key on the meaningless counter and orphan. CLOSED by LIS-149 AC3: _specimen_id prefers a stripped-non-blank OBR-20 for EDAN, falling back to OBR-2 only when OBR-20 is absent/blank (the edan-h99s-oru-r01 direct-attach shape, which has no OBR-20). The sim has no OE order-menu lookup — unlike the production bridge (BarcodeAccessionResolver), the barcode IS the join key here."
+      },
+      {
+        "id": "EDAN-OBR20-QC-TYPE-COLLISION",
+        "severity": "conditional",
+        "status": "closed",
+        "unconditional": false,
+        "field": "OBR-20",
+        "kb": "§3.2.3",
+        "detail": "OBR-20 is the Seamaty SD1's QC type/level field (oru.py qc_type). For EDAN, OBR-20 means something else entirely (the scanned barcode) and must never be read as a QC type/level. CLOSED: qc_type is forced to '' for every EDAN message, regardless of OBR-20 content; non-EDAN analyzers are unaffected."
+      }
+    ]
+  }
+}

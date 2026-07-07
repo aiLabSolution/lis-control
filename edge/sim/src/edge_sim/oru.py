@@ -67,12 +67,13 @@ class OruReport:
     message_control_id: str  # MSH-10
     patient_id: str  # PID-3.1 -> PID-2.1 (SD1 MRN); EDAN H90-series uses PID-2 (see _patient_id)
     patient_name: str  # PID-5 (raw)
-    specimen_id: str  # OBR-3 filler order; EDAN H90-series uses OBR-2 (see _specimen_id)
+    specimen_id: str  # OBR-3 filler order; EDAN H90-series prefers OBR-20 (barcode), else OBR-2 (see _specimen_id)
     order_code: str  # OBR-4.1
     observations: tuple[RawObservation, ...]
     result_type: str = RESULT_TYPE_PATIENT  # MSH-16: PATIENT / CALIBRATION / QC
     qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads
-    qc_type: str = ""  # OBR-20 for SD1 QC type / level
+    qc_type: str = ""  # OBR-20 for SD1 QC type / level; always "" for EDAN (see barcode)
+    barcode: str = ""  # EDAN OBR-20 scanned barcode (LIS-149 AC3, see _edan_obr20); "" for non-EDAN or a blank OBR-20
 
 
 def parse_oru_r01(message: Message | bytes | str) -> OruReport:
@@ -110,7 +111,11 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         order_code=u(obr.component(4, 1)) if obr else "",
         result_type=result_type,
         qc_lot_number=u(obr.field(14)) if obr else "",
-        qc_type=u(obr.field(20)) if obr else "",
+        # EDAN repurposes OBR-20 as the scanned barcode (see barcode below), not the
+        # SD1 QC type/level — force it blank there so a barcode can never be misread
+        # as a QC type. Non-EDAN analyzers are unaffected.
+        qc_type="" if edan else (u(obr.field(20)) if obr else ""),
+        barcode=u(_edan_obr20(obr)) if obr and edan else "",
         observations=observations,
     )
 
@@ -158,15 +163,40 @@ def _patient_id(pid, edan: bool = False) -> str:
     return pid3 if pid3.strip() else pid.component(2, 1)
 
 
+def _edan_obr20(obr) -> str:
+    """The raw OBR-20 value, or ``""`` when absent/whitespace-only (LIS-149 AC3).
+
+    OBR-20 is the H90-series "Patient ID or Barcode" field (KB §3.2.3; worked
+    example §6.1): a **worklist-driven** result echoes the barcode the host scanned
+    and handed back on the order-download ORF — the only reliable join key back to
+    the OpenELIS order, since OBR-2 there is the analyzer's own sample counter, not
+    an accession. A **direct-attach** result (no worklist) leaves OBR-20 blank.
+    Corroborated by the real H60S bench pcap (OBR-20 == OBR-2, i.e. the scanned
+    identifier, not the SD1 QC type/level convention this field carries for
+    non-EDAN analyzers). NOT yet captured on real H99S wire — the H99S ORUs
+    captured so far are MSH-only connection-test pings. Whitespace-only is treated
+    as absent so it falls back like a blank field would, rather than becoming a
+    present-but-empty barcode.
+    """
+    value = obr.field(20)
+    return value if value.strip() else ""
+
+
 def _specimen_id(obr, edan: bool = False) -> str:
     """The specimen/sample identifier from an ``OBR`` segment.
 
     Standard analyzers carry it in OBR-3 (filler order number). The EDAN H90-series
-    (``edan=True``) carries the sample id in **OBR-2** (OBR-3 is the reviewing
-    doctor, KB §5.3a), so OBR-2 is preferred there — matching the OBR-2 fallback the
-    edge/drivers bridge parser already applies.
+    (``edan=True``) prefers a stripped-non-blank **OBR-20** (the scanned barcode,
+    LIS-149 AC3 — see :func:`_edan_obr20`), falling back to **OBR-2** (OBR-3 is the
+    reviewing doctor, KB §5.3a) only when OBR-20 is absent — the direct-attach shape,
+    where OBR-2 IS the accession. Matches the OBR-20-then-OBR-2 preference the
+    edge/drivers bridge parser applies; the sim has no OE order-menu lookup, so
+    (unlike the bridge) the barcode itself becomes the join key here.
     """
     if edan:
+        obr20 = _edan_obr20(obr)
+        if obr20:
+            return obr20
         obr2 = obr.field(2)
         return obr2 if obr2.strip() else ""
     return obr.field(3)
