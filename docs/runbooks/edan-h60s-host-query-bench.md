@@ -17,6 +17,65 @@ leg is already bench-signed (LIS-20, umbrella PR #91); this runbook covers the
 > now; the **worklist-answer** steps (4–5) are gated. Nothing here is signed evidence
 > until the exit criteria are met and the validation owner signs.
 
+## Bench update — 2026-07-07 (Step 0 done; responder mechanism demonstrated)
+
+Evidence packet: `~/bench-runs/bridge-h60s/evidence/edan-h60s/20260707-H60-7907/`
+(`identity.md` is the authoritative Step-0 record — answers to bench questions 1–6).
+
+**Step 0 (characterization) — DONE.** The physical H60S (`192.168.50.50`) emitted a
+`QRY^R02` on barcode scan; the query de-frames cleanly and the six bench questions are
+answered from the wire. Confirmed facts (see `identity.md`):
+
+- MSH-3 = `H60^7907`, MSH-4 = `EDANLAB` → EDANLAB / H90-family profile. The synthetic
+  fixture's `H60S` / `EDAN` envelope is **refuted**; MSH-12 = `2.4`.
+- Barcode subject is in **QRD-8** (`DEV01260000000000012`) — this **matches** the sim
+  fixture's QRD-8 and **refutes the manual §3.2.6 example** (which put the subject in
+  QRD-9). QRD-9 = `1` (sample sequence), QRD-4 = `1` (the correlation id the answer must
+  echo), QRF = `QRF|LIS|<dt>`.
+- **MSH-16 = 3 on the host-query** — with 0 = result/sample and 2 = connection-test also
+  observed this run, the EDAN MSH-16 map is now `0/2/3` (reconciles the LIS-110 question;
+  the manual documents only 0/1).
+
+**Responder mechanism (Step 4) — DEMONSTRATED, not yet a physical closed loop.** On the
+rebuilt bridge (`edge/drivers` `30b11c8`, LIS-149 + LIS-118 infra), a barcode host-query
+in the H60S QRD-8 layout was answered from a **real OpenELIS pending order** with an
+`ORF^R04` worklist (`OePendingOrderResolver` → 9 order codes for accession
+`DEV01260000000000011`, per the bridge session log — **not** saved to the packet) —
+through the **shared** EDAN H90 responder, with **no divergent H60S profile branch
+required** (settles that half of Step 6 / AC "field positions"). The returned physical
+`ORU^R01` filed all 33 observations under the **barcode** accession, not the OBR-2 counter.
+
+> **Where the attach-fix proof lives:** the packet's `identity.md` / `openelis-attach-evidence.md`
+> record the **pre-fix** misfile (results under OBR-2 = `3`) — they predate the fix. The
+> post-fix confirmation is *outside* this packet: LIS-182 was already fixed by LIS-149's
+> OBR-20 reconcile (`a2152a6`), verified this session by a live OE DB re-query (33 rows under
+> the barcode accession, 0 under any counter) and pinned by the real-wire regression test
+> `HL7ResultParserLis182Test` (bridge `15feb08`, umbrella PR #102 = this branch's base
+> `cc4ad52`). 6/33 analytes mapped; the other 27 are `unmapped_loinc` = the CBC-6
+> registration limit (**LIS-112**), not an attach fault.
+
+> **Honesty caveats (why this is not yet Full support):** the demonstrated ORF answer was
+> issued to a query from the **NAT'd bench host** (`172.21.0.1`), so it proves the
+> *responder mechanism* for the H60S layout — **not** the physical analyzer issuing the
+> query, accepting the ORF, and running from it. The ORF worklist wire was **not** saved
+> to `orf-hostquery.hl7`, and the QRY→ORF→ORU sequence was not stitched as one physical
+> loop (the ORU preceded the QRY this session). Bench question 5 (H60S correlates the ORF
+> by QRD-4 echo) is unproven on the physical wire.
+
+**Remaining for Full host-query support (see Exit criteria):**
+
+1. Physical closed loop on the H60S: print barcode → H60S issues QRY → bridge answers ORF
+   → H60S runs the worklist → ORU attaches to that order. Capture `orf-hostquery.hl7` +
+   the ACK/round-trip.
+2. In-place sim fixture graduation (Step 6): swap `edan-h60s-host-query-qry-r02` to
+   `synthetic: false` with the real envelope (MSH `H60^7907`/`EDANLAB`, QRD-4 numeric,
+   QRD-8 barcode, QRD-9 = `1`, MSH-16 = 3) + capture reference, and align the shared
+   host-query test substrate (`test_query.py`, `test_cli.py`, `test_nak.py` — also used by
+   the H99S line) off `Q0231-01`/`SPEC-0231`/`RES`. This is host-query *implementation*,
+   best landed together with (1) so the built ORF is validated against real wire.
+3. Change-control: milestone recorded in ADR-0008 (2026-07-07); go-live validation-owner
+   sign-off (Pinote / DEC-01) still owed.
+
 ## References
 
 - Vendor spec: `manuals-and-lis-protocol/EDAN/H60S/LIS/LIS-Communication-Protocol-h60.pdf`
@@ -219,13 +278,15 @@ confirm reconnect-on-next-send.
 
 ## Exit criteria
 
-**Characterization exit** (Step 0, no shared infra — the deliverable available now):
+**Characterization exit** (Step 0, no shared infra — the deliverable available now) —
+✅ **MET 2026-07-07** (packet `20260707-H60-7907`, see Bench update above):
 
-- A raw H60S `QRY^R02` is captured, de-frames cleanly, and the EDANLAB profile is
-  confirmed (or the deviation recorded).
-- The QRD barcode-subject field is identified from the wire and reconciled to the LIS
-  barcode; bench questions 1–6 answered.
-- Any divergence from the H99S H90 layout is filed as the H60S profile-branch work.
+- ✅ A raw H60S `QRY^R02` is captured, de-frames cleanly, and the EDANLAB profile is
+  confirmed (`H60^7907` / `EDANLAB`; synthetic `H60S`/`EDAN` envelope refuted).
+- ✅ The QRD barcode-subject field is identified from the wire (**QRD-8**) and reconciled
+  to the LIS barcode byte-for-byte; bench questions 1–6 answered in `identity.md`.
+- ✅ No divergent H99S H90 layout branch is required — the shared responder answered the
+  H60S QRD-8 query (envelope/value differences only: QRD-4 numeric, QRD-9 = `1`, MSH-16 = 3).
 
 **Full host-query support** (Steps 4–5, gated on the shared infra):
 
