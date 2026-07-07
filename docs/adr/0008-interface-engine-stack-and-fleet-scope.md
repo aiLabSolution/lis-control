@@ -153,6 +153,23 @@ The remaining decisions (stack, fleet) follow once the engine is fixed.
    > LIS-177 (native host-query). This note amends the row; the 2026-06-27 pin itself is not
    > rewritten.
 
+   > **⮕ DEC-06 change-control record (2026-07-07, LIS-181) — H60S host-query bench
+   > characterization; order-download mechanism demonstrated.** Parallel to the H99S release
+   > above, the EDAN **H60S** bidirectional path is characterized on real wire (evidence
+   > packet `20260707-H60-7907`; runbook `edan-h60s-host-query-bench.md` §"Bench update —
+   > 2026-07-07"): the physical H60S issues a `QRY^R02` on barcode scan (barcode in **QRD-8**,
+   > `MSH-16=3`, MSH-3/4 = `H60^7907`/`EDANLAB`, HL7 v2.4), and the **shared** LIS-149
+   > responder answers a H60S-layout barcode query from a real OpenELIS pending order with an
+   > `ORF^R04` worklist — **no divergent H60S profile branch required**. The northbound
+   > result-to-order attach is fixed and confirmed on live wire (LIS-182: barcode from
+   > OBR-20/PID-2, not the OBR-2 counter). As with the H99S note, this release is
+   > **deliberately narrow and does NOT mark the H60S bidirectional path bench-conformant**:
+   > a physical closed loop (the H60S accepts the ORF and runs the worklist, with
+   > `orf-hostquery.hl7` captured), the in-place `edge/sim` fixture graduation + shared
+   > host-query test alignment, and **validation-owner sign-off (Pinote / DEC-01)** remain
+   > before it can be claimed as supported in the pilot dossier. This note records the
+   > milestone; the 2026-06-27 pin is not rewritten.
+
 ## Consequences
 
 **Positive**
