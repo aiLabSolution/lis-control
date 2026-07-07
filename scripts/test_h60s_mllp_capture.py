@@ -32,7 +32,7 @@ def mllp(*segments: str) -> bytes:
 
 
 # --- manual §6.1 "Send test results" ORU example (H60, verbatim) -------------
-MANUAL_ORU_MSH = "MSH|^~\\&|H60|EDANLAB|||20220701171827||ORU^R01|8|P|2.3.1|||||UTF8"
+MANUAL_ORU_MSH = "MSH|^~\\&|H60|EDANLAB|||20220701171827||ORU^R01|8|P|2.3.1||||||UTF8"
 MANUAL_ORU_PID = "PID|6||null ^ 0|||M|||||||||||||||"
 MANUAL_ORU_OBR = "OBR||1||EDANLAB^H60^Sample|||20200531141107||0|||||19700101080000|||||||"
 MANUAL_ORU_OBX_WBC = "OBX||NM|1|WBC|0.00|10^9/L|4.0-10.0||||F"
@@ -72,10 +72,8 @@ class MshFieldOffsetTests(unittest.TestCase):
         self.assertEqual(s.field(4), "EDANLAB")   # sending facility (fixed)
         self.assertEqual(s.field(9), "ORU^R01")   # message type
         self.assertEqual(s.field(10), "8")        # control id
-        self.assertEqual(s.field(12), "2.3.1")    # version drift vs table's 2.4
-        # The example's trailing UTF8 lands at MSH-17, though the field table calls
-        # char set MSH-18 — another manual example-vs-table drift (characterize first).
-        self.assertEqual(s.field(17), "UTF8")
+        self.assertEqual(s.field(12), "2.3.1")    # §6.1 example uses 2.3.1 (table default: 2.4)
+        self.assertEqual(s.field(18), "UTF8")     # char set at MSH-18 (§3.2.1 table + §6.1 example agree)
 
     def test_msh16_worklist_flag_from_h99s_fixture(self):
         s = hc.Segment(SIM_H99S_QRY[0])

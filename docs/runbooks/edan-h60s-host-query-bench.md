@@ -66,10 +66,10 @@ Treat the field tables *and* the examples as hypotheses; the capture is the arbi
 | Fact | Manual / LIS-20 says | To confirm on the H60S host-query wire |
 |---|---|---|
 | MLLP framing | `0x0B <HL7> 0x1C 0x0D`, UTF-8 (§1.2.1.2) | Same for the query direction |
-| Roles | Analyzer = TCP client, LIS = server; default port **7999** (Annex 2) | Confirm port / auto-communication toggle at the bench |
+| Roles | Analyzer = TCP client, LIS = server; default port **7999** (ADR-0015 / EDAN training doc; the analyzer's port is set via manual Annex 2, which gives no default) | Confirm port / auto-communication toggle at the bench |
 | MSH-3 / MSH-4 | `H60` / fixed `EDANLAB` (§3.2.1; LIS-20) | The synthetic fixture's `H60S` / `EDAN` is **refuted** — record verbatim |
 | HL7 version (MSH-12) | Table says `2.4`; §6.1 ORU example shows **`2.3.1`** | Which version the query carries |
-| MSH-16 | Documented **0=sample, 1=QC** only (§3.2.4); the sim worklist fixture assumes `3` and LIS-20 observed `2`=connection-test | Whether the query sets MSH-16 at all, and to what |
+| MSH-16 | Documented **0=sample, 1=QC** only (§3.2.1 MSH table); the sim worklist fixture assumes `3` and LIS-20 observed `2`=connection-test | Whether the query sets MSH-16 at all, and to what |
 | **QRD subject field** | Table: QRD-8=Who/patient#, QRD-9=What/sample#, QRD-10="used as sample IDs on H60-series"; §3.2.6 example puts `0123456-1` in **QRD-9**; sim fixtures put the subject in **QRD-8** | **Which QRD field carries the scanned barcode** — the central unknown |
 | QRD-4 query id | Answer must echo it for correlation | Confirm the H60S correlates by QRD-4 echo (vs subject match) |
 | ORF answer shape | H99S: `ORF^R04`, `MSA-1=AA`, `MSA-2`=echo MSH-10, QRD/QRD-8 echo, PID + OBR rows, `MSH-16=3` | Exactly what the H60S accepts as a valid worklist answer |

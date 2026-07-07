@@ -28,7 +28,8 @@ manual EDAN/H60S/LIS/LIS-Communication-Protocol-h60.pdf, v1.1 2022-07-29):
 
 Roles (manual §2.1 / §1.2.1.3): the H60S is the TCP *client*; we listen/serve. The
 analyzer connects and sends its QRY^R02 unprompted, so pure capture needs no
-response. Default MLLP port is 7999 (manual Annex 2), site-configurable.
+response. Default MLLP port is 7999 (ADR-0015 / EDAN H60-series LIS training doc;
+the analyzer's LIS port is set per manual Annex 2), site-configurable.
 
 Scope / safety: CAPTURE-ONLY. This tool never answers a host-query with an ORF^R04
 worklist — building the worklist means resolving an OpenELIS pending order, which is
@@ -60,7 +61,6 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import os
-import re
 import socket
 import sys
 
@@ -457,7 +457,7 @@ def _replay(path: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")
-    p.add_argument("--port", type=int, default=7999, help="TCP port to listen on (default 7999, manual Annex 2)")
+    p.add_argument("--port", type=int, default=7999, help="TCP port to listen on (default 7999 per ADR-0015; set the analyzer's port to match, manual Annex 2)")
     p.add_argument("--outdir", default="./h60s-capture", help="archive directory (default ./h60s-capture)")
     p.add_argument(
         "--ack",
