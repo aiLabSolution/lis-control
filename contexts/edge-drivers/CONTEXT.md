@@ -33,7 +33,8 @@ cleared under HOLD-001 / LIS-71).
   the single swap point if the LIS-75 capture refutes the standard-E1381 hypothesis.
   Cross-language SHA-256 anchors pin the bridge tests to the `edge/sim` fixtures (drift
   breaks a test on either side). Landed with adversarial APPROVE + CLEAN fix-verify;
-  local suite 762/0/0/5 (bridge has no CI). **Gap 4 of the LIS-119 era is hereby landed
+  full suite at this merged pin **777/0/0/5** (762/0/0/5 on the PR #21 branch pre-merge;
+  bridge has no CI — local runs are the record). **Gap 4 of the LIS-119 era is hereby landed
   pending the LIS-75 bench proof** (AC-1 real-capture evidence; synthetic proof only
   until then); X3 codes/units stay synthetic until LIS-75/LIS-38. Sits on top of the
   intervening `b2678d9` (LIS-149 EDAN H90-series worklist ORF profile, PR #22) and

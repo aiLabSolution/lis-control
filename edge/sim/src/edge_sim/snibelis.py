@@ -122,7 +122,16 @@ class SnibeLisReceiver:
             return bytes([ACK])
         if self.state == "RECORDS":
             if byte == ETX:
-                self._pending = self._extract_records()
+                extracted = self._extract_records()
+                if not extracted:
+                    # Parity with the bridge's SnibeAstmCommunicator (PR #21 review
+                    # fix e4e5577): a zero-record envelope is rejected BEFORE the
+                    # ETX-ACK, so a degenerate payload rehearsed sim-vs-sim fails
+                    # exactly like it would against the live bridge.
+                    raise SnibeLisReceiverError(
+                        "empty simplified envelope (no records) rejected before ETX-ACK"
+                    )
+                self._pending = extracted
                 self.state = "AWAIT_EOT"
                 return bytes([ACK])
             if not self._buffer and byte in _E1381_FRAME_DIGITS:

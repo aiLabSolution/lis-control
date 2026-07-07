@@ -30,10 +30,14 @@ QUERY_REQUEST = FIXTURES_ROOT / "snibelis-maglumi-x3-query-request"
 # "port-every-assertion-not-just-self-consistency"): SHA-256 of the NORMALIZED
 # WIRE PAYLOAD -- non-empty records of message.astm CR-joined + one trailing
 # CR, encoded latin-1, i.e. exactly ``_wire_payload_bytes(fixture.message_bytes)``
-# -- pinned per fixture below. These constants are mirrored by inline-payload
-# assertions in the bridge repo (openelis-analyzer-bridge) LIS-174 tests: drift
-# on either side (a fixture edit here, or a stale inline payload there) must
-# break a test, not just self-consistently agree with itself.
+# -- pinned per fixture below. The result-upload and result-unmapped constants
+# are mirrored by inline-payload assertions in the bridge repo
+# (openelis-analyzer-bridge, SnibeSimplifiedEnvelopeSessionTest): drift on
+# either side (a fixture edit here, or a stale inline payload there) must break
+# a test, not just self-consistently agree with itself. The query-request
+# anchor is sim-side only for now -- its bridge-side mirror lands with the
+# simplified-envelope send half (LIS-177), which is what will consume that
+# fixture on the bridge.
 _WIRE_PAYLOAD_SHA256 = {
     "snibelis-maglumi-x3-result-upload": (
         "403a123081c02d26a8270785c0a05270b6cf1abbd36c916bfc636f0a09e572db",

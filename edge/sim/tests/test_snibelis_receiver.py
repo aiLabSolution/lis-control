@@ -122,3 +122,14 @@ def test_receiver_serves_multiple_envelopes_on_one_connection():
     assert receiver.envelopes[0] == b"H|\\^&\rP|1\rL|1|N"
     assert receiver.envelopes[1] == b"H|\\^&\rP|2\rL|1|N"
     assert receiver.records == ["H|\\^&", "P|2", "L|1|N"]  # most recent envelope
+
+
+def test_zero_record_envelope_rejected_before_etx_ack():
+    """Parity with the bridge's empty-envelope guard (bridge PR #21, e4e5577):
+    ENQ/STX/(empty lines)/ETX must raise BEFORE the ETX-ACK, never complete."""
+    receiver = SnibeLisReceiver()
+    assert receiver.feed(bytes([ENQ])) == bytes([ACK])
+    assert receiver.feed(bytes([STX])) == bytes([ACK])
+    with pytest.raises(SnibeLisReceiverError, match="empty simplified envelope"):
+        receiver.feed(b"\r" + bytes([ETX]))
+    assert not receiver.complete
