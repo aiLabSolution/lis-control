@@ -18,8 +18,11 @@ simulator-driven until a bidirectional unit is on hand.
 LIS-149 / DEC-06 adds the EDAN H99S **order-download / worklist** direction on the
 same QRD substrate: the analyzer asks for the order selection for a barcode and the
 host answers with `ORF^R04` carrying `PID` + `OBR` order rows. The query subject stays
-the barcode in QRD-8; the returned accession in OBR-2/3 may differ after host-side
-barcode -> accession reconciliation.
+the barcode in QRD-8; QRD-9 carries the analyzer's own sample number. EDAN H90-series
+repurposes the OBR (spec §3.2.3, §6.2 accepted download) — one panel-level OBR whose
+OBR-11 is a measurement integer (CBC = 1), OBR-4 is empty, OBR-2 echoes the sample
+number, and OBR-20 echoes the scanned barcode (the join key; the accession stays
+host-side) — so the generic per-analyte encoding is used only for non-EDAN queriers.
 
 Tolerant, like the rest of the harness: a missing QRD/QRF/MSA field yields `""`; only
 a message with no `MSH` is rejected (it cannot be identified). Builders emit canonical
@@ -55,7 +58,29 @@ __all__ = [
 _SEG = "\r"
 _DEFAULT_ENCODING_CHARS = "^~\\&"
 WHAT_RESULTS = "RES"  # QRD-9 "What Subject Filter" code for a results query
-WHAT_WORKLIST = "OTH"  # EDAN H90-series QRD-9 for host-order/worklist query
+WHAT_WORKLIST = "OTH"  # QRD-9 default for a generic host-order/worklist query
+
+# EDAN H90-series worklist ORF field values (spec §3.2.3 semantics, §6.2 accepted download
+# shape). The analyzer downloads a measurement PANEL, not per-analyte tests: OBR-4 is EMPTY
+# in the download direction (EDANLAB^equipment is the device-REPORTING/ORU convention),
+# OBR-11 = panel integer, OBR-19 = sample type, OBR-20 = the scanned barcode.
+_EDAN_SAMPLE_TYPE_WHOLE_BLOOD = "0"  # OBR-19
+_EDAN_PANEL_CBC = "1"  # OBR-11: CBC=1, CD=0, RET=2, ESR=23, … (only CBC implemented)
+
+
+def _is_edan_h90(query: QueryRecord) -> bool:
+    """EDAN H90-series querier — ``H90`` in MSH-3.1 or ``EDANLAB`` in MSH-4 (spec §5.1).
+    Mirrors the bridge ``Hl7HostQueryResponder.isEdanH90Series`` and ``oru._is_edan_h90``
+    gates so the sim and the production bridge encode the worklist the same way."""
+    msh3_c1 = query.sending_app.split("^", 1)[0].strip()
+    return msh3_c1.upper() == "H90" or query.sending_facility.strip().upper() == "EDANLAB"
+
+
+def _edan_panel_code(analyzer_codes: tuple[str, ...]) -> str:
+    """EDAN OBR-11 measurement-panel code (spec §3.2.3). Only CBC (1) is implemented — the
+    H99S bench runs CBC; the full panel table (RET/CD/ESR/…) is deferred, so any order
+    maps to CBC rather than emitting no panel (which the analyzer rejects)."""
+    return _EDAN_PANEL_CBC
 
 
 class QueryError(Exception):
@@ -89,11 +114,20 @@ class QueryResponse:
 
 @dataclass(frozen=True)
 class WorklistOrder:
-    """One host order returned to an analyzer worklist query."""
+    """One host order returned to an analyzer worklist query.
+
+    ``analyzer_codes`` are the per-analyte codes the generic ORF carries (accession in
+    OBR-2/3). The EDAN H90-series worklist is panel-level instead (spec §3.2.3 / §6.2): one
+    OBR whose OBR-11 is a measurement-panel integer (``panel_code``) and whose OBR-20 is the
+    scanned ``barcode`` — the accession is not on the download wire. So an EDAN order parses
+    back with empty ``analyzer_codes``/``accession_number`` and a populated ``panel_code``
+    (CBC = ``"1"``) and ``barcode``."""
 
     accession_number: str
     patient_id: str
     analyzer_codes: tuple[str, ...]
+    panel_code: str = ""
+    barcode: str = ""
 
 
 @dataclass(frozen=True)
@@ -235,9 +269,11 @@ def build_query_response(
 def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQueryResponse:
     """Parse an `ORF^R04` worklist/order-download answer.
 
-    The response echoes QRD-4/QRD-8 for correlation. Each OBR row carries one analyzer
-    test code in OBR-4 (`^^^WBC^WBC`) and the host accession in OBR-2/3. This is not a
-    result parser: there are no OBX rows in the order-download payload.
+    The response echoes QRD-4/QRD-8 for correlation. A generic OBR carries one analyzer
+    test code in OBR-4 (`^^^WBC^WBC`) and the accession in OBR-2/3; an EDAN H90-series OBR
+    leaves OBR-4 empty and is panel-level, with the scanned barcode in OBR-20, the panel
+    integer in OBR-11, and no accession on the download wire (spec §3.2.3 / §6.2). This is
+    not a result parser: there are no OBX rows in the order-download payload.
     """
     msg = message if isinstance(message, Message) else parse_message(message)
     msh = msg.first("MSH")
@@ -252,16 +288,35 @@ def parse_worklist_query_response(message: Message | bytes | str) -> WorklistQue
 
     orders: list[WorklistOrder] = []
     for obr in msg.all("OBR"):
-        accession = _u(msg, obr.field(2) or obr.field(3))
+        # Distinguish by OBR-4: the generic ORF carries the analyzer code there
+        # (`^^^WBC^WBC`), while the EDAN H90-series worklist OBR leaves OBR-4 empty and is
+        # panel-level (spec §6.2) — accession-free, with the panel int in OBR-11, the
+        # analyzer sample number in OBR-2, and the scanned barcode in OBR-20 ("Patient ID
+        # or Barcode", §3.2.3). The accession never rides the download wire.
         code = _u(msg, obr.component(4, 4) or obr.component(4, 1))
-        if accession or code:
-            orders.append(
-                WorklistOrder(
-                    accession_number=accession,
-                    patient_id=patient_id,
-                    analyzer_codes=(code,) if code else (),
+        if code:
+            accession = _u(msg, obr.field(2) or obr.field(3))
+            if accession or code:
+                orders.append(
+                    WorklistOrder(
+                        accession_number=accession,
+                        patient_id=patient_id,
+                        analyzer_codes=(code,),
+                    )
                 )
-            )
+        else:
+            barcode = _u(msg, obr.field(20))
+            panel = _u(msg, obr.field(11))
+            if barcode or panel:
+                orders.append(
+                    WorklistOrder(
+                        accession_number="",
+                        patient_id=patient_id,
+                        analyzer_codes=(),
+                        panel_code=panel,
+                        barcode=barcode,
+                    )
+                )
 
     return WorklistQueryResponse(
         ack_code=_u(msg, msa.field(1)) if msa else "",
@@ -286,9 +341,13 @@ def build_worklist_query_response(
 ) -> bytes:
     """Build the host's H99S `ORF^R04` order-download answer.
 
-    `QRD-8` echoes the analyzer's barcode subject for correlation. The returned
-    `OBR-2/3` carry the host accession, so a barcode like `DEV01260000000000002`
-    can legitimately return accession `2`.
+    `QRD-8` echoes the analyzer's barcode subject for correlation. For an EDAN H90-series
+    querier the reply is the panel-level EDAN OBR (spec §6.2 accepted download): one OBR per
+    order carrying the analyzer's sample number (echoed QRD-9) in OBR-2, an empty OBR-4, the
+    panel integer in OBR-11, sample type in OBR-19, and the scanned barcode (echoed QRD-8)
+    in OBR-20 — the join key the analyzer's follow-up ORU echoes; the accession never rides
+    the wire. A non-EDAN querier keeps the generic per-analyte OBR (accession in OBR-2/3,
+    code in OBR-4).
     """
     order_rows = tuple(orders)
     patient_id = next((order.patient_id for order in order_rows if order.patient_id), "")
@@ -304,19 +363,37 @@ def build_worklist_query_response(
     )
     segs = [msh, msa, qrd, "|".join(["PID", "1", "", _esc(patient_id)])]
 
+    edan = _is_edan_h90(query)
     set_id = 1
     for order in order_rows:
-        for code in order.analyzer_codes:
-            if not code:
+        codes = tuple(c for c in order.analyzer_codes if c)
+        if edan:
+            if not codes:
                 continue
-            segs.append(
-                "|".join(
-                    ["OBR", str(set_id), _esc(order.accession_number),
-                     _esc(order.accession_number), _esc_component("", "", "", code, code),
-                     "", "", "", "", "", "", "A"]
-                )
-            )
+            # One EDAN panel OBR (spec §6.2 accepted download shape): OBR-2 = the analyzer's
+            # own sample number (echoed QRD-9), OBR-4 = empty (EDANLAB^equipment is the
+            # ORU-reporting convention, not the download), OBR-11 = panel int, OBR-19 =
+            # sample type, OBR-20 = the scanned barcode (echoed QRD-8) — the join key; the
+            # accession never rides the download wire.
+            obr = [""] * 21
+            obr[0] = "OBR"
+            obr[1] = str(set_id)
+            obr[2] = _esc(query.what_subject)
+            obr[11] = _edan_panel_code(codes)
+            obr[19] = _EDAN_SAMPLE_TYPE_WHOLE_BLOOD
+            obr[20] = _esc(query.subject_id)
+            segs.append("|".join(obr))
             set_id += 1
+        else:
+            for code in codes:
+                segs.append(
+                    "|".join(
+                        ["OBR", str(set_id), _esc(order.accession_number),
+                         _esc(order.accession_number), _esc_component("", "", "", code, code),
+                         "", "", "", "", "", "", "A"]
+                    )
+                )
+                set_id += 1
     return _SEG.join(segs).encode("latin-1")
 
 
