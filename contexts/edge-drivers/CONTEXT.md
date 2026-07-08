@@ -17,7 +17,33 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`963b39a`** — LIS-174 SNIBE MAGLUMI X3 native simplified-envelope
+- **Pin:** untagged **`002210a`** — LIS-176 SNIBE MAGLUMI X3 HL7 v2.5 `OUL^R22` native
+  fallback parse path (PR `openelis-analyzer-bridge#28`). A MAGLUMI-gated dialect branch in
+  `HL7ResultParser` (`isSnibeX3` = MSH-3 component-1 `equalsIgnoreCase("MAGLUMI")`, decided
+  before any standard MSH read): shifted MSH metadata (control-id = MSH-6, datetime = MSH-4,
+  vs standard MSH-9/MSH-7), SPM-driven accession grouping (`SPM-2`), and `SPM-11` role routing
+  (`P` → PATIENT, `Q`/unknown/missing → QC — kept out of the patient/Observation stream via a
+  per-group `resultType` so the `messageResultType=PATIENT` fallback is never reached for a
+  SNIBE group). `OBX-7` → FHIR reference range and `OBX-8` → interpretation for non-EDAN
+  standard-position HL7; the router accepts a `Protocol.HL7 + Transport.MLLP` envelope through
+  the shared IP-keyed `AnalyzerRegistryConfig` + FHIR normalization (no bypass, no auth change).
+  Branched off `ccc5f26` (before LIS-112); `origin/develop`'s LIS-112 "handle EDAN OBX payloads"
+  (`a1182b9`) was merged into the branch — the `parseObxSegment` OBX-7/OBX-8 block resolves to
+  LIS-112's superset (reference-range-for-all + computed EDAN-numeric abnormal flag), which for
+  `edanH90=false` (SNIBE) reads `OBX-8` and applies `OBX-7` exactly as LIS-176 intended, with no
+  EDAN regression (`git diff a1182b9 002210a` on `FhirBundleBuilder` empty). Landed with
+  adversarial APPROVE (no P0/P1; conflict resolution verified faithful); full suite at this
+  merged pin **803/0/0/5**, `edge/sim` **328** (bridge has no CI — local runs are the record).
+  **Synthetic fixture coverage only — real X3 `OUL^R22` wire proof, the exact MSH-3 sending-app
+  token, and the shifted MSH layout remain LIS-75 bench work** (adversarial P2: the whole
+  QC-safety property depends on `isSnibeX3` firing); AC-1/AC-2 do not graduate until then, slice
+  stays OPEN. Out of scope of this PR: `OBX-11` result finality (LIS-179) and `OML^O33`
+  order-download / host-query (LIS-177) — this is the `OUL^R22` result/QC ingest path only. Sits
+  on top of the intervening `a1182b9` (LIS-112 EDAN OBX payloads: histogram attachments +
+  numeric-range abnormal-flag derivation) and `ccc5f26` (LIS-185 EDAN OBR-14 lot-number gate,
+  PR #26), and the LIS-149 return-leg `30b11c8` / LIS-182 `15feb08` / LIS-175 `8d4f75a` that
+  landed between `963b39a` below and here.
+- **Prior pin:** untagged **`963b39a`** — LIS-174 SNIBE MAGLUMI X3 native simplified-envelope
   ASTM receive path (PR `openelis-analyzer-bridge#21`): third framing profile
   `SnibeAstmCommunicator` (`AWAIT_ENQ → AWAIT_STX → RECORDS → AWAIT_EOT`; ACK at exactly
   ENQ/STX/ETX/EOT, never per record; no NAK vocabulary, no retransmit — any unexpected

@@ -16,6 +16,10 @@ SNIBELIS_MAGLUMI_X3_FIXTURES = (
     FIXTURES_ROOT / "snibelis-maglumi-x3-query-request",
     FIXTURES_ROOT / "snibelis-maglumi-x3-calibration",
 )
+SNIBE_MAGLUMI_X3_HL7_FIXTURES = (
+    FIXTURES_ROOT / "snibelis-maglumi-x3-oul-r22-result",
+    FIXTURES_ROOT / "snibelis-maglumi-x3-oul-r22-qc",
+)
 
 
 def _valid_manifest():
@@ -76,6 +80,19 @@ def test_snibelis_maglumi_x3_fixtures_carry_bridge_channel_settings(directory):
     assert fx.channel["tcp"]["port"] == 12021
     assert fx.channel["identity"]["analyzer_id"] == "Maglumi User"
     assert fx.channel["identity"]["host_id"] == "Lis"
+    assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
+
+
+@pytest.mark.parametrize("directory", SNIBE_MAGLUMI_X3_HL7_FIXTURES, ids=lambda p: p.name)
+def test_snibe_maglumi_x3_hl7_fixtures_carry_shared_mllp_channel_settings(directory):
+    fx = load_fixture(directory)
+
+    assert fx.protocol == "hl7v2"
+    assert fx.transport == "mllp"
+    assert fx.framing == "mllp"
+    assert fx.channel["tcp"]["port"] == 2575
+    assert fx.channel["identity"]["analyzer_id"] == "MAGLUMI"
+    assert fx.channel["identity"]["host_id"] == "LIS"
     assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
 
 
