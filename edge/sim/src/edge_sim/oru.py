@@ -239,7 +239,7 @@ def _observation(seg, u, edan: bool = False) -> RawObservation | None:
     # EDAN family (H90-series and, per the 2026-07-06 bench, the H60S): the analyte
     # code/name rides in OBX-4 (OBX-3 is a suspect flag, KB §5.4). Read the code from
     # OBX-4 there; standard analyzers keep the OBX-3.1 observation identifier.
-    raw_code = u(seg.field(4)) if edan else u(seg.component(3, 1))
+    raw_code = _edan_result_code(u(seg.field(4))) if edan else u(seg.component(3, 1))
     if edan and seg.field(2).strip().upper() == "ST":
         match = _EDAN_HISTOGRAM_CODE.match(raw_code)
         if match and match.group(2):
@@ -266,6 +266,23 @@ def _observation(seg, u, edan: bool = False) -> RawObservation | None:
         abnormal_flags=abnormal_flags,
         status=u(seg.field(11)),
     )
+
+
+def _edan_result_code(raw_code: str) -> str:
+    code = (raw_code or "").strip()
+    if "&" in code:
+        head = code.split("&", 1)[0].strip()
+        if head:
+            code = head
+
+    # CD-mode reticulocyte rows can suffix the method/channel as -D. Do not strip
+    # all -D suffixes: research WBC-D/TNC-D channels are distinct vendor parameters
+    # and deliberately remain unmapped.
+    reticulocyte_aliases = {
+        "RET#-D": "RET#",
+        "RET%-D": "RET%",
+    }
+    return reticulocyte_aliases.get(code.upper(), code)
 
 
 def _computed_edan_abnormal_flag(value: str, reference_range: str) -> str:
