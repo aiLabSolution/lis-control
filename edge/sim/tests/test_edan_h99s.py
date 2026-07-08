@@ -39,7 +39,14 @@ from pathlib import Path
 from edge_sim.cli import main as cli_main
 from edge_sim.fixtures import load_fixture
 from edge_sim.milestone import run_milestone
-from edge_sim.normalize import KIND_ANOMALY, KIND_BLANK, KIND_RESULT, Normalizer, STATUS_NORMALIZED
+from edge_sim.normalize import (
+    KIND_ANOMALY,
+    KIND_ATTACHMENT,
+    KIND_BLANK,
+    KIND_RESULT,
+    Normalizer,
+    STATUS_NORMALIZED,
+)
 from edge_sim.oru import RESULT_TYPE_BLANK, parse_oru_r01
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
@@ -138,7 +145,7 @@ def test_h60s_is_edanlab_h90_family_after_bench_graduation():
     through the EDAN profile just like the H99S."""
     report = _report(H60S)
     assert report.sending_facility == "EDANLAB"
-    codes = [o.raw_code for o in report.observations]
+    codes = [o.raw_code for o in report.observations if o.value_type == "NM"]
     assert codes == ["WBC", "RBC", "HGB", "HCT", "MCV", "PLT"]  # read from OBX-4, not OBX-3
     assert report.patient_id == "PID-0231"   # PID-2 (EDAN), not PID-3
     assert report.specimen_id == "SPEC-0231"  # OBR-2 (EDAN), not OBR-3
@@ -202,6 +209,31 @@ def test_h60s_milestone_normalizes_all_six_analytes_held_back():
     assert {o.raw_code for o in results} == {"WBC", "RBC", "HGB", "HCT", "MCV", "PLT"}
     assert all(o.loinc for o in results)          # every analyte mapped to a LOINC (OBX-4)
     assert out.ingest_payload() == []             # EDAN OBX-11 finality gap (held back)
+
+
+def test_h60s_histogram_routes_to_attachment_and_scaled_variant_is_dropped():
+    """LIS-112: EDAN histogram ST OBX rows are media, not analyte results. Persist the
+    canonical base PNG once; scaled *_PNG_BASE64_2/_3 variants are duplicate renderings
+    and are dropped by policy."""
+    report = _report(H60S)
+    raw_codes = [o.raw_code for o in report.observations]
+    assert "WBC_PNG_BASE64" in raw_codes
+    assert "WBC_PNG_BASE64_2" not in raw_codes
+
+    rows = _normalized(H60S)
+    attachments = [row for row in rows if row.kind == KIND_ATTACHMENT]
+    results = [row for row in rows if row.kind == KIND_RESULT]
+    assert [row.raw_code for row in attachments] == ["WBC_PNG_BASE64"]
+    assert {row.raw_code for row in results} == {"WBC", "RBC", "HGB", "HCT", "MCV", "PLT"}
+
+
+def test_h60s_empty_obx8_computes_high_from_obx5_vs_obx7():
+    """LIS-112: EDAN numeric OBX-8 is absent/non-Table-0078, so the LIS computes
+    abnormal status from OBX-5 and OBX-7. WBC is intentionally above range."""
+    report = _report(H60S)
+    rows = {obs.raw_code: obs for obs in report.observations}
+    assert rows["WBC"].abnormal_flags == "H"
+    assert rows["RBC"].abnormal_flags == "N"
 
 
 def test_cli_normalize_renders_h99s_panel(capsys):

@@ -33,6 +33,7 @@ __all__ = [
     "KIND_RESULT",
     "KIND_WARNING",
     "KIND_ANOMALY",
+    "KIND_ATTACHMENT",
     "KIND_CALIBRATION",
     "KIND_BLANK",
 ]
@@ -45,6 +46,7 @@ STATUS_UNMAPPED = "UNMAPPED"  # neither resolved
 KIND_RESULT = "RESULT"  # a numeric/analyte patient result row
 KIND_WARNING = "WARNING"  # an in-band instrument warning (e.g. SD1 'Alarm' OBX) — a note, not a result
 KIND_ANOMALY = "ANOMALY"  # parser anomaly, e.g. NM/SN value that is not a decimal number
+KIND_ATTACHMENT = "ATTACHMENT"  # analyzer media payload, e.g. EDAN histogram PNG — not a result
 KIND_CALIBRATION = "CALIBRATION"  # calibration row — never a patient result
 KIND_BLANK = "BLANK"  # blank/operational material — never a patient result
 
@@ -53,6 +55,7 @@ KIND_BLANK = "BLANK"  # blank/operational material — never a patient result
 # OBX-4, e.g. W3001; manual §4.1.1) — an instrument flag, not a patient analyte. Such
 # an OBX is routed as KIND_WARNING so it never lands as a numeric result (LIS-86 / S2.10).
 _INBAND_WARNING_CODE = "ALARM"
+_EDAN_HISTOGRAM_SUFFIX = "_PNG_BASE64"
 
 
 @dataclass(frozen=True)
@@ -207,9 +210,16 @@ def _is_inband_warning(obs: RawObservation) -> bool:
 def _observation_kind(obs: RawObservation) -> str:
     if _is_inband_warning(obs):
         return KIND_WARNING
+    if _is_histogram_attachment(obs):
+        return KIND_ATTACHMENT
     if _is_unparseable_numeric(obs):
         return KIND_ANOMALY
     return KIND_RESULT
+
+
+def _is_histogram_attachment(obs: RawObservation) -> bool:
+    code = (obs.raw_code or "").strip().upper()
+    return (obs.value_type or "").strip().upper() == "ST" and code.endswith(_EDAN_HISTOGRAM_SUFFIX)
 
 
 def _is_unparseable_numeric(obs: RawObservation) -> bool:

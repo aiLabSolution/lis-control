@@ -13,7 +13,7 @@ from .archive import RawMessageArchive, archive_fixture
 from .e1394 import parse_e1394
 from .fixtures import DEFAULT_FIXTURES_ROOT, FixtureError, load_fixture, load_fixtures
 from .milestone import run_milestone
-from .normalize import KIND_ANOMALY, KIND_BLANK, KIND_RESULT, KIND_WARNING, Normalizer
+from .normalize import KIND_ANOMALY, KIND_ATTACHMENT, KIND_BLANK, KIND_RESULT, KIND_WARNING, Normalizer
 from .oru import OruParseError, parse_oru_r01
 from .query import (
     QueryError,
@@ -331,6 +331,8 @@ def _non_result_label(kind: str) -> str:
         return "WARNING note"
     if kind == KIND_ANOMALY:
         return "ANOMALY note"
+    if kind == KIND_ATTACHMENT:
+        return "ATTACHMENT media"
     if kind == KIND_BLANK:
         return "BLANK material"
     return ""

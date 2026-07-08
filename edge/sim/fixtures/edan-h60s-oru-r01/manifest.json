@@ -8,15 +8,15 @@
   "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
   "source": {
     "reference": "Wire format from 2026-07-06 physical EDAN H60S bench (LIS-20; SN 860575-M26409800004, firmware wire-id H60^7907; run 20260703T134217Z-h60s). Byte-exact real capture: bench-runs/20260703T134217Z-h60s/h60s-oru-numeric.hl7.",
-    "note": "Wire format validated at the 2026-07-06 bench: the H60S emits the EDAN H90-family layout, NOT the clean-HL7 layout this seed originally assumed. MSH-4='EDANLAB' (not 'EDAN'), MSH-3='H60^7907' (not 'H60S'), analyte code in OBX-4 with OBX-3 a 0/1 suspect flag, patient number in PID-2, sample id in OBR-2. The edge parser routes on MSH-4=='EDANLAB' (_is_edan_h90) to read OBX-4/PID-2/OBR-2. Units carry the HL7 caret escape 10\\S\\9/L (== 10^9/L) and there is a trailing OBX-12 value^unit component the parser ignores. The real bench message was blank material (WBC/RBC/HGB/PLT numeric, HCT/MCV '---'); this fixture keeps the six-CBC profile with representative values so it remains the Stage-1 normalize/milestone vehicle. Real markers seen but out of scope here: '***' no-result sentinel, MSH-16=2 on the connection-test ping, ~33 analytes on a full frame."
+    "note": "Wire format validated at the 2026-07-06 bench: the H60S emits the EDAN H90-family layout, NOT the clean-HL7 layout this seed originally assumed. MSH-4='EDANLAB' (not 'EDAN'), MSH-3='H60^7907' (not 'H60S'), analyte code in OBX-4 with OBX-3 a 0/1 suspect flag, patient number in PID-2, sample id in OBR-2. The edge parser routes on MSH-4=='EDANLAB' (_is_edan_h90) to read OBX-4/PID-2/OBR-2. Units carry the HL7 caret escape 10\\S\\9/L (== 10^9/L) and there is a trailing OBX-12 value^unit component the parser ignores. The real bench message was blank material (WBC/RBC/HGB/PLT numeric, HCT/MCV '---'); this fixture keeps the six-CBC profile with representative values so it remains the Stage-1 normalize/milestone vehicle. LIS-112 adds empty EDAN OBX-8 fields so abnormal status is computed from OBX-5 vs OBX-7, plus WBC_PNG_BASE64 histogram rows: the base PNG is persisted as media/attachment and scaled _PNG_BASE64_2/_3 duplicates are dropped. Real markers seen but out of scope here: '***' no-result sentinel, MSH-16=2 on the connection-test ping, ~33 analytes on a full frame."
   },
   "synthetic": true,
   "expected": {
     "message_type": "ORU^R01",
     "patient_id": "PID-0231",
     "specimen_id": "SPEC-0231",
-    "observations": [
-      { "set_id": "", "raw_code": "WBC", "value": "6.8", "raw_unit": "10^9/L", "loinc": "6690-2", "ucum_value": "10*9/L", "status": "NORMALIZED" },
+    "results": [
+      { "set_id": "", "raw_code": "WBC", "value": "12.1", "raw_unit": "10^9/L", "loinc": "6690-2", "ucum_value": "10*9/L", "status": "NORMALIZED" },
       { "set_id": "", "raw_code": "RBC", "value": "4.85", "raw_unit": "10^12/L", "loinc": "789-8", "ucum_value": "10*12/L", "status": "NORMALIZED" },
       { "set_id": "", "raw_code": "HGB", "value": "142", "raw_unit": "g/L", "loinc": "718-7", "ucum_value": "g/L", "status": "NORMALIZED" },
       { "set_id": "", "raw_code": "HCT", "value": "42.5", "raw_unit": "%", "loinc": "4544-3", "ucum_value": "%", "status": "NORMALIZED" },
