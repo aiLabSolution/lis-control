@@ -12,7 +12,7 @@ import pytest
 
 from edge_sim.fixtures import load_fixture
 from edge_sim.mllp import MllpDecoder, frame
-from edge_sim.normalize import STATUS_NORMALIZED, Normalizer
+from edge_sim.normalize import KIND_RESULT, STATUS_NORMALIZED, Normalizer
 from edge_sim.oru import OruReport, parse_oru_r01
 from edge_sim.query import (
     QueryError,
@@ -109,7 +109,7 @@ def test_host_answers_query_and_result_returns():
     assert resp.report.specimen_id == "SPEC-0231"
     assert correlates(q, resp) is True
 
-    rows = Normalizer().normalize_report(resp.report)
+    rows = [row for row in Normalizer().normalize_report(resp.report) if row.kind == KIND_RESULT]
     assert [r.raw_code for r in rows] == ["WBC", "RBC", "HGB", "HCT", "MCV", "PLT"]
     assert [r.loinc for r in rows] == ["6690-2", "789-8", "718-7", "4544-3", "787-2", "777-3"]
     assert [r.raw_unit for r in rows] == ["10^9/L", "10^12/L", "g/L", "%", "fL", "10^9/L"]

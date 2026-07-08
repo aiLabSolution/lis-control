@@ -15,6 +15,8 @@ rejected — without it the message cannot be identified.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+import re
 
 from .hl7 import Message, parse_message, unescape
 
@@ -33,6 +35,12 @@ RESULT_TYPE_PATIENT = "PATIENT"
 RESULT_TYPE_CALIBRATION = "CALIBRATION"
 RESULT_TYPE_QC = "QC"
 RESULT_TYPE_BLANK = "BLANK"
+
+_EDAN_HISTOGRAM_CODE = re.compile(r"^(.+)_PNG_BASE64(?:_(\d+))?$", re.IGNORECASE)
+_NUMERIC_RANGE = re.compile(
+    r"\s*(-?\d+(?:\.\d+)?)\s*(?:to|-|–)\s*(-?\d+(?:\.\d+)?)\s*",
+    re.IGNORECASE,
+)
 
 
 class OruParseError(Exception):
@@ -95,7 +103,9 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
 
     edan = _is_edan_h90(msh)
 
-    observations = tuple(_observation(seg, u, edan) for seg in msg.all("OBX"))
+    observations = tuple(
+        obs for seg in msg.all("OBX") if (obs := _observation(seg, u, edan)) is not None
+    )
     result_type = _result_type(msh.field(16))
     if obr and _is_blank_sample_obr(obr, u):
         result_type = RESULT_TYPE_BLANK
@@ -225,11 +235,24 @@ def _is_blank_sample_obr(obr, u) -> bool:
     return any("blank sample" in u(field).lower() for field in obr.fields)
 
 
-def _observation(seg, u, edan: bool = False) -> RawObservation:
+def _observation(seg, u, edan: bool = False) -> RawObservation | None:
     # EDAN family (H90-series and, per the 2026-07-06 bench, the H60S): the analyte
     # code/name rides in OBX-4 (OBX-3 is a suspect flag, KB §5.4). Read the code from
     # OBX-4 there; standard analyzers keep the OBX-3.1 observation identifier.
     raw_code = u(seg.field(4)) if edan else u(seg.component(3, 1))
+    if edan and seg.field(2).strip().upper() == "ST":
+        match = _EDAN_HISTOGRAM_CODE.match(raw_code)
+        if match and match.group(2):
+            # EDAN emits scaled duplicate histograms as *_PNG_BASE64_2/_3. The
+            # canonical base image is persisted; scaled variants are dropped so
+            # they never normalize or enter the result stream.
+            return None
+    reference_range = u(seg.field(7))
+    abnormal_flags = (
+        _computed_edan_abnormal_flag(u(seg.field(5)), reference_range)
+        if edan and seg.field(2).strip().upper() in {"NM", "SN"}
+        else u(seg.field(8))
+    )
     return RawObservation(
         set_id=u(seg.field(1)),
         value_type=u(seg.field(2)),
@@ -239,7 +262,29 @@ def _observation(seg, u, edan: bool = False) -> RawObservation:
         sub_id=u(seg.field(4)),
         value=u(seg.field(5)),
         raw_unit=u(seg.component(6, 1)),
-        reference_range=u(seg.field(7)),
-        abnormal_flags=u(seg.field(8)),
+        reference_range=reference_range,
+        abnormal_flags=abnormal_flags,
         status=u(seg.field(11)),
     )
+
+
+def _computed_edan_abnormal_flag(value: str, reference_range: str) -> str:
+    """Compute EDAN H/L/N from OBX-5 vs OBX-7; ignore EDAN's numeric OBX-8 codes."""
+    if not value.strip() or not reference_range.strip():
+        return ""
+    match = _NUMERIC_RANGE.match(reference_range)
+    if not match:
+        return ""
+    try:
+        numeric_value = Decimal(value.strip())
+        low = Decimal(match.group(1))
+        high = Decimal(match.group(2))
+    except InvalidOperation:
+        return ""
+    if low > high:
+        return ""
+    if numeric_value < low:
+        return "L"
+    if numeric_value > high:
+        return "H"
+    return "N"
