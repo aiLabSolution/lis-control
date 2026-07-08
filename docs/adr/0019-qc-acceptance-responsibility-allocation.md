@@ -1,8 +1,8 @@
 # ADR-0019 — QC-acceptance responsibility allocation (never auto-accept; engineer sign-off owned by OpenELIS core)
 
-- **Status:** Proposed — **pending QA/regulatory owner (Pinote) sign-off** to become Accepted (safety-critical, see below)
-- **Date:** 2026-07-08
-- **Deciders:** Marloe Uy (System / technical owner — proposer); Artis Lindy Pinote (Functional + QA/regulatory owner — **sign-off required**)
+- **Status:** Accepted (2026-07-08) — QA/regulatory owner sign-off obtained (safety-critical, see below)
+- **Date:** 2026-07-08 (proposed); 2026-07-08 (accepted)
+- **Deciders:** Marloe Uy (System / technical owner — proposer); Artis Lindy Pinote (Functional + QA/regulatory owner — **signed off 2026-07-08**)
 - **Supersedes / Superseded by:** —
 - **Depends on / relates to:** ADR-0007 (regulatory ownership & responsibility allocation — this ADR
   allocates one specific safety-critical obligation under that baseline); ADR-0015 (edge transport
@@ -74,9 +74,10 @@ match:**
    plus — where a slice wants defense-in-depth evidence — a bridge test asserting QC `Observation.status
    == PRELIMINARY`.
 
-5. **Safety-critical sign-off:** because this reallocates a safety-critical obligation, this ADR is
-   **Proposed** until the QA/regulatory owner (**Pinote**, DEC-01 / ADR-0007) signs off. Until sign-off,
-   LIS-33 (and siblings gated on this wording) stay **out of Done** on AC4.
+5. **Safety-critical sign-off (obtained):** because this reallocates a safety-critical obligation, this
+   ADR required QA/regulatory owner (**Pinote**, DEC-01 / ADR-0007) sign-off before being relied on.
+   **Sign-off was obtained 2026-07-08**, so this ADR is **Accepted** and AC4 (for LIS-33 and siblings
+   gated on this wording) is now closeable on the delegation recorded here.
 
 ## Consequences
 
@@ -89,12 +90,13 @@ match:**
   story, rather than a checkbox that never truthfully closes.
 
 **Negative / residual `[NEEDS-HUMAN]`**
-- **Requires QA/regulatory owner sign-off** before it is relied on; this is a reasoned allocation, not yet
-  an approved one. It records an internal decision; it is not a validation record on its own.
+- **QA/regulatory owner sign-off obtained (2026-07-08).** This records an internal, now-approved
+  allocation; it is still not a validation record on its own.
 - **The OE-core no-auto-accept behavior is asserted, not yet verified here.** A follow-up should add a
   core-side test proving QC control runs are held for engineer review and not auto-accepted, and (defense
   in depth) a bridge test asserting QC observations are `PRELIMINARY`. Until then the core half rests on
-  documented, but untested-in-this-repo, behavior.
+  documented, but untested-in-this-repo, behavior. **This is the open follow-up after AC4 close** — not a
+  blocker on the delegation, but the verifying test that hardens it.
 
 ## Alternatives considered
 
