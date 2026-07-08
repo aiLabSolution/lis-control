@@ -1,0 +1,51 @@
+{
+  "id": "snibelis-maglumi-x3-oul-r22-qc",
+  "description": "Synthetic SNIBE MAGLUMI X3 HL7 v2.5 OUL^R22 QC upload over MLLP with SPM-11=Q.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed from SNIBE MAGLUMI X3 LIS driver knowledgebase section 7 / X3 IFU App. B section 1.3 (LIS-176)",
+    "note": "Application payload only; MllpTransport applies VT/FS/CR framing at replay. Synthetic, not bench-captured. SPM-11=Q is the LIS-176 QC-routing discriminator; live confirmation remains a LIS-75 bench item."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibelis-maglumi-x3-hl7",
+    "isolation_group": "snibelis-maglumi-x3",
+    "tcp": { "port": 2575, "provenance": "bridge-default-bench-pending" },
+    "identity": {
+      "analyzer_id": "MAGLUMI",
+      "host_id": "LIS",
+      "bridge_registry_id": "SNIBE-MAGLUMI-X3-001",
+      "provenance": "bridge-default-bench-pending"
+    }
+  },
+  "terminology": {
+    "note": "Minimal synthetic MAGLUMI X3 HL7 QC seed for LIS-176. Real QC lot/level vocabulary graduates with LIS-75/LIS-33.",
+    "codes": {
+      "TSH": "3016-3"
+    },
+    "units": {
+      "uIU/mL": "u[IU]/mL"
+    }
+  },
+  "expected": {
+    "message_type": "OUL^R22",
+    "patient_id": "QC",
+    "specimen_id": "QC-176-L1",
+    "role": "QC",
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "2.30",
+        "raw_code": "TSH",
+        "raw_unit": "uIU/mL",
+        "loinc": "3016-3",
+        "ucum_value": "u[IU]/mL",
+        "status": "NORMALIZED"
+      }
+    ]
+  }
+}
