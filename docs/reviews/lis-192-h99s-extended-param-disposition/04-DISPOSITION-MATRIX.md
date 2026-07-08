@@ -13,11 +13,11 @@
 | **① MAP NOW** | **PDW** (32207-3, fL); *optional:* **P-LCR** (48386-7, %) | New OE test + LOINC + `analyzer_test_map`, mirroring LIS-183 `052` |
 | **② MAP after CD capture** | **IRF** (33516-6), **IPF** (71693-6) *(base codes — manual-confirmed reportable, RI 2.7–13.8% / 1.2–8.9%)* | Map the **base** codes (OBX-9==0); the `-D` forms are research DIFF variants → ③/drop. Confirm exact wire code string via a CD capture first |
 | **③ NORMALIZE (→ LIS-190)** | **RET#-D/RET%-D** (=60474-4/17849-1) *(same measurand, DIFF-channel variant)* | Same measurand as already-mapped codes → bridge code-norm, **never a 2nd mapping**. **IME removed — it is NOT IMG (see ⑥/manual).** |
-| **④ LOCAL-CODE (owner opt-in)** | **Micro%** (74761-8*), **HFR/MFR/LFR-D** (51642-7/82592-7/82591-9), **P-LCC** (RI 39–101), **PDW-SD**, **LIC#/%**, **HFC#/%**, **Macro#/%**, **Micro#** | Reportable-ish but niche/redundant/no-clean-LOINC → only if the lab wants them |
+| **④ LOCAL-CODE (owner opt-in)** | **InR#/InR‰** *(owner-approved 2026-07-08 — Infected RBC, malaria)*, **Micro%** (74761-8*), **HFR/MFR/LFR-D** (51642-7/82592-7/82591-9), **P-LCC** (RI 39–101), **PDW-SD**, **LIC#/%**, **HFC#/%**, **Macro#/%**, **Micro#** | Reportable-ish but niche/redundant/no-clean-LOINC → only if the lab wants them |
 | **⑤ DERIVE DOWNSTREAM** | **NLR, MLR, PLR** *(manual: research-only)* | Compute in LIS from mapped components; **do not ingest** the analyzer value (divergence risk); no LOINC exists |
 | **⑥ DROP (method-dup / research / internal)** | **PLT-I, PLT-A, PLT-O, WBC-D, WBC-N, WBC-O, TNC/TNC-D/TNC-N**, scatter **LYM/MON/NEU-X/Y/Z(+W)**, **IME#/IME%** (research immature-eosinophil), **ALY#/%** (research atypical-lymph), **HFC#/%**, **H-NR%/L-NR%** | Double-counts an already-reported measurand, is flagged Research (OBX-9==1), or is raw engineering data → never surface |
 | **⑦ ATTACHMENT (→ LIS-112)** | **\*_PNG_BASE64** histograms/scattergrams | Ride along as report images, not result fields |
-| **⑧ DEFER (need vendor decision)** | **InR#/InR‰** (=Infected RBC count/permillage — **not** a reticulocyte; no diagnostic LOINC found), **PDW-SD** | Specialized/parasite param — owner decides local-code vs drop |
+| **⑧ DEFER (open)** | **IRF/IPF base codes** (reportable per manual but absent on the CD wire — only `-D` research forms seen) | Need a non-CD capture / EDAN spec to confirm the reportable code before mapping (bucket ②) |
 
 ## Full per-param table
 
@@ -51,7 +51,7 @@
 | **TNC / TNC-D / TNC-N** | 10⁹/L | 50774-9 | =WBC+NRBC (internal) | **HIGH** | **⑥ DROP** | Double-counts in whole-blood CBC |
 | **LYM/MON/NEU-X/Y/Z(+W)** | — | **none** | Not analytes (scatter coords) | n/a | **⑥ DROP** | Raw engineering data |
 | **\*_PNG_BASE64** | — | n/a (image) | Plot image | n/a | **⑦ ATTACHMENT (LIS-112)** | Report image, not a result field |
-| **InR# / InR‰** | 10⁹/L / ‰ | **none** (~~51636-9~~ was wrong) | **Infected RBC count/permillage (manual)** — malaria/parasite | n/a | **⑧ DEFER (owner)** | **Manual: InR = Infected RBC, NOT immature retic.** 51636-9 refuted. Specialized param → local-code or drop |
+| **InR# / InR‰** | 10⁹/L / ‰ | **none** (~~51636-9~~ was wrong) | **Infected RBC count/permillage (manual)** — malaria/parasite | n/a | **④ LOCAL-CODE (owner-approved)** | **Manual: InR = Infected RBC, NOT immature retic** (51636-9 refuted). Owner (2026-07-08): surface via a local/non-LOINC code (lab does malaria work). Separate follow-up seed — not part of the PDW landing |
 | **H-NR% / L-NR%** | % | **none** | **High/Low FSC NRBC % (manual) — research** | n/a | **⑥ DROP** | Gating/region ratio, research |
 | **ALY#** | 10⁹/L | ~~43743-4~~ (don't map) | **Atypical lymph — research-only (manual)** | Overlaps LYM | **⑥ DROP** | **Manual: research-only** → keep as flag, do NOT map to diagnostic LOINC |
 | **ALY%** | % | ~~42250-1~~ (don't map) | Atypical lymph — research-only | Overlaps LYM | **⑥ DROP** | same |
