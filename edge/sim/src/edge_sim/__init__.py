@@ -54,6 +54,7 @@ from .normalize import (
     KIND_ATTACHMENT,
     KIND_BLANK,
     KIND_CALIBRATION,
+    KIND_QC,
     KIND_RESULT,
     KIND_WARNING,
     STATUS_NORMALIZED,
@@ -133,6 +134,7 @@ __all__ = [
     "KIND_WARNING",
     "KIND_ANOMALY",
     "KIND_ATTACHMENT",
+    "KIND_QC",
     "KIND_CALIBRATION",
     "KIND_BLANK",
     # ASTM E1381 codec + session (LIS-23 / S2.1)
