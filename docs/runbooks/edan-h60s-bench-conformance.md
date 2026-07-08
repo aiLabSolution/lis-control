@@ -341,6 +341,43 @@ Pass criteria:
 - Staged rows are mapped to the expected OpenELIS tests and are not marked
   unmapped/read-only because of missing H60S mappings.
 
+### 5.1 Dual-analyzer coexistence — distinct transport IPs (LIS-187)
+
+The H60S and H99S are bench-tested over a **single direct-ethernet link,
+swapped by hand** between the two units (never connected at once). The
+analyzer-bridge routes each inbound message to a registry entry **by connection
+source IP**, and its startup pull keys entries **by `ipAddress` only**
+(`AnalyzerRegistryBootstrap`; the HL7 `identifierPattern`, MSH-3 `H60` vs `H90`,
+only *corroborates* an IP match — it does not select between analyzers). So the
+two units **must sit on distinct IPs**; two analyzers sharing one IP collapse to
+a single registry entry and one unit inherits the other's map.
+
+**Operator step (durable config — once per deployment).** In the OpenELIS
+**Analyzer admin screen**, set each EDAN unit's transport IP, and set each
+physical analyzer's own IP to match (same `/24` as the host NIC):
+
+| Analyzer   | OE `ip_address`   | Map                                              |
+|------------|-------------------|--------------------------------------------------|
+| EDAN H99S  | `192.168.50.50`   | 30-code CBC + 5-part diff (LIS-183 / seed `052`) |
+| EDAN H60S  | `192.168.50.51`   | CBC-6 (LIS-187 / seed `053`); 3-part diff = follow-up |
+
+The IPs are **operator config on purpose** (deployment-specific) — stored in the
+OE database and **pulled by the bridge on every restart**, so there is no bench
+curl injection. The analyzer rows and their code->LOINC maps are seeded durably
+(`052`/`053`), so only the IPs are set by hand.
+
+**Verify** — after setting the IPs, restart the bridge and confirm the pull
+registered both:
+
+```bash
+curl -s http://localhost:8442/api/analyzers | python3 -c \
+  'import json,sys; d=json.load(sys.stdin); [print(s, a.get("name"), len(a.get("codeToLoinc") or {})) for s,a in d.items()]'
+# expect: 192.168.50.50 EDAN H99S 30   and   192.168.50.51 EDAN H60S 6
+```
+
+Swapping the cable to the other unit then routes correctly by its IP, with no
+re-registration and no injection.
+
 ## 6. Fixture Graduation
 
 **DONE 2026-07-06 (PR #91).** How it actually landed differs from the original plan
