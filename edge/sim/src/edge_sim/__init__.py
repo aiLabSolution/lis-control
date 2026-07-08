@@ -51,6 +51,7 @@ from .hl7 import Encoding, Hl7Error, Message, Segment, parse_message, unescape
 from .mllp import CR, EB, SB, MllpDecoder, MllpError, deframe, frame
 from .normalize import (
     KIND_ANOMALY,
+    KIND_ATTACHMENT,
     KIND_BLANK,
     KIND_CALIBRATION,
     KIND_RESULT,
@@ -131,6 +132,7 @@ __all__ = [
     "KIND_RESULT",
     "KIND_WARNING",
     "KIND_ANOMALY",
+    "KIND_ATTACHMENT",
     "KIND_CALIBRATION",
     "KIND_BLANK",
     # ASTM E1381 codec + session (LIS-23 / S2.1)
