@@ -34,6 +34,7 @@ __all__ = [
     "KIND_WARNING",
     "KIND_ANOMALY",
     "KIND_ATTACHMENT",
+    "KIND_QC",
     "KIND_CALIBRATION",
     "KIND_BLANK",
 ]
@@ -47,6 +48,7 @@ KIND_RESULT = "RESULT"  # a numeric/analyte patient result row
 KIND_WARNING = "WARNING"  # an in-band instrument warning (e.g. SD1 'Alarm' OBX) — a note, not a result
 KIND_ANOMALY = "ANOMALY"  # parser anomaly, e.g. NM/SN value that is not a decimal number
 KIND_ATTACHMENT = "ATTACHMENT"  # analyzer media payload, e.g. EDAN histogram PNG — not a result
+KIND_QC = "QC"  # quality-control row — never a patient result
 KIND_CALIBRATION = "CALIBRATION"  # calibration row — never a patient result
 KIND_BLANK = "BLANK"  # blank/operational material — never a patient result
 
@@ -70,7 +72,7 @@ class NormalizedObservation:
     loinc: str  # normalized LOINC ("" if unmapped)
     ucum_value: str  # normalized UCUM unit ("" if unmapped)
     status: str  # NORMALIZED | PARTIAL | UNMAPPED
-    kind: str = KIND_RESULT  # RESULT | WARNING | ANOMALY | CALIBRATION | BLANK
+    kind: str = KIND_RESULT  # RESULT | WARNING | ANOMALY | ATTACHMENT | QC | CALIBRATION | BLANK
 
 
 # --- default RAYTO RAC-050 CBC terminology seed (LIS-14 / S1.2) -------------
@@ -197,6 +199,11 @@ class Normalizer:
         if report.result_type == RESULT_TYPE_BLANK:
             return [_with_kind(row, KIND_BLANK) if row.kind == KIND_RESULT else row for row in rows]
         if report.result_type == RESULT_TYPE_QC:
+            if report.message_type == "ASTM^E1394":
+                return [
+                    _with_kind(row, KIND_QC) if row.kind == KIND_RESULT else row
+                    for row in rows
+                ]
             return rows
         return rows
 

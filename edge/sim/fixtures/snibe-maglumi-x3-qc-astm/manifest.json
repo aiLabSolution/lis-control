@@ -1,0 +1,63 @@
+{
+  "id": "snibe-maglumi-x3-qc-astm",
+  "description": "Synthetic SNIBE MAGLUMI X3 native ASTM E1394 QC upload: same H/P/O/R/R/L result shape as a patient upload, but O.12 carries Q and the Sample ID carries the synthetic QC- convention so host-side classification routes it out of the patient result stream (LIS-33). NOT a real instrument capture.",
+  "analyzer": { "vendor": "SNIBE", "model": "MAGLUMI X3" },
+  "protocol": "astm-e1394",
+  "transport": "astm-tcp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.astm", "encoding": "ascii", "framing": "snibelis-astm" },
+  "source": {
+    "reference": "synthetic seed (LIS-33 / S3.2); MAGLUMI X3 native Online ASTM path after the no-SnibeLis topology amendment",
+    "note": "Application payload only. QC classification is host-side because the X3 ASTM R rows are result-shaped; this fixture asserts the two supported host discriminators: O.12=Q when emitted and a versioned Sample-ID convention (QC- here, synthetic until LIS-75 pins the live site pattern). The Q record carries illustrative lot/level metadata for the bridge/FHIR contract; edge/sim currently asserts stream classification, not QC lot persistence."
+  },
+  "synthetic": true,
+  "channel": {
+    "id": "snibe-maglumi-x3-astm",
+    "isolation_group": "snibe-maglumi-x3",
+    "tcp": { "port": 12021, "provenance": "bridge-default-bench-pending" },
+    "identity": {
+      "analyzer_id": "Maglumi User",
+      "host_id": "Lis",
+      "bridge_registry_id": "SNIBE-MAGLUMI-X3-001",
+      "provenance": "bridge-default-bench-pending"
+    }
+  },
+  "terminology": {
+    "note": "Same minimal synthetic MAGLUMI X3 immunoassay seed as the result-upload fixture — QC rows are still normalized to LOINC/UCUM with raw provenance before being routed out of the patient stream.",
+    "codes": {
+      "TSH": "3016-3",
+      "FT4": "14920-3"
+    },
+    "units": {
+      "uIU/mL": "u[IU]/mL",
+      "pmol/L": "pmol/L"
+    }
+  },
+  "expected": {
+    "message_type": "ASTM^E1394",
+    "records": 7,
+    "patient_id": "",
+    "specimen_id": "QC-X3-2026-07",
+    "results": [],
+    "observations": [
+      {
+        "set_id": "1",
+        "value": "2.31",
+        "raw_code": "TSH",
+        "raw_unit": "uIU/mL",
+        "loinc": "3016-3",
+        "ucum_value": "u[IU]/mL",
+        "status": "NORMALIZED"
+      },
+      {
+        "set_id": "2",
+        "value": "14.8",
+        "raw_code": "FT4",
+        "raw_unit": "pmol/L",
+        "loinc": "14920-3",
+        "ucum_value": "pmol/L",
+        "status": "NORMALIZED"
+      }
+    ]
+  }
+}
