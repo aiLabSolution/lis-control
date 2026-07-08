@@ -44,4 +44,4 @@
 
 ## Capture status
 
-- **AC1 partial:** B1 units are real (H60S wire). B2 units + exact CD-mode code strings pending a fresh H99S CD-mode scan (operator-gated; snapshot `analyzer_results` WHERE analyzer_id=5 before Save — unmapped rows also linger per analyzer-7 behavior).
+- **AC1 COMPLETE (2026-07-08):** fresh H99S **CD-mode DEV012** run captured before Save — real OBX-6 units + values for every genuinely-new param → `evidence/h99s-cd-mode-DEV012-83obs.md` (+ B1 baseline from the H60S extended-panel ORU). Manual cross-check → `05-manual-verification.md`. All B2 units confirmed; two wire quirks (`\T\`-decorated diff codes, i18n key leak) belong to LIS-190; base IRF/IPF absent (only `-D`).

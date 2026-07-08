@@ -1,0 +1,83 @@
+test_name,result,units,test_id
+WBC(Whole Blood),6.55,10\S\9/L,379
+NEU#(Whole Blood),3.54,10\S\9/L,391
+LYM#(Whole Blood),2.37,10\S\9/L,389
+Lymphocytes (%),36.1,%,27
+Monocytes (Abs),0.36,10\S\9/L,30
+Monocytes (%),5.5,%,29
+ts:btn:284:name,0.29,10\S\9/L,508
+ts:btn:284:name,4.4,%,509
+ts:btn:284:name,0.00,10\S\9/L,510
+ts:btn:284:name,0.0,%,511
+ts:btn:284:name,0.01,10\S\9/L,516
+ts:btn:284:name,0.2,%,517
+RBC(Whole Blood),5.38,10\S\12/L,380
+HGB(Whole Blood),161,g/L,381
+HCT(Whole Blood),45.9,%,382
+MCV(Whole Blood),85.3,fL,383
+MCH(Whole Blood),29.9,pg,384
+MCHC(Whole Blood),351,g/L,385
+RDW(Whole Blood),11.7,%,387
+ts:btn:284:name,37.3,fL,514
+ts:btn:284:name,0.000,10\S\9/L,512
+PLT(Whole Blood),248,10\S\9/L,386
+MPV(Whole Blood),11.4,fL,388
+ts:btn:284:name,0.282,%,515
+ts:btn:284:name,54.0,%,507
+PDW,13.66,,
+P-LCR,35.7,%,
+P-LCC,88,10\S\9/L,
+WBC-D,6.40,10\S\9/L,
+WBC-N,6.55,10\S\9/L,
+HFC#,0,10\S\9/L,
+HFC%,0.5,%,
+IME%,0.0,%,
+IME#,0.00,10\S\9/L,
+InR#,0.00,10\S\9/L,
+InR���,0.00,���,
+ALY#,0.03,10\S\9/L,
+ALY%,0.50,%,
+NLR,1.5,,
+PLR,104.7,,
+MLR,0.15,,
+TNC,6.55,10\S\9/L,
+TNC-D,6.40,10\S\9/L,
+TNC-N,6.55,10\S\9/L,
+H-NR%,0.00,%,
+L-NR%,0.00,%,
+NEU#\T\,3.53,10\S\9/L,
+NEU%\T\,53.8,%,
+LYM#\T\,2.33,10\S\9/L,
+LYM%\T\,35.6,%,
+PLT-I,248,10\S\9/L,
+PLT-A,248,10\S\9/L,
+Micro#,0.04,10\S\12/L,
+Micro%,0.7,%,
+Macro#,0.51,10\S\12/L,
+Macro%,9.5,%,
+PDW-SD,12.2,fL,
+IPF-D,0,10\S\9/L,
+RET%-D,0.00,%,
+RET#-D,0.0000,10\S\12/L,
+IRF-D,0.00,%,
+LFR-D,0.00,%,
+MFR-D,0.00,%,
+HFR-D,0.00,%,
+NEU-X,79.85,,
+NEU-Y,139.32,,
+NEU-Z,61.76,,
+LYM-X,64.37,,
+LYM-Y,98.90,,
+LYM-Z,71.28,,
+MON-X,70.05,,
+MON-Y,126.83,,
+MON-Z,98.88,,
+NEU-XW,52.00,,
+NEU-YW,48.00,,
+NEU-ZW,41.00,,
+LYM-XW,42.00,,
+LYM-YW,43.00,,
+LYM-ZW,57.00,,
+MON-XW,41.00,,
+MON-YW,36.00,,
+MON-ZW,44.00,,
