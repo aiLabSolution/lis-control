@@ -75,6 +75,46 @@ def test_h99s_code_read_from_obx4_not_obx3_suspect_flag():
     assert "0" not in codes
 
 
+def test_h99s_cd_mode_decorated_twin_dropped_reportable_ret_normalized():
+    """CD mode emits diff analytes twice: the clean seeded code (NEU%) that maps and
+    persists, and a decorated second-channel twin (NEU%\\T\\ -> NEU%&). Drop the twin
+    so the analyte is not staged twice; the clean code already carries the value.
+    Reportable RET#-D (OBX-9=0 + range) normalizes to RET#; IME stays IME (the EDAN
+    H90 LIS protocol lists IME separately from IMG, so aliasing it would be a guess)."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260708093000||ORU^R01|CD1|P|2.4||||0||UTF8\r"
+        "PID|6|H99S-PT-CD|^0||DOE^JOHN||19900101|M\r"
+        "OBR|1|H99S-CD-01||EDANLAB^H90|||20260708092700\r"
+        "OBX||NM|0|NEU%|61.8|%|50.0-70.0|0|0|0||61.8^%\r"
+        "OBX||NM|0|NEU%\\T\\|62.0|%|50.0-70.0|0|0|0||62.0^%\r"
+        "OBX||NM|0|RET#-D|0.0580|10\\S\\12/L|0.0200-0.2000|0|0|0||0.058^10\\S\\12/L\r"
+        "OBX||NM|0|RET%-D|1.90|%|0.30-3.00|0|0|0||1.9^%\r"
+        "OBX||NM|0|IME#|0.00|10\\S\\9/L||0|1|0||0.0^10\\S\\9/L\r"
+    ).encode("utf-8")
+
+    report = parse_oru_r01(msg)
+    codes = [o.raw_code for o in report.observations]
+    assert codes == ["NEU%", "RET#", "RET%", "IME#"]
+    assert codes.count("NEU%") == 1  # decorated twin dropped, not duplicated
+    assert "IMG#" not in codes
+
+
+def test_h99s_cd_mode_research_ret_d_stays_unmapped():
+    """A research-flagged RET#-D (OBX-9=1, blank OBX-7 range) must not be aliased onto
+    the reportable RET# LOINC — it stays decorated and thus unmapped/dropped by OE."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260708093000||ORU^R01|CD2|P|2.4||||0||UTF8\r"
+        "PID|7|H99S-PT-CD2|^0||DOE^JANE||19900101|F\r"
+        "OBR|1|H99S-CD-02||EDANLAB^H90|||20260708092700\r"
+        "OBX||NM|0|RET#-D|0.0580|10\\S\\12/L||0|1|0||0.058^10\\S\\12/L\r"
+    ).encode("utf-8")
+
+    report = parse_oru_r01(msg)
+    codes = [o.raw_code for o in report.observations]
+    assert codes == ["RET#-D"]
+    assert "RET#" not in codes
+
+
 def test_h99s_panel_normalizes_fully_to_loinc():
     """With the code read from OBX-4, the whole CBC panel maps to LOINC/UCUM
     (the map already knows the EDAN codes/units), matching ``expected.observations``."""
