@@ -18,6 +18,7 @@ from edge_sim.archive import RawMessageArchive
 from edge_sim.e1394 import parse_e1394
 from edge_sim.normalize import (
     KIND_CALIBRATION,
+    KIND_QC,
     KIND_RESULT,
     STATUS_NORMALIZED,
     STATUS_PARTIAL,
@@ -31,6 +32,7 @@ FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
 RESULT_UNMAPPED = FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped"
 CALIBRATION = FIXTURES_ROOT / "snibelis-maglumi-x3-calibration"
+QC = FIXTURES_ROOT / "snibe-maglumi-x3-qc-astm"
 
 
 def _replay(fixture_dir, tmp_path):
@@ -175,6 +177,41 @@ def test_calibration_fixture_matches_expected_rows(tmp_path):
     assert check_against_expected(replay, fixture.expected) == []
 
 
+# --- QC gate: kept out of the patient result stream (LIS-33) ---------------
+
+
+def test_qc_upload_routed_out_of_patient_stream(tmp_path):
+    """A native X3 ASTM upload with result-shaped R rows is classified as QC by
+    host-side context (O.12=Q / Sample-ID convention), so the normalized rows are
+    auditable but none are patient RESULT rows."""
+    replay = _replay(QC, tmp_path)
+
+    rows = replay.observations
+    assert len(rows) == 2
+    assert all(r.kind == KIND_QC for r in rows)
+    assert [r for r in rows if r.kind == KIND_RESULT] == []
+
+
+def test_qc_upload_preserves_normalized_provenance(tmp_path):
+    """QC rows still carry raw-beside-normalized provenance before they are held
+    for QC review; classification changes routing, not parser fidelity."""
+    replay = _replay(QC, tmp_path)
+
+    rows = replay.observations
+    assert [(r.raw_code, r.loinc, r.ucum_value, r.status) for r in rows] == [
+        ("TSH", "3016-3", "u[IU]/mL", STATUS_NORMALIZED),
+        ("FT4", "14920-3", "pmol/L", STATUS_NORMALIZED),
+    ]
+
+
+def test_qc_fixture_matches_expected_rows(tmp_path):
+    """The manifest asserts an empty patient-result subset and the two normalized
+    QC rows — the simulator-side fixture required by LIS-33."""
+    fixture = load_fixture(QC)
+    replay = _replay(QC, tmp_path)
+    assert check_against_expected(replay, fixture.expected) == []
+
+
 def test_patient_upload_is_not_calibration(tmp_path):
     """Contrast: the same-shaped patient upload (Sample ID without the calibration
     prefix) stays all KIND_RESULT — the gate does not over-capture."""
@@ -182,25 +219,34 @@ def test_patient_upload_is_not_calibration(tmp_path):
     assert all(r.kind == KIND_RESULT for r in replay.observations)
 
 
-def test_calibration_prefix_requires_the_hyphen_boundary():
-    """A specimen id that merely starts with the letters ``CAL`` (e.g. a Calcium
-    panel labelled ``CALCIUM-01``) is a patient specimen, not calibration — the
-    prefix boundary is ``CAL-``, so the gate never swallows a real analyte."""
-    from edge_sim.oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT
+def test_patient_upload_is_not_qc(tmp_path):
+    """Contrast: the same-shaped patient upload without O.12=Q or the QC Sample-ID
+    convention stays all KIND_RESULT."""
+    replay = _replay(RESULT_UPLOAD, tmp_path)
+    assert all(r.kind == KIND_RESULT for r in replay.observations)
+
+
+def test_astm_host_side_prefixes_require_the_hyphen_boundary():
+    """Specimen ids that merely start with CAL or QC are patient specimens; the
+    host-side conventions are CAL- and QC-, so the gates do not over-capture."""
+    from edge_sim.oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT, RESULT_TYPE_QC
     from edge_sim.replay import _astm_result_type  # noqa: PLC0415 - test-only introspection
 
-    def result_type(specimen_id):
+    def result_type(specimen_id, action_code="R"):
         msg = (
             "H|\\^&||PSWD|Maglumi User|||||Lis||P|E1394-97|20260703\r"
             "P|1\r"
-            f"O|1|{specimen_id}||^^^TSH|R\r"
+            f"O|1|{specimen_id}||^^^TSH|R||||||{action_code}\r"
             "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N\r"
             "L|1|N\r"
         )
         return _astm_result_type(parse_e1394(msg.encode("ascii")))
 
     assert result_type("CALCIUM-01") == RESULT_TYPE_PATIENT
+    assert result_type("QCRUN-01") == RESULT_TYPE_PATIENT
     assert result_type("CAL-2026-07") == RESULT_TYPE_CALIBRATION
+    assert result_type("QC-2026-07") == RESULT_TYPE_QC
+    assert result_type("PATIENT-2026-07", action_code="Q") == RESULT_TYPE_QC
 
 
 def _report_observations(fixture):

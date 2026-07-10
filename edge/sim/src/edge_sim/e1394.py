@@ -137,6 +137,7 @@ class AstmOrder:
     test_code: str  # O-5 (universal test id; last code if repeated)
     assays: tuple[str, ...]  # O-5 split on the repeat delimiter (multi-assay orders)
     priority: str  # O-6
+    action_code: str  # O-12 (Q = QC when the analyzer emits it)
     results: tuple[AstmResult, ...]
     raw: str
 
@@ -294,7 +295,14 @@ def _order(o: dict) -> AstmOrder:
     results = tuple(o["results"])
     if rec is None:
         return AstmOrder(
-            seq="", specimen_id="", test_code="", assays=(), priority="", results=results, raw=""
+            seq="",
+            specimen_id="",
+            test_code="",
+            assays=(),
+            priority="",
+            action_code="",
+            results=results,
+            raw="",
         )
     return AstmOrder(
         seq=rec.field(2),
@@ -302,6 +310,7 @@ def _order(o: dict) -> AstmOrder:
         test_code=rec.test_code(5),
         assays=rec.test_codes(5),
         priority=rec.field(6),
+        action_code=rec.field(12),
         results=results,
         raw=rec.delimiters.field.join(rec.fields),
     )

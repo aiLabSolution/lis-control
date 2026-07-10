@@ -28,7 +28,7 @@ from .fixtures import Fixture
 from .e1394 import AstmMessage, parse_e1394
 from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
 from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
-from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT
+from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT, RESULT_TYPE_QC
 from .transport import Transport
 
 # ASTM carries no wire QC/calibration typing field the way HL7 does in MSH-16
@@ -43,6 +43,7 @@ from .transport import Transport
 # prefix from swallowing a legitimate patient analyte whose id merely starts
 # with the letters CAL (e.g. a specimen labelled for a Calcium panel).
 _CALIBRATION_SPECIMEN_PREFIX = "CAL-"
+_QC_SPECIMEN_PREFIX = "QC-"
 
 __all__ = [
     "ReplayResult",
@@ -288,27 +289,29 @@ def _astm_report(msg: AstmMessage) -> OruReport:
 
 
 def _astm_result_type(msg: AstmMessage) -> str:
-    """Classify an ASTM message as a patient or calibration upload.
+    """Classify an ASTM message as patient, QC, or calibration.
 
-    ASTM has no MSH-16-style wire field, so calibration is recognized from the
-    documented Sample-ID convention (:data:`_CALIBRATION_SPECIMEN_PREFIX`): an
-    order whose specimen id (O-3) begins with the calibration prefix marks the
-    message a calibration upload, which the normalizer re-kinds to
-    ``KIND_CALIBRATION`` so it never lands as a patient result (LIS-125).
+    ASTM has no MSH-16-style wire field, so calibration and QC are recognized
+    from host-side context: the documented calibration Sample-ID convention, the
+    X3 QC Sample-ID convention used by the synthetic fixture, or O.12=Q when the
+    analyzer emits the ASTM action code.
 
     Classification is message-level, like the HL7 MSH-16 path: the whole report
     carries one result type. This mirrors the sim's current single-specimen
     ASTM model (``_astm_report`` collapses a multi-``O`` upload onto the first
-    order); per-specimen grouping — and with it per-order calibration in a mixed
-    patient+calibration batch — arrives with LIS-157. The production bridge
-    already classifies per O-record. A calibration prefix is therefore only
-    asserted on a single-purpose calibration upload here; it is never inferred
-    from a bare leading ``CAL`` (see the prefix's trailing hyphen)."""
+    order); per-specimen grouping — and with it per-order QC/calibration in a
+    mixed batch — arrives with LIS-157. The production bridge already classifies
+    per O-record. Prefixes are therefore only asserted on single-purpose QC or
+    calibration uploads here; they are never inferred from bare leading letters
+    (see the prefixes' trailing hyphens)."""
     for patient in msg.patients:
         for order in patient.orders:
             specimen_id = (order.specimen_id or "").strip().upper()
             if specimen_id.startswith(_CALIBRATION_SPECIMEN_PREFIX):
                 return RESULT_TYPE_CALIBRATION
+            action_code = (order.action_code or "").strip().upper()
+            if action_code == "Q" or specimen_id.startswith(_QC_SPECIMEN_PREFIX):
+                return RESULT_TYPE_QC
     return RESULT_TYPE_PATIENT
 
 
