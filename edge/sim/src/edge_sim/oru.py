@@ -239,7 +239,14 @@ def _observation(seg, u, edan: bool = False) -> RawObservation | None:
     # EDAN family (H90-series and, per the 2026-07-06 bench, the H60S): the analyte
     # code/name rides in OBX-4 (OBX-3 is a suspect flag, KB §5.4). Read the code from
     # OBX-4 there; standard analyzers keep the OBX-3.1 observation identifier.
-    raw_code = _edan_result_code(u(seg.field(4))) if edan else u(seg.component(3, 1))
+    if edan:
+        # OBX-9 (result/research flag) and OBX-7 (reference range) gate the CD-mode
+        # -D reticulocyte normalization; a decorated second-channel twin returns None.
+        raw_code = _edan_result_code(u(seg.field(4)), u(seg.field(9)), u(seg.field(7)))
+        if raw_code is None:
+            return None
+    else:
+        raw_code = u(seg.component(3, 1))
     if edan and seg.field(2).strip().upper() == "ST":
         match = _EDAN_HISTOGRAM_CODE.match(raw_code)
         if match and match.group(2):
@@ -268,21 +275,37 @@ def _observation(seg, u, edan: bool = False) -> RawObservation | None:
     )
 
 
-def _edan_result_code(raw_code: str) -> str:
-    code = (raw_code or "").strip()
-    if "&" in code:
-        head = code.split("&", 1)[0].strip()
-        if head:
-            code = head
+def _edan_result_code(
+    raw_code: str, obx9_flag: str = "", reference_range: str = ""
+) -> str | None:
+    """Normalize an EDAN H90-series (CD-mode) OBX-4 code, or return ``None`` to drop
+    the row (left unmapped, which OE discards).
 
-    # CD-mode reticulocyte rows can suffix the method/channel as -D. Do not strip
-    # all -D suffixes: research WBC-D/TNC-D channels are distinct vendor parameters
-    # and deliberately remain unmapped.
-    reticulocyte_aliases = {
-        "RET#-D": "RET#",
-        "RET%-D": "RET%",
-    }
-    return reticulocyte_aliases.get(code.upper(), code)
+    CD mode emits the differential analytes twice: the clean seeded code (e.g.
+    ``NEU%``) that maps and persists, and a sub-component-decorated second-channel
+    twin (``NEU%\\T\\`` -> ``NEU%&``). Collapsing the twin onto the base code would
+    stage a duplicate result row per analyte (no dedup), so the decorated twin is
+    dropped; the clean code already carries the value (LIS-190 double-map finding).
+
+    Reticulocytes arrive in CD mode only as ``RET#-D``/``RET%-D`` (no clean ``RET#``).
+    The ``-D`` suffix is stripped to the reportable code only when the vendor's own
+    signal marks the row reportable: OBX-9 == ``0`` (result, not research) and a
+    non-blank OBX-7 range. A research ``-D`` channel (OBX-9 == ``1`` / no range; e.g.
+    ``WBC-D``, ``TNC-D``, or a research ``RET#-D``) stays decorated -> unmapped ->
+    dropped, never aliased onto reportable LOINC 60474-4 (EDAN H90 LIS protocol §2.2).
+    """
+    code = (raw_code or "").strip()
+
+    # sub-component-decorated second-channel twin (e.g. NEU%& from NEU%\T\): redundant
+    # with the clean seeded code in the same run -> drop it.
+    if "&" in code:
+        return None
+
+    if code.upper() in {"RET#-D", "RET%-D"}:
+        reportable = obx9_flag.strip() == "0" and bool(reference_range.strip())
+        if reportable:
+            return code[:-2]
+    return code
 
 
 def _computed_edan_abnormal_flag(value: str, reference_range: str) -> str:
