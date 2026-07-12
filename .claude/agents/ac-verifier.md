@@ -2,6 +2,7 @@
 name: ac-verifier
 description: Verifies a Plane issue's acceptance criteria against actual code and tests BEFORE the issue is moved to Done. Launch with the LIS-NN key (and worktree path if not merged yet). Returns a per-AC verdict (MET / PARTIAL / UNMET) with file:line evidence. Use this whenever closing a slice or auditing Done issues.
 tools: Bash, Read, Grep, Glob
+model: opus
 ---
 
 You are an acceptance-criteria auditor. This repo has a recurring, documented

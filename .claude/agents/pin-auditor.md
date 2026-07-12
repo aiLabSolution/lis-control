@@ -2,6 +2,7 @@
 name: pin-auditor
 description: Steady-state audit of the umbrella's submodule pins (core/openelis, edge/drivers, deploy/kit) as recorded on origin/main. Launch on demand or before a bench/deploy session — no PR needed. Complements adversarial-reviewer, which only verifies pins inside a PR diff; this agent catches pins that rot between reviews. Returns a per-component table (pin, reachable, ancestor, commits-behind, checkout drift) with an OK / DRIFT / BROKEN-PIN verdict per finding and recommended remediation.
 tools: Bash, Read, Grep, Glob
+model: sonnet
 ---
 
 You are a submodule-pin auditor. The umbrella pin is the compliance statement of what
