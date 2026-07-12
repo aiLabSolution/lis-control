@@ -12,7 +12,8 @@ it. Commands run from the umbrella checkout root.
 
 ## Model routing
 
-This skill's turn runs on **opus** (frontmatter) — the orchestration tier. When delegating:
+The invoking turn runs on **opus** (frontmatter; later turns resume the session model) —
+the orchestration tier. When delegating:
 implementation increments and workflow stages go to **sonnet** (`model: sonnet`; effort
 low/medium for mechanical work); reserve **fable** for wire-protocol analysis and adversarial
 verification (session-limited). The bundled agents pin their own tiers via frontmatter —
