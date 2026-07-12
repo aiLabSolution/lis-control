@@ -1,6 +1,7 @@
 ---
 name: work-slice
 description: Work a Plane slice (LIS-NN) end to end — pick, claim, worktree, increments, PR, review gates, teardown, release. Use when asked to 'work the next slice', 'pick up LIS-NN', 'grab a slice', or via /work-slice. A recipe card over docs/agents/slice-loop.md, which stays the authority.
+model: opus
 ---
 
 # work-slice — one slice, end to end
@@ -8,6 +9,14 @@ description: Work a Plane slice (LIS-NN) end to end — pick, claim, worktree, i
 `docs/agents/slice-loop.md` is the authority (rationale, multi-session coordination,
 sub-item partitioning) — this card is the executable path through it and never overrides
 it. Commands run from the umbrella checkout root.
+
+## Model routing
+
+This skill's turn runs on **opus** (frontmatter) — the orchestration tier. When delegating:
+implementation increments and workflow stages go to **sonnet** (`model: sonnet`; effort
+low/medium for mechanical work); reserve **fable** for wire-protocol analysis and adversarial
+verification (session-limited). The bundled agents pin their own tiers via frontmatter —
+don't override them.
 
 ## 0. Preflight
 

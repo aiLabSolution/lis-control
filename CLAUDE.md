@@ -44,6 +44,15 @@ open a PR. Non-negotiables:
 Full protocol (loop steps, multi-session coordination, two-level submodule sync, PR
 conventions): `docs/agents/slice-loop.md`.
 
+### Model routing
+
+Route subagents and workflow stages by task type: **opus** for orchestration/planning,
+**sonnet** for implementation and mechanical stages, **fable** only for deep analysis and
+adversarial verification (session-limited — spend deliberately). The bundled agents pin
+their own tiers via frontmatter (adversarial-reviewer → fable, ac-verifier /
+findings-triager → opus, pin-auditor → sonnet); don't override them, and never set
+`CLAUDE_CODE_SUBAGENT_MODEL` — it outranks frontmatter and flattens the split.
+
 ### Domain docs
 
 Multi-context layout — `CONTEXT-MAP.md` at the root points to per-context `CONTEXT.md` files. See `docs/agents/domain.md`.
