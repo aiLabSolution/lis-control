@@ -66,3 +66,26 @@ something material, say so explicitly in the verdict rather than assuming it wor
 Housekeeping warning for the caller (include if you ran Docker maven): docker-run maven
 can leave root-owned `target/` dirs in worktrees; clean with
 `docker run --rm -v <wt>:/src <image> rm -rf /src/target` before `git worktree remove`.
+
+## Wire-protocol slice checklist (edge/* diffs)
+
+Additional refutation hypotheses to run when the diff touches `edge/drivers`, `edge/sim`,
+or analyzer parsing in core — each one has already burned a real slice:
+
+- **HL7 escapes:** `\T\` is the escaped `&` — analyzers emit DECORATED OBX-4 codes
+  (e.g. `NEU%\T\`) alongside clean ones; mapping both without dedup DOUBLE-MAPS results
+  (this exact bug earned LIS-190 a REQUEST_CHANGES).
+- **EDAN H90-series field repurposing:** analyte code arrives in OBX-4 (not OBX-3),
+  sample id in OBR-2, patient id in PID-2 — a change that "simplifies" back to standard
+  fields silently mis-stages results.
+- **Lookalike codes are not synonyms:** IME (immature eosinophil, research-only) is NOT
+  IMG (immature granulocyte, reportable) — refute any normalization that merges vendor
+  codes by string similarity.
+- **Two-level completeness:** analyzer-ingestion changes must land in BOTH the
+  production bridge (`edge/drivers`) AND the `edge/sim` mirror (ADR-0015); a sim-only
+  or bridge-only diff is incomplete.
+- **OE testname collapse:** `analyzer_results` dedup keys on the display testName — two
+  mapped codes sharing a display name silently drop one result (verified live data
+  loss); check any new test mapping for name collisions.
+- **Transport trust:** rate-limits/allow-lists must key on the trusted TCP peer address,
+  never on spoofable headers like `X-Forwarded-For` (LIS-91 P1).
