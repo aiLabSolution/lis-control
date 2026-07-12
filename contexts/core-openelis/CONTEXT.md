@@ -56,6 +56,11 @@ plan §0 Stage 0).
   rule verdicts (`1₂ₛ 1₃ₛ 2₂ₛ R₄ₛ 3₁ₛ 4₁ₛ 7ₜ 10ₓ`) + WARNING/REJECTION severity, incl. the multirule
   case (one point → both `1₂ₛ` and `1₃ₛ`). **Test-only — zero production change.** Autoverification
   *gating* on these verdicts is LIS-55 (S5.4).
+- **ADR-0007 — Runtime FHIR R4 `$validate` gate for inbound ServiceRequest orders** (S4.2 / LIS-42):
+  `docs/adr/0007-fhir-servicerequest-runtime-validation.md`. Promotes the ADR-0004 validation jars
+  to runtime scope and adds a singleton `FhirValidator` bean; `POST /fhir/ServiceRequest` is
+  validated **fail-closed before mapping/persist** — any `ERROR`/`FATAL` rejects 422 with an
+  `OperationOutcome` and creates no order artifacts. AC1's "worklist" = the Workplan query seam.
 
 ## Glossary
 
