@@ -199,6 +199,18 @@ class HookGuardEditsTest(unittest.TestCase):
         proc = self.run_guard(_write(self.root / LIQUIBASE_REL / "base.xml", swapped))
         self.assert_blocked(proc, "append-only")
 
+    def test_rewrite_existing_include_attributes_blocked(self):
+        # Adding an attribute to an existing entry changes which file the chain
+        # resolves to — mutation, not append (adversarial-review finding, PR #121).
+        proc = self.run_guard(
+            _edit(
+                self.root / LIQUIBASE_REL / "base.xml",
+                INCLUDE_002,
+                '  <include relativeToChangelogFile="true" file="liquibase/3.5.x.x/002-y.xml" />\n',
+            )
+        )
+        self.assert_blocked(proc, "append-only")
+
     def test_base_edit_with_missing_old_string_allowed(self):
         # The Edit itself would fail; the guard must not block what cannot happen.
         proc = self.run_guard(_edit(self.root / LIQUIBASE_REL / "base.xml", "NOT PRESENT", "x"))

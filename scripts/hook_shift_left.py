@@ -3,14 +3,18 @@
 
 Why this exists
 ---------------
-CI failures on umbrella PRs are almost always one of three cheap-to-run-locally
-checks: the stdlib-only scripts/ unittest suite (.github/workflows/scripts-tests.yml),
-the edge/sim pytest harness (.github/workflows/edge-sim.yml), or prettier formatting
-in the edge/drivers submodule. Each costs a full push→CI→read-logs round trip when
-caught remotely. This hook shifts them left: wired as a PostToolUse hook on
-Edit|Write|MultiEdit, it dispatches on the edited file's repo-relative path and runs
-the matching check immediately, feeding failures straight back to the model (exit 2,
-message on stderr) while the context is still hot.
+Two umbrella CI checks are cheap to run locally: the stdlib-only scripts/ unittest
+suite (.github/workflows/scripts-tests.yml) and the edge/sim pytest harness
+(.github/workflows/edge-sim.yml) — each costs a full push→CI→read-logs round trip
+when caught remotely. The third dispatch, prettier in the edge/drivers submodule,
+mirrors no CI (nothing runs prettier anywhere); it applies the bridge repo's own
+formatting convention (.prettierrc.yml, npm prettier) at edit time so diffs land
+formatted. NOTE it runs `prettier --write`, i.e. it MUTATES the just-edited file:
+when formatting changed anything, the next Edit of that file sees it as modified
+since read and must re-read first. Wired as a PostToolUse hook on
+Edit|Write|MultiEdit, dispatching on the edited file's repo-relative path and
+feeding genuine failures straight back to the model (exit 2, message on stderr)
+while the context is still hot.
 
 Contract (per docs/agents conventions for editing-session hooks)
 ----------------------------------------------------------------

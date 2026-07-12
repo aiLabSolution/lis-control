@@ -11,8 +11,9 @@
 #   2. If python3 is available, scripts/pre_push_checks.py additionally rejects:
 #      force-pushes to shared refs/heads/lis-* slice branches; submodule pin bumps
 #      whose SHA is unpushed or not merged to the component default branch; and
-#      ADR-touching pushes that fail scripts/adr_lint.py. Without python3 those
-#      extended checks are silently skipped.
+#      ADR-touching pushes that fail scripts/adr_lint.py. Without python3, or if
+#      the script is absent (partial checkout), those extended checks are
+#      silently skipped.
 #
 # Escape hatch (emergencies only): LIS_PREPUSH_OVERRIDE=1 git push ... skips the
 # extended checks. The main/master block has no override — open a PR instead.
@@ -43,7 +44,7 @@ done <<EOF
 $lines
 EOF
 
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && [ -f scripts/pre_push_checks.py ]; then
 	printf '%s\n' "$lines" | python3 scripts/pre_push_checks.py --remote "$1" --url "$2" || status=1
 fi
 

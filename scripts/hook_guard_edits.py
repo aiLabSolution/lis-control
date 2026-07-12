@@ -42,7 +42,7 @@ _HATCH = f"If this is a deliberate, reviewed exception: re-run with {_OVERRIDE}=
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 # Real shapes vary: <include file="..." /> and <include relativeToChangelogFile="true" file="..."/>
-_INCLUDE_RE = re.compile(r"<include\b[^>]*?\bfile\s*=\s*[\"']([^\"']*)[\"']")
+_INCLUDE_RE = re.compile(r"<include\b[^>]*>")
 
 
 def _repo_root():
@@ -83,7 +83,13 @@ def _simulate(tool_name, tool_input, on_disk):
 
 
 def _includes(xml_text):
-    return _INCLUDE_RE.findall(_COMMENT_RE.sub("", xml_text))
+    # Whole normalized tags, not just file= values: rewriting an existing entry's
+    # attributes (e.g. adding relativeToChangelogFile) changes which file the chain
+    # resolves to — that is mutation, and must break the prefix compare.
+    return [
+        re.sub(r"\s+", " ", tag).strip()
+        for tag in _INCLUDE_RE.findall(_COMMENT_RE.sub("", xml_text))
+    ]
 
 
 def _check_base_changelog(tool_name, tool_input, target, rel):
@@ -98,7 +104,7 @@ def _check_base_changelog(tool_name, tool_input, target, rel):
     if _includes(after_text)[: len(before)] == before:
         return None
     return (
-        f"BLOCKED: this edit removes, reorders, or displaces existing <include> entries in {rel}.\n"
+        f"BLOCKED: this edit removes, reorders, or rewrites existing <include> entries in {rel}.\n"
         "Base changelogs are append-only (keep-both-blocks / never-renumber): the included "
         "changesets are already checksummed on deployed databases, so the existing chain must "
         "survive verbatim.\n"
