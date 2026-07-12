@@ -2,13 +2,14 @@
   "mcpServers": {
     "openelis-db": {
       "type": "stdio",
-      "command": "npx",
+      "command": "uvx",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "${OPENELIS_DB_URL}"
+        "postgres-mcp==0.3.0",
+        "--access-mode=restricted"
       ],
-      "env": {}
+      "env": {
+        "DATABASE_URI": "${OPENELIS_DB_URL}"
+      }
     }
   }
 }

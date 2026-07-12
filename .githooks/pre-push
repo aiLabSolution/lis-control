@@ -1,10 +1,22 @@
 #!/bin/sh
-# Reject direct pushes to the umbrella's protected branch(es).
+# Client-side push guards for the umbrella repo.
 #
 # This runs client-side (git's own pre-push hook), NOT as a Claude Code PreToolUse
 # gate: the `git push` simply exits non-zero, and the caller — human or autonomous
 # agent — re-routes through a slice branch + PR. The agent loop is never gated or
 # paused; it just sees a failed command and self-corrects.
+#
+# Checks:
+#   1. Direct pushes to main/master are rejected (slice branch -> PR -> main).
+#   2. If python3 is available, scripts/pre_push_checks.py additionally rejects:
+#      force-pushes to shared refs/heads/lis-* slice branches; submodule pin bumps
+#      whose SHA is unpushed or not merged to the component default branch; and
+#      ADR-touching pushes that fail scripts/adr_lint.py. Without python3, or if
+#      the script is absent (partial checkout), those extended checks are
+#      silently skipped.
+#
+# Escape hatch (emergencies only): LIS_PREPUSH_OVERRIDE=1 git push ... skips the
+# extended checks. The main/master block has no override — open a PR instead.
 #
 # Enable once per clone (covers all its worktrees):
 #   scripts/setup-githooks.sh      # or: git config core.hooksPath .githooks
@@ -12,8 +24,13 @@
 # git feeds one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>
 # Checking <remote ref> catches every form — `git push origin main`,
 # `git push origin HEAD:main`, a tracking-branch push, a delete, or a force-push.
+# git sets the hook's cwd to the top of the working tree, so the relative script
+# path below resolves in every worktree. stdin is captured once so both the shell
+# check and the python checks see the same ref lines.
 
+lines="$(cat)"
 status=0
+
 while read -r local_ref local_sha remote_ref remote_sha; do
 	case "$remote_ref" in
 	refs/heads/main | refs/heads/master)
@@ -23,6 +40,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 		status=1
 		;;
 	esac
-done
+done <<EOF
+$lines
+EOF
+
+if command -v python3 >/dev/null 2>&1 && [ -f scripts/pre_push_checks.py ]; then
+	printf '%s\n' "$lines" | python3 scripts/pre_push_checks.py --remote "$1" --url "$2" || status=1
+fi
 
 exit $status
