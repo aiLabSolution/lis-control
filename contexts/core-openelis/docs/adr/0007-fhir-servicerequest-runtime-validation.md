@@ -5,8 +5,10 @@
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `core/openelis` component (FHIR data-exchange + build dependencies)
 - **Relates to:** ADR-0004 (test-scope `$validate` harness — partially superseded here), ADR-0005
-  (Specimen/Device linkage), LIS-40 (Stage 4 PRD), **LIS-42 (S4.2)**; plan §3 Stage 4 exit gate
-  ("FHIR R4 result and order flows pass validation for … ServiceRequest").
+  (Specimen/Device linkage), LIS-40 (Stage 4 PRD — AC: "FHIR R4 result and order flows pass
+  validation for DiagnosticReport/Observation and ServiceRequest"), **LIS-42 (S4.2)**; plan §3's
+  Stage-4 exit gate attaches `$validate` literally to results and has orders post as
+  ServiceRequest — this ADR extends instance validation to that inbound order leg.
 
 ## Context
 
@@ -25,8 +27,8 @@ Facts at the pre-slice pin (`344be3cf`):
 - **No runtime instance validation existed.** ADR-0004 brought the genuine HAPI
   `FhirInstanceValidator` stack into the build but deliberately left
   `hapi-fhir-validation`, `hapi-fhir-validation-resources-r4`, and `hapi-fhir-caching-caffeine`
-  at **test scope** ("no runtime `$validate` operation is exposed yet"). The provider performed
-  only hand-rolled `require*` presence checks.
+  at **test scope** (the LIS-41 pom comment: "no runtime `$validate` operation is exposed
+  yet"). The provider performed only hand-rolled `require*` presence checks.
 - The "worklist" in OpenELIS is the **Workplan** feature (`/rest/WorkPlanByTest` and siblings);
   a persisted order's analyses (status `NotStarted`) are what the workplan queries return.
 
@@ -67,17 +69,21 @@ zero new sample/analysis rows.
 
 ## Consequences
 
-- The WAR now ships the validation jars and their `org.hl7.fhir.r5/r4b/dstu*` transitive closure
-  (~tens of MB, including the ~19 MB base R4 conformance resources; +31 runtime artifacts, pure
-  additions — no version swaps). Accepted as the cost of a runtime gate; the deploy kit is
-  unaffected functionally. Known wart (adversarial review P2, follow-up filed): the promotion
+- The WAR now ships the validation jars and their `org.hl7.fhir.r5/r4b/dstu*` transitive closure:
+  31 added runtime artifacts totalling ≈80 MB (pure additions, no version swaps; the base R4
+  conformance-resources jar alone is 5.6 MB packed — the ~19 MB figure in ADR-0004 is its
+  unpacked `profiles-resources.xml`). Accepted as the cost of a runtime gate; the deploy kit is
+  unaffected functionally. Known wart (adversarial review P2 → **LIS-208**): the promotion
   re-introduces `org.ogce:xpp3` — which bundles `javax.xml.namespace.QName`, the exact class the
   existing `hapi-fhir-structures-r4` exclusion targets — mitigated on Tomcat by parent-first
   delegation for JavaSE classes; the new jars also need recording in the third-party license
-  inventory.
+  inventory (same issue).
 - The first validation on a fresh JVM pays profile-loading latency (seconds); subsequent requests
   are fast. Acceptable for order creation.
-- Only the `@Create` ServiceRequest path is gated. Follow-ups to file: `@Update` validation,
-  interceptor-wide validation, and the `/fhir/*` auth-ordering gap (an unauthenticated POST
-  currently falls through to the form-login chain and 302s to `/LoginPage`; no
-  `SecurityConfig` test covers `/fhir/*`).
+- Only the `@Create` ServiceRequest path is gated. Follow-ups filed: `@Update` validation
+  (**LIS-207**); remote-import-path validation, 201 `Location` assertion, and validator
+  cold-start warm-up (**LIS-209**); the `/fhir/*` auth-ordering gap — an unauthenticated POST
+  currently falls through to the form-login chain and 302s to `/LoginPage`, with no
+  `SecurityConfig` test covering `/fhir/*` (**LIS-212**). Component CI could not run the full
+  suite on this change (checkout cannot clone the private plugins fork — **LIS-210**, urgent);
+  the executed evidence is the 10-test facade class plus the LIS-41/43 conformance guards.
