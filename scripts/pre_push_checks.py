@@ -15,7 +15,7 @@ Three checks, each guarding a failure mode this project has actually hit:
   2. Submodule pin ancestry — an umbrella pin bump must reference a commit that is
      pushed AND merged to the component's default branch; a pin at an unpushed or
      unmerged SHA breaks every fresh `--recurse-submodules` clone
-     (.claude/skills/pin-bump).
+     (the pin-bump skill).
   3. ADR lint — pushes touching docs/adr/ or contexts/*/docs/adr/ must pass
      scripts/adr_lint.py (exit 0 clean, exit 1 with findings on stderr).
 
@@ -41,14 +41,28 @@ ZERO_SHA = "0" * 40
 GIT_TIMEOUT = 25  # seconds; a hung fetch (or credential prompt) must not stall the push
 
 # Component -> default branch, from the authoritative table in
-# .claude/skills/pin-bump/SKILL.md ("core=main, bridge=develop, kit=main"); the
-# skill's ancestry checks run against the component remote named "origin".
+# the pin-bump skill (`.agents/skills/pin-bump` for Codex and
+# `.claude/skills/pin-bump` for Claude; "core=main, bridge=develop, kit=main");
+# the skill's ancestry checks run against the component remote named "origin".
 SUBMODULE_DEFAULT_BRANCH = {
     "core/openelis": "main",
     "edge/drivers": "develop",
     "deploy/kit": "main",
 }
 COMPONENT_REMOTE = "origin"
+
+# Git exports repository-local variables (notably GIT_DIR) to hooks. Forwarding
+# them into `git -C <submodule>` makes Git keep using the umbrella object store,
+# so a valid component merge SHA appears to be missing. Every command already
+# has an explicit cwd / -C target, so let Git rediscover that repository instead.
+GIT_REPOSITORY_LOCAL_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
 
 # Umbrella ADRs plus component-scoped ADRs mounted under contexts/<mount>/docs/adr/.
 ADR_PATH_RE = re.compile(r"^(docs/adr/|contexts/.+/docs/adr/)")
@@ -62,6 +76,8 @@ def _warn(msg: str) -> None:
 def _git(args, cwd):
     """Run git; CompletedProcess, or None on infra failure (no git binary, timeout)."""
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    for name in GIT_REPOSITORY_LOCAL_ENV:
+        env.pop(name, None)
     try:
         return subprocess.run(
             ["git", *args], cwd=cwd, stdin=subprocess.DEVNULL,
@@ -189,7 +205,7 @@ def check_pin_ancestry(refs, root):
                 errors.append(
                     f"{path}: pinned SHA {pin[:12]} does not exist on the component "
                     "remote — it likely points at an unpushed local commit "
-                    "(.claude/skills/pin-bump)."
+                    "(see the pin-bump skill)."
                 )
                 continue
             upstream = f"{COMPONENT_REMOTE}/{branch}"
@@ -202,7 +218,7 @@ def check_pin_ancestry(refs, root):
                 errors.append(
                     f"{path}: pin {pin[:12]} is not merged to the component default "
                     f"branch ({upstream}) — merge the component PR first, then re-pin "
-                    "to the post-merge SHA; see .claude/skills/pin-bump."
+                    "to the post-merge SHA; see the pin-bump skill."
                 )
     return errors
 

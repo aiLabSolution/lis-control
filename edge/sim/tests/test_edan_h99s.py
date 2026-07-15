@@ -328,7 +328,10 @@ def test_h99s_direct_attach_carries_no_barcode():
 def test_h99s_edan_qc_type_is_blank_even_with_obr20_populated():
     """OBR-20 is the Seamaty SD1's QC type/level field (``qc_type``); for EDAN it is
     the scanned barcode instead and must never be misread as a QC type/level — even
-    when the message is itself QC-classified (MSH-16=2)."""
+    when the message is held as QC (MSH-16=2, the documented test-connection value,
+    460907 §3.2.1). Since LIS-110 the barcode itself is ALSO withheld on such a
+    frame: the OBR-20 worklist join is a PATIENT-frame concept (LIS-149) and must
+    never become the join key of a held control group (review P2)."""
     msg = (
         "MSH|^~\\&|H90^^507|EDANLAB|||20260706094500||ORU^R01|9|P|2.4||||2||UTF8\r"
         "PID|6|17|^0||DOE^JOHN||19900101|M\r"
@@ -337,14 +340,17 @@ def test_h99s_edan_qc_type_is_blank_even_with_obr20_populated():
     ).encode("utf-8")
     report = parse_oru_r01(msg)
     assert report.qc_type == ""
-    assert report.barcode == "DEV01260000000000005"  # OBR-20 still surfaces as the barcode
+    assert report.barcode == ""  # held frame: OBR-20 never surfaces (LIS-110 review P2)
+    assert report.specimen_id == "13"  # OBR-2, never the OBR-20 barcode
 
 
 def test_h99s_edan_qc_lot_number_is_blank_even_with_obr14_populated():
     """OBR-14 is the Seamaty SD1's QC lot-number field (``qc_lot_number``); for EDAN it
     is a timestamp (H90 §3.2.3 "Specimen Received Date/Time"; real H60S capture carries
     ``20260628092700``) and must never be misread as a QC lot — even when the message is
-    itself QC-classified (MSH-16=2). Sibling of the OBR-20 ``qc_type`` gate above."""
+    itself held as QC (MSH-16=2, the documented test-connection value). Sibling of
+    the OBR-20 ``qc_type`` gate above; like there, the barcode is withheld on a
+    held frame since LIS-110 (review P2)."""
     msg = (
         "MSH|^~\\&|H90^^507|EDANLAB|||20260706094500||ORU^R01|9|P|2.4||||2||UTF8\r"
         "PID|6|17|^0||DOE^JOHN||19900101|M\r"
@@ -353,7 +359,7 @@ def test_h99s_edan_qc_lot_number_is_blank_even_with_obr14_populated():
     ).encode("utf-8")
     report = parse_oru_r01(msg)
     assert report.qc_lot_number == ""
-    assert report.barcode == "DEV01260000000000005"  # OBR-20 still surfaces as the barcode
+    assert report.barcode == ""  # held frame: OBR-20 never surfaces (LIS-110 review P2)
 
 
 def test_non_edan_obr14_still_reads_as_qc_lot_number():

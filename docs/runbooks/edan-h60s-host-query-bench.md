@@ -33,8 +33,16 @@ answered from the wire. Confirmed facts (see `identity.md`):
   QRD-9). QRD-9 = `1` (sample sequence), QRD-4 = `1` (the correlation id the answer must
   echo), QRF = `QRF|LIS|<dt>`.
 - **MSH-16 = 3 on the host-query** — with 0 = result/sample and 2 = connection-test also
-  observed this run, the EDAN MSH-16 map is now `0/2/3` (reconciles the LIS-110 question;
-  the manual documents only 0/1).
+  observed this run, the observed map `0/2/3` matches the **H90-series** protocol
+  (`EDAN\WI\82-01.54.460907` §3.2.1: 0=sample, 1=blood-cell QC, 2=test connection,
+  3=obtain info/host-query, 4=protein control, 1000=production tooling) — the
+  H60-specific doc lists only 0/1; the physical H60S demonstrably follows the H90 doc
+  (reconciles the LIS-110 question). LIS-110 has since shipped the vendor-aware profile:
+  EDAN 0/empty→patient, 1→QC (documented but not yet wire-confirmed — QC-mode capture
+  pending), every other value — the documented non-result 2/3, the undispositioned 4
+  (LIS-224) / 1000, and unknowns — held out of the patient stream as QC (payload-less
+  frames yield no results either way). See `edan-h60s-bench-conformance.md` §MSH-16 for
+  the residual-deviation record.
 
 **Responder mechanism (Step 4) — DEMONSTRATED, not yet a physical closed loop.** On the
 rebuilt bridge (`edge/drivers` `30b11c8`, LIS-149 + LIS-118 infra), a barcode host-query

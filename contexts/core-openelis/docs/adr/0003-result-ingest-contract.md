@@ -29,8 +29,12 @@
 > `loinc`/`ucumValue` · `status`) — and is the **Python simulator's** wire (umbrella ADR-0013). The
 > two are reconciled because a FHIR `Observation` *is* the production serialization of a
 > `NormalizedObservation`: the LOINC **and** the analyzer-native code live in `Observation.code.coding`,
-> the UCUM value/unit in `Observation.valueQuantity`, and the normalization/lifecycle in
-> `Observation.status`. The Testcontainers `ResultIngestContractIntegrationTest` below still proves
+> the raw display unit and UCUM code in `Observation.valueQuantity`. `Observation.status` remains
+> the FHIR lifecycle status (the bridge currently emits `PRELIMINARY`); on the production ingest
+> path OpenELIS derives the separate normalization status (`NORMALIZED` / `PARTIAL` / `UNMAPPED`)
+> from the presence of exact-system LOINC and UCUM codings, then carries it through staging into
+> `result.status` and `result_version.status`. The Testcontainers
+> `ResultIngestContractIntegrationTest` below still proves
 > core persistence via this typed contract; a thin **cross-contract conformance check** (the bridge's
 > FHIR Observation ↔ the simulator's DTO carry the same fields — the one-level-up analog of ADR-0013's
 > shared JSON-Schema) is **tracked as a follow-up implementation slice**, not built here.

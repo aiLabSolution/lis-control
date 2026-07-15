@@ -199,7 +199,13 @@ class Normalizer:
         if report.result_type == RESULT_TYPE_BLANK:
             return [_with_kind(row, KIND_BLANK) if row.kind == KIND_RESULT else row for row in rows]
         if report.result_type == RESULT_TYPE_QC:
-            if report.message_type == "ASTM^E1394":
+            # ASTM E1394 QC (LIS-33) and EDAN HL7 QC (LIS-110, report.edan — the
+            # H60/H90-series MSH-16 map has no calibration value and fails closed to
+            # QC, so its patient-stream rows must actually leave that stream) both
+            # re-kind here. The SD1/generic-HL7 QC gap (message_type=="ORU^R01" and
+            # not report.edan) is a deliberately unfixed bound left from LIS-33 —
+            # those rows stay KIND_RESULT in the sim; tracked under LIS-95.
+            if report.message_type == "ASTM^E1394" or report.edan:
                 return [
                     _with_kind(row, KIND_QC) if row.kind == KIND_RESULT else row
                     for row in rows
