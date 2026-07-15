@@ -1,0 +1,44 @@
+{
+  "id": "edan-h60s-oru-r01-qc",
+  "description": "Synthetic HL7 v2.4 ORU^R01 QC-mode upload from an EDAN H60S 3-part hematology analyzer (MLLP; the analyzer is the TCP client, our edge listens), MSH-16=1 (QC per KB §3.2.1). Exercises the EDAN QC OBR layout (KB §3.2.3: PID omitted; OBR-2=QC file No., OBR-3=QC level digit, OBR-4=<facility>^<model>^QC, OBR-13=QC lot No.) and the LIS-110 vendor-aware result-type/QC-layout gate.",
+  "analyzer": { "vendor": "EDAN", "model": "H60S" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "Synthetic, manual-derived from EDAN\\WI\\82-01.54.460907 KB §3.2.1 (0/empty=sample, 1=QC) and §3.2.3 (QC OBR layout: PID-less, OBR-2=QC file No., OBR-3=level, OBR-13=lot, OBR-4 ^QC). LIS-110.",
+    "note": "NO real QC-mode bench capture exists yet — the 2026-07-06/07 physical H60S bench (LIS-20; docs/runbooks/edan-h60s-bench-conformance.md) observed only MSH-16=0 (patient-mode results), =2 (MSH-only connection-test ping), and =3 (host-query QRY^R02); MSH-16=1 (KB-documented QC) was never produced on the wire, so this fixture's OBR-13/OBR-3 QC layout and its representative control values are manual/KB-derived, not bench-corroborated. A future QC-mode bench run must confirm MSH-16=1 and the exact §3.2.3 OBR field positions, or amend the profile (see the runbook's LIS-110 AC-5 deviation note). CBC codes/units/OBX layout are otherwise copied from the graduated edan-h60s-oru-r01 patient fixture (real EDANLAB wire shape: OBX-4 analyte code, OBX-3 suspect flag placeholder, HL7-escaped units, trailing OBX-12 value^unit component the parser ignores)."
+  },
+  "synthetic": true,
+  "terminology": {
+    "note": "EDAN CBC analyte codes/units mirrored from the default RAC-050 seed map that edan-h60s-oru-r01 relies on implicitly, so this QC fixture proves its own code mapping per the Normalizer.from_fixture contract.",
+    "codes": {
+      "WBC": "6690-2",
+      "RBC": "789-8",
+      "HGB": "718-7",
+      "PLT": "777-3"
+    },
+    "units": {
+      "10^9/L": "10*9/L",
+      "10^12/L": "10*12/L",
+      "g/L": "g/L"
+    }
+  },
+  "expected": {
+    "message_type": "ORU^R01",
+    "edan": true,
+    "result_type": "QC",
+    "patient_id": "",
+    "specimen_id": "1",
+    "qc_lot_number": "QC2026071",
+    "qc_type": "2",
+    "barcode": "",
+    "results": [
+      { "set_id": "", "raw_code": "WBC", "value": "8.0",  "raw_unit": "10^9/L",  "loinc": "6690-2", "ucum_value": "10*9/L",  "status": "NORMALIZED" },
+      { "set_id": "", "raw_code": "RBC", "value": "4.50", "raw_unit": "10^12/L", "loinc": "789-8",  "ucum_value": "10*12/L", "status": "NORMALIZED" },
+      { "set_id": "", "raw_code": "HGB", "value": "135",  "raw_unit": "g/L",     "loinc": "718-7",  "ucum_value": "g/L",     "status": "NORMALIZED" },
+      { "set_id": "", "raw_code": "PLT", "value": "220",  "raw_unit": "10^9/L",  "loinc": "777-3",  "ucum_value": "10*9/L",  "status": "NORMALIZED" }
+    ]
+  }
+}
