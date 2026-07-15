@@ -26,6 +26,8 @@ outside the OpenELIS clinical core and the edge analyzer bridge.
 
 - **ADR-0016 — Deploy kit as authoritative deployed configuration component:**
   `docs/adr/0016-deploy-kit-authoritative-config.md`.
+- **ADR-0020 — Deploy-kit clean-box smoke gate for the M1 pilot:**
+  `docs/adr/0020-deploy-kit-clean-box-smoke-gate.md`.
 
 ## Glossary
 
