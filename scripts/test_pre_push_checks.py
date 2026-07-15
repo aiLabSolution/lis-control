@@ -173,6 +173,16 @@ class ChecksScriptTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("not merged to the component default branch", r.stderr)
 
+    def test_hook_git_dir_does_not_poison_submodule_checks(self):
+        # Git exports the umbrella repository's local GIT_* variables to hooks.
+        # They must not leak into `git -C core/openelis`, or that command reads
+        # the umbrella object database and falsely reports a valid pin missing.
+        r = self.run_checks(
+            self.line("refs/heads/lis-7", self.pin_ok, ZERO),
+            env_extra={"GIT_DIR": os.path.join(self.umbrella, ".git")},
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     # ---- CHECK 3 absence + generic behavior ----------------------------------
     def test_adr_touch_without_linter_warns_and_allows(self):
         r = self.run_checks(self.line("refs/heads/lis-8", self.adr_commit, self.c2))

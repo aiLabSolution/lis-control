@@ -51,6 +51,19 @@ SUBMODULE_DEFAULT_BRANCH = {
 }
 COMPONENT_REMOTE = "origin"
 
+# Git exports repository-local variables (notably GIT_DIR) to hooks. Forwarding
+# them into `git -C <submodule>` makes Git keep using the umbrella object store,
+# so a valid component merge SHA appears to be missing. Every command already
+# has an explicit cwd / -C target, so let Git rediscover that repository instead.
+GIT_REPOSITORY_LOCAL_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+
 # Umbrella ADRs plus component-scoped ADRs mounted under contexts/<mount>/docs/adr/.
 ADR_PATH_RE = re.compile(r"^(docs/adr/|contexts/.+/docs/adr/)")
 
@@ -63,6 +76,8 @@ def _warn(msg: str) -> None:
 def _git(args, cwd):
     """Run git; CompletedProcess, or None on infra failure (no git binary, timeout)."""
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    for name in GIT_REPOSITORY_LOCAL_ENV:
+        env.pop(name, None)
     try:
         return subprocess.run(
             ["git", *args], cwd=cwd, stdin=subprocess.DEVNULL,
