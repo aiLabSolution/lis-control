@@ -107,18 +107,23 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
     observations = tuple(
         obs for seg in msg.all("OBX") if (obs := _observation(seg, u, edan)) is not None
     )
-    result_type = _result_type(msh.field(16), edan)
+    # The message-level type decides the EDAN OBR layout/joins below; the BLANK
+    # override is a per-OBR material property layered on top of it (a blank-sample
+    # frame is still a patient-layout message — mirrors the bridge, where blank is
+    # a group flag and messageResultType stays PATIENT).
+    message_result_type = _result_type(msh.field(16), edan)
+    result_type = message_result_type
     if obr and _is_blank_sample_obr(obr, u):
         result_type = RESULT_TYPE_BLANK
 
-    # EDAN's QC OBR layout (KB §3.2.3) is used ONLY when MSH-16 is exactly "1" — a
-    # fail-closed-QC EDAN frame (unrecognized MSH-16, e.g. "2"/"3"/"9") is NOT trusted
-    # to be QC-layout and keeps the patient-layout OBR field positions/blanking below
+    # EDAN's QC OBR layout (460907 §3.2.3) is used ONLY when MSH-16 is exactly "1" —
+    # a held EDAN frame (any other MSH-16, e.g. "2"/"3"/"4") is NOT trusted to be
+    # QC-layout and keeps the patient-layout OBR field positions/blanking below
     # (mirrors the bridge HL7ResultParser `edanQcLayout` gate, LIS-110).
     edan_qc_layout = edan and (msh.field(16) or "").strip() == "1"
 
     if obr and edan_qc_layout:
-        # EDAN QC OBR layout (KB §3.2.3; PID omitted): OBR-2 is the QC file No.
+        # EDAN QC OBR layout (460907 §3.2.3; PID omitted): OBR-2 is the QC file No.
         # (the specimen/join key here — OBR-20 is the patient-layout scanned barcode
         # ONLY and is never populated/consulted in this layout), OBR-3 is the QC
         # level (raw digit, 1=High/2=Normal/3=Low — kept as reported), and OBR-13 is
@@ -127,13 +132,24 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         barcode = ""
         qc_lot_number = obr.field(13)
         qc_type = obr.field(3)
-    elif obr and edan:
+    elif obr and edan and message_result_type == RESULT_TYPE_PATIENT:
         # EDAN patient layout: specimen id prefers the OBR-20 scanned barcode, else
         # OBR-2 (see _specimen_id/_edan_obr20). OBR-14/OBR-20 are repurposed as a
         # timestamp and the barcode respectively, never a QC lot/type — force those
         # blank so a timestamp/barcode can never be misread as one.
         specimen_id = _specimen_id(obr, edan)
         barcode = _edan_obr20(obr)
+        qc_lot_number = ""
+        qc_type = ""
+    elif obr and edan:
+        # Held EDAN frame (documented non-result 2/3, undispositioned 4/1000, or a
+        # genuinely unknown value — see _result_type): the OBR-20 worklist-barcode
+        # join is a PATIENT-frame concept (LIS-149) and must never become the
+        # specimen key of a held control group (LIS-110 review P2, mirrors the
+        # bridge gate). Specimen id from OBR-2 only; lot/type not trusted.
+        obr2 = obr.field(2)
+        specimen_id = obr2 if obr2.strip() else ""
+        barcode = ""
         qc_lot_number = ""
         qc_type = ""
     elif obr:
@@ -254,16 +270,21 @@ def _result_type(msh16: str, edan: bool = False) -> str:
     blank values stay patient for backward compatibility with analyzers that do
     not populate this field. This branch is byte-for-byte unchanged by LIS-110.
 
-    EDAN H60/H90-series (``edan=True``) uses a different encoding entirely (KB
-    §3.2.1): 0/empty=sample (patient), 1=QC — there is **no calibration value** at
-    all (KB §5). The 2026-07-06/07 physical H60S bench
-    (docs/runbooks/edan-h60s-bench-conformance.md) observed MSH-16=2 on the
-    MSH-only connection-test ping and =3 on a host-query QRY^R02 — both
-    payload-less frames (no OBX observations either way, so misclassifying them
-    has no patient-result consequence). Any other/unrecognized value — including
-    the bench-observed 2/3 — fails closed to QC: an EDAN result-type flag this
-    parser doesn't recognize is NEVER routed to the patient stream. Mirrors the
-    bridge ``HL7ResultParser.fromEdanMsh16``.
+    EDAN H60/H90-series (``edan=True``) uses a different encoding entirely. The
+    H90-series protocol (``EDAN\\WI\\82-01.54.460907`` §3.2.1) documents:
+    0=sample results, 1=blood-cell QC results, 2=test connection, 3=obtain
+    patient info / sample measurement items (host-query), 4=protein control
+    results, 1000=production tooling data — there is **no calibration value**.
+    The H60-specific doc lists only 0/1, but the 2026-07-06/07 physical H60S
+    bench (docs/runbooks/edan-h60s-bench-conformance.md) proved the real H60S
+    follows the H90 map — it emitted 2 on the MSH-only connection-test ping and
+    3 on a host-query QRY^R02, both payload-less frames (no OBX observations, so
+    holding them has no patient-result consequence). Only 0/empty (patient) and
+    1 (blood-cell QC) map first-class; everything else — the documented
+    non-result 2/3, the undispositioned 4 (LIS-224) / 1000, and genuinely
+    unknown values — fails closed to QC: an EDAN result-type flag this parser
+    doesn't map is NEVER routed to the patient stream. Mirrors the bridge
+    ``HL7ResultParser.fromEdanMsh16``.
     """
     value = (msh16 or "").strip()
     if edan:

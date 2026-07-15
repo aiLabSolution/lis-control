@@ -2,16 +2,18 @@
 
 Before this slice ``_result_type(msh16)`` applied the Seamaty SD1 encoding
 (0=patient/1=calibration/2=QC) to every HL7 vendor, including the EDAN H60/H90
-family. The EDAN LIS Communication Protocol KB (``EDAN\\WI\\82-01.54.460907``
-§3.2.1) uses a different map with **no calibration value**: 0/empty=sample
-(patient), 1=QC. The 2026-07-06/07 physical H60S bench
-(``docs/runbooks/edan-h60s-bench-conformance.md``) additionally observed
-MSH-16=2 on the MSH-only connection-test ping and =3 on a host-query
-``QRY^R02`` — neither documented in the KB, and neither ever carrying a real
-result (both are payload-less frames). Any EDAN MSH-16 value this profile does
-not recognize (including the bench-observed 2/3) fails closed to QC: it is
-never routed to the patient stream (mirrors the bridge
-``HL7ResultParser.fromEdanMsh16``).
+family. The H90-series LIS protocol (``EDAN\\WI\\82-01.54.460907`` §3.2.1)
+documents a different map with **no calibration value**: 0=sample results,
+1=blood-cell QC results, 2=test connection, 3=obtain patient info / sample
+measurement items (host-query), 4=protein control results, 1000=production
+tooling data. The H60-specific doc lists only 0/1, but the 2026-07-06/07
+physical H60S bench (``docs/runbooks/edan-h60s-bench-conformance.md``) proved
+the real H60S follows the H90 map — it emitted 2 on the MSH-only
+connection-test ping and 3 on a host-query ``QRY^R02``, both payload-less
+frames. Only 0/empty and 1 map first-class; every other value — the documented
+non-result 2/3, the undispositioned 4 (LIS-224) / 1000, and genuinely unknown
+values — fails closed to QC: it is never routed to the patient stream (mirrors
+the bridge ``HL7ResultParser.fromEdanMsh16``).
 
 A second delta rides on top: the EDAN **QC OBR layout** (KB §3.2.3) is PID-less
 and repurposes OBR-2/OBR-3/OBR-13 (QC file No. / level / lot) instead of the
@@ -47,15 +49,16 @@ H60S_QC = FIXTURES_ROOT / "edan-h60s-oru-r01-qc"
 
 
 def test_result_type_edan_branches():
-    """EDAN (KB §3.2.1): 0/empty=patient, 1=QC, any other value fails closed to QC
-    (no calibration value exists for this vendor)."""
+    """EDAN (460907 §3.2.1): 0/empty=patient, 1=QC, any other value fails closed to
+    QC (no calibration value exists for this vendor)."""
     from edge_sim.oru import _result_type  # noqa: PLC0415 - test-only introspection
 
     assert _result_type("", edan=True) == RESULT_TYPE_PATIENT
     assert _result_type("0", edan=True) == RESULT_TYPE_PATIENT
     assert _result_type("1", edan=True) == RESULT_TYPE_QC
-    assert _result_type("2", edan=True) == RESULT_TYPE_QC  # bench-observed connection-test ping
-    assert _result_type("3", edan=True) == RESULT_TYPE_QC  # bench-observed host-query
+    assert _result_type("2", edan=True) == RESULT_TYPE_QC  # documented test-connection frame
+    assert _result_type("3", edan=True) == RESULT_TYPE_QC  # documented host-query frame
+    assert _result_type("4", edan=True) == RESULT_TYPE_QC  # documented protein control -> LIS-224
     assert _result_type("9", edan=True) == RESULT_TYPE_QC  # unrecognized -> fail closed
 
 
@@ -153,6 +156,34 @@ def test_edan_msh16_empty_is_patient():
     assert report.result_type == RESULT_TYPE_PATIENT
     rows = Normalizer().normalize_report(report)
     assert all(r.kind == KIND_RESULT for r in rows)
+
+
+# --- review P2: held frames never take the OBR-20 worklist barcode ----------
+
+
+def test_edan_held_frame_never_takes_obr20_barcode_as_specimen():
+    """A held EDAN frame (here the documented-but-undispositioned MSH-16=4,
+    LIS-224) with a populated OBR-20 must NOT surface that barcode as the
+    specimen/join key — the OBR-20 worklist join is a PATIENT-frame concept
+    (LIS-149) and would re-key a held control group onto a real patient order
+    (LIS-110 review P2; mirrors the bridge barcode gate). Specimen id comes from
+    OBR-2, lot/type stay blank (layout not trusted)."""
+    msg = (
+        "MSH|^~\\&|H90^^507|EDANLAB|||20260707120000||ORU^R01|77|P|2.4||||4||UTF8\r"
+        "PID|6|H90-PROT-01|^0||DOE^JOHN||19900101|M\r"
+        "OBR|1|77||EDANLAB^H90|||20260707115900||||||||||||0|DEV01260000000000012\r"
+        "OBX||NM|0|CRP|4.8|mg/L|0.0-8.0|0|0|0||4.8^mg/L"
+    ).encode("utf-8")
+    report = parse_oru_r01(msg)
+    assert report.edan is True
+    assert report.result_type == RESULT_TYPE_QC
+    assert report.barcode == ""
+    assert report.specimen_id == "77"  # OBR-2, never the OBR-20 barcode
+    assert report.qc_lot_number == ""
+    assert report.qc_type == ""
+
+    rows = Normalizer().normalize_report(report)
+    assert all(r.kind == KIND_QC for r in rows)  # held out of the patient stream
 
 
 # --- deliberate bound: SD1/generic-HL7 QC gap is untouched (LIS-95) --------
