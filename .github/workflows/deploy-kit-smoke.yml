@@ -1,0 +1,116 @@
+# LIS-50 / S4.9 — clean-box M1 deploy-kit install, health, and FHIR read.
+#
+# ADR-0006 fixes the pilot topology as fully onsite with no sync. This job
+# therefore proves the pinned single-site OpenELIS stack through the deploy-kit
+# wrapper; the post-pilot M3 sync spoke is deliberately out of scope.
+name: Stage 4 — Deploy-kit clean-box smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/openelis
+      - deploy/kit
+      - deploy/ci/**
+      - scripts/test_deploy_smoke.py
+      - .github/workflows/deploy-kit-smoke.yml
+  pull_request:
+    paths:
+      - core/openelis
+      - deploy/kit
+      - deploy/ci/**
+      - scripts/test_deploy_smoke.py
+      - .github/workflows/deploy-kit-smoke.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-kit-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  clean-box-smoke:
+    name: install → health 200 → DiagnosticReport read
+    runs-on: ubuntu-latest
+    # Uncached OpenELIS source build (~15-30 min on a 2-core runner) plus a
+    # 600s health wait; 45 minutes is too tight on a cold cache.
+    timeout-minutes: 60
+    env:
+      LIS_DEPLOY_USE_SOURCE_BUILD: "true"
+      LIS_DEPLOY_USE_LOCAL_PROOF: "true"
+      WEBAPP_CONTAINER: lis-proof-openelisglobal-webapp
+      DB_CONTAINER: lis-proof-openelisglobal-database
+      OPENELIS_BASE_URL: https://localhost:18443/api/OpenELIS-Global
+    steps:
+      - name: Check out umbrella
+        uses: actions/checkout@v4
+
+      - name: Resolve pinned component SHAs
+        id: pins
+        run: |
+          echo "core=$(git rev-parse HEAD:core/openelis)" >> "$GITHUB_OUTPUT"
+          echo "kit=$(git rev-parse HEAD:deploy/kit)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned deploy kit
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/lis-deploy-kit
+          ref: ${{ steps.pins.outputs.kit }}
+          path: deploy/kit
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Check out pinned OpenELIS core
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/OpenELIS-Global-2
+          ref: ${{ steps.pins.outputs.core }}
+          path: core/openelis
+          submodules: false
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Resolve pinned dataexport SHA
+        id: nested
+        run: echo "dataexport=$(git -C core/openelis rev-parse HEAD:dataexport)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned dataexport build dependency
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/dataexport
+          ref: ${{ steps.nested.outputs.dataexport }}
+          path: core/openelis/dataexport
+          persist-credentials: false
+
+      - name: Render clean-box install plan
+        run: |
+          chmod +x deploy/kit/scripts/compose-openelis.sh
+          deploy/kit/scripts/compose-openelis.sh config -q
+          deploy/kit/scripts/compose-openelis.sh config --images
+
+      - name: Install pinned single-site stack from source
+        run: >-
+          deploy/kit/scripts/compose-openelis.sh up -d --build
+          certs db.openelis.org oe.openelis.org
+
+      - name: Wait for database, webapp, and 200 health response
+        env:
+          HEALTH_URL: ${{ env.OPENELIS_BASE_URL }}/health
+          TIMEOUT: "600"
+        run: bash deploy/ci/healthcheck.sh
+
+      - name: Read a finalized FHIR DiagnosticReport
+        env:
+          BASE_URL: ${{ env.OPENELIS_BASE_URL }}
+        run: bash deploy/ci/smoke-diagnostic-report.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          deploy/kit/scripts/compose-openelis.sh ps || true
+          docker logs "$WEBAPP_CONTAINER" 2>&1 | tail -200 || true
+          docker logs "$DB_CONTAINER" 2>&1 | tail -100 || true
+
+      - name: Tear down disposable proof stack
+        if: always()
+        run: deploy/kit/scripts/compose-openelis.sh down -v || true

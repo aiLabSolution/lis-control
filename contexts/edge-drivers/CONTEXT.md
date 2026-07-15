@@ -17,7 +17,30 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`002210a`** — LIS-176 SNIBE MAGLUMI X3 HL7 v2.5 `OUL^R22` native
+- **Pin:** untagged **`940e3a0`** — LIS-110 vendor-aware MSH-16 result-type profile
+  (PR `openelis-analyzer-bridge#37`). `HL7ResultParser.fromEdanMsh16`: EDAN H60/H90-series
+  messages (existing `isEdanH90Series` announce gate) map MSH-16 `0`/blank → PATIENT and
+  `1` → QC; every other value — the documented non-result frames `2`=test-connection /
+  `3`=host-query (`EDAN\WI\82-01.54.460907` §3.2.1, bench-corroborated 2026-07-06/07), the
+  undispositioned `4`=protein-control (LIS-224) / `1000`, and unknowns — is held out of the
+  patient stream as QC (emitted PRELIMINARY per ADR-0019). The EDAN **QC OBR layout**
+  (460907 §3.2.3, trusted only on MSH-16 exactly `"1"`): lot = OBR-13, level = OBR-3 (raw
+  digit), accession = OBR-2 QC file No. only (blank → deterministic mint — never the OBR-3
+  level digit); the OBR-20 worklist-barcode join (LIS-149) is gated to PATIENT frames so a
+  held control group can never be re-keyed onto a patient order. SD1/generic `fromMsh16`
+  and the SNIBE branch byte-for-byte unchanged. Sim mirror in-tree (`oru._result_type`
+  edan branch, `normalize_report` QC re-kind widened to ASTM-or-EDAN; SD1 HL7-QC re-kind
+  gap deliberately kept, tracked LIS-95). Adversarial review: pass-1 REQUEST_CHANGES
+  (KB-citation P1 + two P2s) → fixed in `21826fe` → pass-2 APPROVE. Full suite at the pin
+  **887/0/0/5**, `edge/sim` **343** (bridge has no CI — local runs are the record).
+  `1=QC` + the §3.2.3 layout are protocol-documented but not yet wire-confirmed (no
+  QC-mode bench capture) — deviation recorded in `docs/runbooks/edan-h60s-bench-conformance.md`.
+- **Intervening pins (not genealogized here):** `002210a` → `f051a3c` (LIS-44, PR #32) →
+  `7a5079ae` (LIS-45, #33) → `0bcab14` (LIS-214, #34) → `1023e7a8` (LIS-213, #35) →
+  `ca68160` (LIS-46, #36) — the HIS-outbound ORU^R01 tail (delivery ⟺ MSA-1=AA, durable
+  store-and-forward queue, 409 collision surfacing, anchored ACK classification, restart
+  chaos test); see the LIS-44/45/46/213/214 issues and umbrella PRs #124–#127/#130.
+- **Prior genealogized pin:** untagged **`002210a`** — LIS-176 SNIBE MAGLUMI X3 HL7 v2.5 `OUL^R22` native
   fallback parse path (PR `openelis-analyzer-bridge#28`). A MAGLUMI-gated dialect branch in
   `HL7ResultParser` (`isSnibeX3` = MSH-3 component-1 `equalsIgnoreCase("MAGLUMI")`, decided
   before any standard MSH read): shifted MSH metadata (control-id = MSH-6, datetime = MSH-4,

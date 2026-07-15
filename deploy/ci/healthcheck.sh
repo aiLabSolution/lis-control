@@ -12,12 +12,14 @@
 #
 # Env (all optional):
 #   BASE_URL          default https://localhost   (the nginx proxy)
+#   HEALTH_URL        default $BASE_URL/; set this for a direct backend probe
 #   DB_CONTAINER      default openelisglobal-database
 #   WEBAPP_CONTAINER  default openelisglobal-webapp
 #   TIMEOUT           default 420  (seconds to wait for app deploy after `up`)
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://localhost}"
+HEALTH_URL="${HEALTH_URL:-${BASE_URL%/}/}"
 DB_CONTAINER="${DB_CONTAINER:-openelisglobal-database}"
 WEBAPP_CONTAINER="${WEBAPP_CONTAINER:-openelisglobal-webapp}"
 TIMEOUT="${TIMEOUT:-420}"
@@ -27,7 +29,7 @@ health=missing state=missing code=000
 while [ "$(date +%s)" -lt "$deadline" ]; do
   health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$DB_CONTAINER" 2>/dev/null || echo missing)
   state=$(docker inspect --format '{{.State.Status}}' "$WEBAPP_CONTAINER" 2>/dev/null || echo missing)
-  code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE_URL/" 2>/dev/null || echo 000)
+  code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL" 2>/dev/null || echo 000)
   if [ "$health" = healthy ] && [ "$state" = running ] && [ "$code" = 200 ]; then
     echo "HEALTHY  db=$health  webapp=$state  ui=$code"
     docker logs "$WEBAPP_CONTAINER" 2>&1 | grep -m1 "Server startup in" || true
