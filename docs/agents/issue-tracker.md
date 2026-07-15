@@ -1,14 +1,16 @@
 # Issue tracker: Plane.so
 
 Issues and PRDs for this repo live in **Plane.so**. Drive Plane with the bundled `plane`
-CLI (from the `/plane` skill) — **not** `gh`.
+CLI (from the `$plane` Codex skill or `/plane` Claude skill) — **not** `gh`.
 
 ## CLI
 
-The CLI is bundled at `~/.claude/skills/plane/scripts/plane`. Always invoke it with the
-absolute path; resolve it via `readlink -f ~/.claude/skills/plane`:
+The CLI is bundled with the user-level Plane skill. Always invoke it with an absolute
+path. Codex installs it under `~/.agents/skills`; Claude uses `~/.claude/skills`:
 
 ```bash
+python3 "$(readlink -f ~/.agents/skills/plane)/scripts/plane" <command> [-f json]
+# Claude compatibility:
 python3 "$(readlink -f ~/.claude/skills/plane)/scripts/plane" <command> [-f json]
 ```
 

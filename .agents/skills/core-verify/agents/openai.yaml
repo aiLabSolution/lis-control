@@ -1,0 +1,4 @@
+interface:
+  display_name: "Core Verify"
+  short_description: "Run Java verification through Docker Maven"
+  default_prompt: "Use $core-verify to run the affected OpenELIS Java tests."

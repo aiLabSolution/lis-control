@@ -33,6 +33,26 @@ Root `CLAUDE.md` contains the same umbrella workflow for Claude sessions. This
 file is the Codex entry point; prefer keeping durable, tool-agnostic guidance
 here and component-specific guidance in the nested component docs.
 
+## Repository skills and custom agents
+
+Codex discovers the project skills under `.agents/skills/`:
+
+- `$bench-capture` - route analyzer bench sessions to the correct capture tool and runbook.
+- `$core-verify` - run OpenELIS core and analyzer-bridge Java verification through Docker Maven.
+- `$pin-bump` - land component changes through the component-to-umbrella pin chain.
+- `$work-slice` - execute a Plane slice from claim through review, teardown, and release.
+
+Codex custom agents live under `.codex/agents/`:
+
+- `adversarial-reviewer` - hostile pre-merge review gate; use for slice PRs.
+- `ac-verifier` - verify every acceptance criterion before closing a slice.
+- `findings-triager` - disposition review backlogs; report-only unless issue creation is explicit.
+- `pin-auditor` - audit `origin/main` submodule pin reachability, ancestry, lag, and checkout drift.
+
+When a workflow calls for one of these custom agents, spawn it by its exact name and
+pass the slice key, worktree, diff range or PR, and acceptance criteria it needs. Let
+the agent use the model and reasoning settings in its TOML definition.
+
 ## Workflow rules
 
 - Do not commit directly on `main`, and do not push `origin main`.
