@@ -30,20 +30,31 @@ git clone --recurse-submodules https://github.com/aiLabSolution/lis-control.git
 git submodule update --init --recursive
 ```
 
-## Component repos are independent
+## Component repositories and original sources
 
-Each submodule is a standalone repo with its own remotes. The OpenELIS core
-tracks the canonical project as `upstream` so releases can be pulled and generic
-plugins contributed back (plan §0/§6):
+Every submodule clone URL uses an `aiLabSolution` repository as `origin`. The
+original project URLs are retained here for attribution and deliberate source
+review only; clones do not configure standing `upstream` remotes. In particular,
+OpenELIS core follows the standalone `aiLabSolution/main` model from ADR-0003.
+
+| Mount | `origin` | Original source |
+|---|---|---|
+| `core/openelis/` | [`aiLabSolution/OpenELIS-Global-2`](https://github.com/aiLabSolution/OpenELIS-Global-2) | [`DIGI-UW/OpenELIS-Global-2`](https://github.com/DIGI-UW/OpenELIS-Global-2) |
+| `edge/drivers/` and `core/openelis/tools/openelis-analyzer-bridge/` | [`aiLabSolution/openelis-analyzer-bridge`](https://github.com/aiLabSolution/openelis-analyzer-bridge) | [`DIGI-UW/openelis-analyzer-bridge`](https://github.com/DIGI-UW/openelis-analyzer-bridge) |
+| `deploy/kit/` | [`aiLabSolution/lis-deploy-kit`](https://github.com/aiLabSolution/lis-deploy-kit) | LabSolution-owned; no external source |
+| `core/openelis/plugins/` | [`aiLabSolution/openelisglobal-plugins`](https://github.com/aiLabSolution/openelisglobal-plugins) | [`DIGI-UW/openelisglobal-plugins`](https://github.com/DIGI-UW/openelisglobal-plugins) |
+| `core/openelis/dataexport/` | [`aiLabSolution/dataexport`](https://github.com/aiLabSolution/dataexport) | [`DIGI-UW/dataexport`](https://github.com/DIGI-UW/dataexport) |
+| `core/openelis/projects/catalyst/` | [`aiLabSolution/openelis-catalyst`](https://github.com/aiLabSolution/openelis-catalyst) | [`DIGI-UW/openelis-catalyst`](https://github.com/DIGI-UW/openelis-catalyst) |
+| `core/openelis/tools/Liquibase-Outdated/` | [`aiLabSolution/Liquibase-Outdated`](https://github.com/aiLabSolution/Liquibase-Outdated) | [`DIGI-UW/Liquibase-Outdated`](https://github.com/DIGI-UW/Liquibase-Outdated) |
+| `core/openelis/tools/Password-Migrator/` | [`aiLabSolution/Password-Migrator`](https://github.com/aiLabSolution/Password-Migrator) | [`DIGI-UW/Password-Migrator`](https://github.com/DIGI-UW/Password-Migrator) |
+| `core/openelis/tools/analyzer-mock-server/` | [`aiLabSolution/analyzer-mock-server`](https://github.com/aiLabSolution/analyzer-mock-server) | [`DIGI-UW/analyzer-mock-server`](https://github.com/DIGI-UW/analyzer-mock-server) |
+| `core/openelis/Consolidated-Server/` (declared, not currently pinned) | [`aiLabSolution/Consolidated-Server`](https://github.com/aiLabSolution/Consolidated-Server) | [`DIGI-UW/Consolidated-Server`](https://github.com/DIGI-UW/Consolidated-Server) |
+| `core/openelis/hapi-fhir-jpaserver-starter/` (declared, not currently pinned) | [`aiLabSolution/hapi-fhir-jpaserver-starter`](https://github.com/aiLabSolution/hapi-fhir-jpaserver-starter) | [`DIGI-UW/hapi-fhir-jpaserver-starter`](https://github.com/DIGI-UW/hapi-fhir-jpaserver-starter) |
+
+Existing recursive clones can adopt versioned URL changes with:
 
 ```bash
-cd core/openelis
-git remote -v
-#   origin    https://github.com/aiLabSolution/OpenELIS-Global-2.git   (the fork/mirror)
-#   upstream  https://github.com/DIGI-UW/OpenELIS-Global-2.git         (canonical OpenELIS Global)
-
-# pull upstream changes onto the fork:
-git fetch upstream && git merge upstream/develop   # or rebase
+git submodule sync --recursive
 ```
 
 After updating a submodule, record the new pin in this repo:
