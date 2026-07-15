@@ -78,10 +78,11 @@ class OruReport:
     specimen_id: str  # OBR-3 filler order; EDAN H90-series prefers OBR-20 (barcode), else OBR-2 (see _specimen_id)
     order_code: str  # OBR-4.1
     observations: tuple[RawObservation, ...]
-    result_type: str = RESULT_TYPE_PATIENT  # MSH-16: PATIENT / CALIBRATION / QC
-    qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads; always "" for EDAN (a timestamp, see gate)
-    qc_type: str = ""  # OBR-20 for SD1 QC type / level; always "" for EDAN (see barcode)
-    barcode: str = ""  # EDAN OBR-20 scanned barcode (LIS-149 AC3, see _edan_obr20); "" for non-EDAN or a blank OBR-20
+    result_type: str = RESULT_TYPE_PATIENT  # MSH-16: PATIENT / CALIBRATION / QC (vendor-aware, see _result_type)
+    qc_lot_number: str = ""  # OBR-14 for SD1 QC/calibration uploads; OBR-13 for EDAN QC-layout uploads (LIS-110); else ""
+    qc_type: str = ""  # OBR-20 for SD1 QC type/level; OBR-3 (raw level digit) for EDAN QC-layout uploads (LIS-110); else ""
+    barcode: str = ""  # EDAN OBR-20 scanned barcode (LIS-149 AC3, see _edan_obr20); "" for non-EDAN, a blank OBR-20, or the EDAN QC layout (LIS-110 — OBR-20 is patient-layout only)
+    edan: bool = False  # EDAN H90-family announce-gate verdict (_is_edan_h90); drives the normalize.py QC re-kind gate (LIS-110)
 
 
 def parse_oru_r01(message: Message | bytes | str) -> OruReport:
@@ -106,9 +107,44 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
     observations = tuple(
         obs for seg in msg.all("OBX") if (obs := _observation(seg, u, edan)) is not None
     )
-    result_type = _result_type(msh.field(16))
+    result_type = _result_type(msh.field(16), edan)
     if obr and _is_blank_sample_obr(obr, u):
         result_type = RESULT_TYPE_BLANK
+
+    # EDAN's QC OBR layout (KB §3.2.3) is used ONLY when MSH-16 is exactly "1" — a
+    # fail-closed-QC EDAN frame (unrecognized MSH-16, e.g. "2"/"3"/"9") is NOT trusted
+    # to be QC-layout and keeps the patient-layout OBR field positions/blanking below
+    # (mirrors the bridge HL7ResultParser `edanQcLayout` gate, LIS-110).
+    edan_qc_layout = edan and (msh.field(16) or "").strip() == "1"
+
+    if obr and edan_qc_layout:
+        # EDAN QC OBR layout (KB §3.2.3; PID omitted): OBR-2 is the QC file No.
+        # (the specimen/join key here — OBR-20 is the patient-layout scanned barcode
+        # ONLY and is never populated/consulted in this layout), OBR-3 is the QC
+        # level (raw digit, 1=High/2=Normal/3=Low — kept as reported), and OBR-13 is
+        # the QC lot No.
+        specimen_id = obr.field(2)
+        barcode = ""
+        qc_lot_number = obr.field(13)
+        qc_type = obr.field(3)
+    elif obr and edan:
+        # EDAN patient layout: specimen id prefers the OBR-20 scanned barcode, else
+        # OBR-2 (see _specimen_id/_edan_obr20). OBR-14/OBR-20 are repurposed as a
+        # timestamp and the barcode respectively, never a QC lot/type — force those
+        # blank so a timestamp/barcode can never be misread as one.
+        specimen_id = _specimen_id(obr, edan)
+        barcode = _edan_obr20(obr)
+        qc_lot_number = ""
+        qc_type = ""
+    elif obr:
+        # Non-EDAN (e.g. Seamaty SD1): standard OBR-3 specimen id, OBR-14 QC lot
+        # number, OBR-20 QC type/level; no EDAN barcode concept.
+        specimen_id = obr.field(3)
+        barcode = ""
+        qc_lot_number = obr.field(14)
+        qc_type = obr.field(20)
+    else:
+        specimen_id = barcode = qc_lot_number = qc_type = ""
 
     return OruReport(
         message_type=u(msh.field(9)),
@@ -117,19 +153,14 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
         message_control_id=u(msh.field(10)),
         patient_id=u(_patient_id(pid, edan)) if pid else "",
         patient_name=u(pid.field(5)) if pid else "",
-        specimen_id=u(_specimen_id(obr, edan)) if obr else "",
+        specimen_id=u(specimen_id),
         order_code=u(obr.component(4, 1)) if obr else "",
         result_type=result_type,
-        # EDAN repurposes OBR-14 as a timestamp (H90 §3.2.3 "Specimen Received
-        # Date/Time"), not the SD1 QC lot number — force it blank there so a timestamp
-        # can never be misread as a QC lot. Non-EDAN analyzers are unaffected.
-        qc_lot_number="" if edan else (u(obr.field(14)) if obr else ""),
-        # EDAN repurposes OBR-20 as the scanned barcode (see barcode below), not the
-        # SD1 QC type/level — force it blank there so a barcode can never be misread
-        # as a QC type. Non-EDAN analyzers are unaffected.
-        qc_type="" if edan else (u(obr.field(20)) if obr else ""),
-        barcode=u(_edan_obr20(obr)) if obr and edan else "",
+        qc_lot_number=u(qc_lot_number),
+        qc_type=u(qc_type),
+        barcode=u(barcode),
         observations=observations,
+        edan=edan,
     )
 
 
@@ -215,14 +246,30 @@ def _specimen_id(obr, edan: bool = False) -> str:
     return obr.field(3)
 
 
-def _result_type(msh16: str) -> str:
-    """Seamaty SD1 result-type dispatcher from ``MSH-16``.
+def _result_type(msh16: str, edan: bool = False) -> str:
+    """Vendor-aware result-type dispatcher from ``MSH-16`` (LIS-110).
 
-    The vendor protocol uses 0=patient, 1=calibration, 2=QC. Unknown or blank
-    values stay patient for backward compatibility with analyzers that do not
-    populate this field.
+    Non-EDAN (``edan=False``, e.g. the Seamaty SD1 and every other generic-HL7
+    analyzer): the vendor protocol uses 0=patient, 1=calibration, 2=QC. Unknown or
+    blank values stay patient for backward compatibility with analyzers that do
+    not populate this field. This branch is byte-for-byte unchanged by LIS-110.
+
+    EDAN H60/H90-series (``edan=True``) uses a different encoding entirely (KB
+    §3.2.1): 0/empty=sample (patient), 1=QC — there is **no calibration value** at
+    all (KB §5). The 2026-07-06/07 physical H60S bench
+    (docs/runbooks/edan-h60s-bench-conformance.md) observed MSH-16=2 on the
+    MSH-only connection-test ping and =3 on a host-query QRY^R02 — both
+    payload-less frames (no OBX observations either way, so misclassifying them
+    has no patient-result consequence). Any other/unrecognized value — including
+    the bench-observed 2/3 — fails closed to QC: an EDAN result-type flag this
+    parser doesn't recognize is NEVER routed to the patient stream. Mirrors the
+    bridge ``HL7ResultParser.fromEdanMsh16``.
     """
     value = (msh16 or "").strip()
+    if edan:
+        if value in ("", "0"):
+            return RESULT_TYPE_PATIENT
+        return RESULT_TYPE_QC
     if value == "1":
         return RESULT_TYPE_CALIBRATION
     if value == "2":
