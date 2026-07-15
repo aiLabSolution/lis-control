@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Slice"
+  short_description: "Run a Plane slice from claim through release"
+  default_prompt: "Use $work-slice to pick up LIS-NN and run it end to end."

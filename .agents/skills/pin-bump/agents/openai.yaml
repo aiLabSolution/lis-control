@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pin Bump"
+  short_description: "Land component changes through umbrella pins"
+  default_prompt: "Use $pin-bump to land a merged bridge change and advance the umbrella pin."
