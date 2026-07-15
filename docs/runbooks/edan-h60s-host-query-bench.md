@@ -34,7 +34,11 @@ answered from the wire. Confirmed facts (see `identity.md`):
   echo), QRF = `QRF|LIS|<dt>`.
 - **MSH-16 = 3 on the host-query** — with 0 = result/sample and 2 = connection-test also
   observed this run, the EDAN MSH-16 map is now `0/2/3` (reconciles the LIS-110 question;
-  the manual documents only 0/1).
+  the manual documents only 0/1). LIS-110 has since shipped the vendor-aware profile:
+  EDAN 0/empty→patient, 1→QC (manual-derived, QC-mode capture still pending), any other
+  value — including these observed 2/3 frames — held out of the patient stream as a
+  fail-closed QC classification (payload-less frames yield no results either way). See
+  `edan-h60s-bench-conformance.md` §MSH-16 for the deviation record.
 
 **Responder mechanism (Step 4) — DEMONSTRATED, not yet a physical closed loop.** On the
 rebuilt bridge (`edge/drivers` `30b11c8`, LIS-149 + LIS-118 infra), a barcode host-query
