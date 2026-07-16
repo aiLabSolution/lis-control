@@ -349,6 +349,7 @@ NGSP_HOLD_CODE = "H9-NGSP-WITHHELD"
 EAG_HOLD_CODE = "H9-EAG-WITHHELD"
 ERROR_E1_CODE = "H9-E1"
 ERROR_E2_CODE = "H9-E2"
+IFCC_HELD_CODE = "H9-IFCC-HELD"
 CALIBRATION_CODE = "H9-CAL"
 QC_LEVEL_LOW = "LOW"
 QC_LEVEL_HIGH = "HIGH"
@@ -375,6 +376,10 @@ _MEAS_BASE_BYTES = 120
 _CURVE_POINT_WIDTH = 6
 _BLOCK = 1
 
+_MEAS_VERSION = 2
+_MEAS_VERSION_WIDTH = 2
+_MEAS_PARAM_FORMAT = 6
+_MEAS_PARAM_FORMAT_WIDTH = 2
 _MEAS_SAMPLE_ID = 10
 _MEAS_SAMPLE_ID_WIDTH = 15
 _MEAS_SEPARATOR = 25
@@ -392,6 +397,15 @@ _MEAS_ADAG_WIDTH = 5
 _MEAS_CURVE_COUNT = 115
 _MEAS_CURVE_COUNT_WIDTH = 3
 _MEAS_CURVE_VALUES = 118
+
+# The A0 protocol-version and parameter-description-format descriptors this offset
+# table was authored against (KB §6.2 offsets 2 and 6). A measurement frame that
+# declares any other profile is quarantined rather than decoded with positional
+# offsets that may not apply to it (KB §12.1 "unknown version → Quarantine";
+# §15.2 "quarantine for unsupported versions"). Both values are A0-provisional and
+# bench-unconfirmed (KB §14); the S1 capture (LIS-229) confirms/corrects them here.
+_APPROVED_MEAS_VERSION = "00"
+_APPROVED_MEAS_PARAM_FORMAT = "01"
 
 _QC_LOW_LOT = 4
 _QC_LOT_WIDTH = 15
@@ -575,9 +589,29 @@ def classify(block: str, blood_type: BloodType) -> Classification:
     return Classification.PATIENT
 
 
+def _require_approved_profile(frame: bytes) -> None:
+    """Reject a measurement frame whose declared version / parameter-format profile
+    is not the A0 profile these offsets were authored against (KB §6.2/§12.1)."""
+    version = _text(frame, _MEAS_VERSION, _MEAS_VERSION_WIDTH)
+    param_format = _text(frame, _MEAS_PARAM_FORMAT, _MEAS_PARAM_FORMAT_WIDTH)
+    if version != _APPROVED_MEAS_VERSION or param_format != _APPROVED_MEAS_PARAM_FORMAT:
+        raise H9ParseError(
+            "H9 measurement declares an unsupported version/parameter-format profile "
+            f"(version='{version}', param-format='{param_format}'); this parser decodes only "
+            f"the A0 profile version='{_APPROVED_MEAS_VERSION}'/param-format="
+            f"'{_APPROVED_MEAS_PARAM_FORMAT}' (KB §6.2/§12.1) — quarantined, not decoded"
+        )
+
+
 def parse_measurement(frame: bytes) -> H9Measurement:
     curve_points = (len(frame) - _MEAS_BASE_BYTES) // _CURVE_POINT_WIDTH
     block = chr(frame[_BLOCK])
+    # Fail-closed profile gate (KB §6.2/§12.1): the positional offsets below are the
+    # A0 layout. A frame declaring any other version/parameter-format profile is
+    # quarantined here — never decoded with offsets that may not apply — so a
+    # newer-firmware frame of the same block/length/curve shape can never be mis-read
+    # into the wrong accession or HbA1c value.
+    _require_approved_profile(frame)
     if frame[_MEAS_SEPARATOR] != ord("-"):
         raise H9ParseError(f"H9 measurement missing '-' separator at offset {_MEAS_SEPARATOR}")
     # Sample SN preserved verbatim — the accession/barcode, leading zeros intact (D7).
@@ -679,11 +713,33 @@ def _measurement_group(m: H9Measurement) -> H9SpecimenGroup:
         return H9SpecimenGroup(m.sample_id, (row,), RESULT_TYPE_CALIBRATION)
 
     is_control = classification is Classification.QC
-    rows: list[H9Result] = [_ifcc_result(m, is_control=is_control)]
+    rows: list[H9Result] = [_ifcc_result_or_hold(m, is_control=is_control)]
     rows.extend(_error_notes(m))
     rows.extend(_withheld_holds(m))
     result_type = RESULT_TYPE_QC if is_control else RESULT_TYPE_PATIENT
     return H9SpecimenGroup(m.sample_id, tuple(rows), result_type)
+
+
+def _ifcc_result_or_hold(m: H9Measurement, *, is_control: bool) -> H9Result:
+    """Emit the IFCC HbA1c as an accept-ready RESULT only when the measurement carries
+    no aspiration test-error. A flagged (e1/E2) measurement never becomes an
+    Observation: the OpenELIS importer stages Observations without reading the
+    DiagnosticReport warning conclusion, so an accept-ready RESULT beside an invisible
+    warning could still be auto-accepted. Fail-closed, the IFCC is held as a visible
+    anomaly carrying the raw value as non-clinical evidence, pending the validation-owner
+    acceptance policy (KB §6.4; S7/LIS-235). Applies to patient and QC alike — an
+    aspiration-flagged QC point is equally unreliable."""
+    if m.error_flag is ErrorFlag.NONE:
+        return _ifcc_result(m, is_control=is_control)
+    return _note(
+        IFCC_HELD_CODE,
+        (
+            f"HbA1c IFCC held: measurement carries aspiration test-error {m.error_flag.value}"
+            f" (KB §6.4); the raw IFCC {m.ifcc} {UCUM_MMOL_MOL} is non-clinical evidence and"
+            " must never be auto-accepted. Pending validation-owner acceptance policy (S7/LIS-235)."
+        ),
+        KIND_ANOMALY,
+    )
 
 
 def _ifcc_result(m: H9Measurement, *, is_control: bool) -> H9Result:

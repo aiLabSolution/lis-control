@@ -13,6 +13,7 @@ from edge_sim.h9 import (
     EAG_HOLD_CODE,
     ERROR_E1_CODE,
     ERROR_E2_CODE,
+    IFCC_HELD_CODE,
     KIND_ANOMALY,
     KIND_CALIBRATION,
     KIND_RESULT,
@@ -393,6 +394,23 @@ def test_blood_type_out_of_range_is_rejected():
         parse(bytes(frame))
 
 
+def test_unsupported_version_profile_is_quarantined_not_decoded():
+    # A newer-firmware frame of the same block/length/curve shape but a different
+    # declared version must be quarantined (KB §6.2/§12.1), never decoded with A0
+    # offsets that may not apply.
+    frame = bytearray(measurement("S", 0, VENOUS, NO_ERROR))
+    put(frame, 2, "07")  # version 07 ≠ approved A0 version 00
+    with pytest.raises(H9ParseError):
+        parse(bytes(frame))
+
+
+def test_unsupported_parameter_format_profile_is_quarantined():
+    frame = bytearray(measurement("S", 0, VENOUS, NO_ERROR))
+    put(frame, 6, "09")  # parameter-description format 09 ≠ approved A0 format 01
+    with pytest.raises(H9ParseError):
+        parse(bytes(frame))
+
+
 def test_classify_is_fail_closed():
     # Calibration wins over QC wins over patient on a discriminator conflict.
     assert classify("S", _bt(CALIBRATOR)) is Classification.CALIBRATION
@@ -418,11 +436,29 @@ def test_e1_and_e2_flags_propagate_as_warning_not_observation():
     e1_group = parse(measurement("S", 0, VENOUS, E1))
     warnings = [r for r in e1_group.results if r.kind == KIND_WARNING]
     assert len(warnings) == 1 and warnings[0].test_code == ERROR_E1_CODE
-    assert only_result(e1_group, LOINC_HBA1C_IFCC).kind == KIND_RESULT  # IFCC still present
 
     e2_group = parse(measurement("S", 0, VENOUS, E2))
     e2_warnings = [r for r in e2_group.results if r.kind == KIND_WARNING]
     assert len(e2_warnings) == 1 and e2_warnings[0].test_code == ERROR_E2_CODE
+
+
+def test_flagged_patient_measurement_emits_no_accept_ready_observation_and_holds_ifcc():
+    # Fail-closed: an aspiration-flagged (e1/E2) measurement never produces an
+    # accept-ready IFCC Observation (the OE importer ignores DiagnosticReport warning
+    # conclusions). The IFCC is a visible ANOMALY hold carrying the raw value.
+    group = parse(measurement("S", 0, VENOUS, E1))
+    assert observations(group) == []
+    held = only_result(group, IFCC_HELD_CODE)
+    assert held.kind == KIND_ANOMALY
+    assert "48.00" in held.value  # raw IFCC preserved as evidence
+    assert held.units is None
+
+
+def test_flagged_qc_measurement_is_also_held_not_accepted():
+    group = parse(measurement("S", 0, QC_MATERIAL, E2))
+    assert group.result_type == RESULT_TYPE_QC
+    assert observations(group) == []
+    assert only_result(group, IFCC_HELD_CODE).kind == KIND_ANOMALY
 
 
 def test_no_error_flag_yields_no_warning_row():
