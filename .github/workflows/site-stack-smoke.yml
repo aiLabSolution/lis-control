@@ -1,0 +1,152 @@
+# LIS-251 / S4 — single-site stack: pinned core + pinned bridge, native X3
+# ASTM → OpenELIS, synthetically proven on a clean box.
+#
+# Complements deploy-kit-smoke.yml (LIS-50, OpenELIS-only install/health/FHIR
+# read). This job proves the SITE deployment contract: one entry point brings
+# up both pinned runtimes with health ordering and a bidirectional network
+# contract, a synthetic X3 simplified-envelope fixture traverses
+# listener → bridge FHIR → /analyzer/fhir → staged analyzer result, and the
+# failure proofs show a stopped core, wrong registry credentials, and
+# listener drift each keep the stack un-READY. Physical analyzer evidence
+# stays LIS-75/LIS-38.
+name: Stage 4 — Site-stack smoke (core + bridge, X3 synthetic e2e)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/openelis
+      - deploy/kit
+      - edge/drivers
+      - .github/workflows/site-stack-smoke.yml
+  pull_request:
+    paths:
+      - core/openelis
+      - deploy/kit
+      - edge/drivers
+      - .github/workflows/site-stack-smoke.yml
+  workflow_dispatch:
+
+concurrency:
+  group: site-stack-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  site-stack-smoke:
+    name: up → ready → X3 e2e → failure proofs
+    runs-on: ubuntu-latest
+    # Uncached OpenELIS source build (~15-30 min) + bridge maven image build
+    # + health waits + three disruptive failure proofs with recovery waits.
+    timeout-minutes: 120
+    env:
+      LIS_SITE_OE_USER: admin
+      LIS_SITE_OE_PASSWORD: adminADMIN!
+      # Webapp + db + certs only: the analyzer FHIR ingest path stages
+      # results inside the webapp (the analyzer-harness CI runs the same
+      # subset); frontend/proxy/external-fhir are not part of this proof.
+      LIS_SITE_OE_SERVICES: certs db.openelis.org oe.openelis.org
+      OE_PROJECT: openelis
+      BRIDGE_PROJECT: analyzer-bridge
+    steps:
+      - name: Check out umbrella
+        uses: actions/checkout@v4
+
+      - name: Resolve pinned component SHAs
+        id: pins
+        run: |
+          echo "core=$(git rev-parse HEAD:core/openelis)" >> "$GITHUB_OUTPUT"
+          echo "kit=$(git rev-parse HEAD:deploy/kit)" >> "$GITHUB_OUTPUT"
+          echo "drivers=$(git rev-parse HEAD:edge/drivers)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned deploy kit
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/lis-deploy-kit
+          ref: ${{ steps.pins.outputs.kit }}
+          path: deploy/kit
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Check out pinned OpenELIS core
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/OpenELIS-Global-2
+          ref: ${{ steps.pins.outputs.core }}
+          path: core/openelis
+          submodules: false
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Check out pinned analyzer bridge
+        uses: actions/checkout@v4
+        with:
+          repository: aiLabSolution/openelis-analyzer-bridge
+          ref: ${{ steps.pins.outputs.drivers }}
+          path: edge/drivers
+          token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Resolve pinned dataexport SHA
+        id: nested
+        run: echo "dataexport=$(git -C core/openelis rev-parse HEAD:dataexport)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned dataexport build dependency
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/dataexport
+          ref: ${{ steps.nested.outputs.dataexport }}
+          path: core/openelis/dataexport
+          persist-credentials: false
+
+      - name: Generate site credentials (never the development default)
+        run: |
+          echo "BRIDGE_AUTH_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          chmod +x deploy/kit/scripts/*.sh
+
+      - name: Wrapper regression tests (site mode)
+        run: bash deploy/kit/tests/compose-site.sh
+
+      - name: Render site install plan
+        run: deploy/kit/scripts/compose-site.sh config -q
+
+      - name: Bring up the site stack (OpenELIS → bridge, ready gate)
+        run: deploy/kit/scripts/compose-site.sh up
+
+      - name: Synthetic X3 ASTM end-to-end proof
+        env:
+          # Anchor the replayed payload to the checked-in sim fixture, not
+          # only the script's inlined constant (LIS-149: anchor to source).
+          X3_FIXTURE_FILE: edge/sim/fixtures/snibelis-maglumi-x3-result-upload/message.astm
+        run: deploy/kit/scripts/prove-site-x3-e2e.sh
+
+      - name: Failure proofs (stopped core, bad registry auth, listener drift)
+        run: deploy/kit/scripts/prove-site-failure-modes.sh
+
+      - name: Re-assert readiness and record rendered evidence
+        run: |
+          deploy/kit/scripts/compose-site.sh ready | tee ready.txt
+          {
+            echo "## Site-stack smoke evidence"
+            echo '```'
+            echo "umbrella:        $GITHUB_SHA"
+            echo "core/openelis:   ${{ steps.pins.outputs.core }}"
+            echo "deploy/kit:      ${{ steps.pins.outputs.kit }}"
+            echo "edge/drivers:    ${{ steps.pins.outputs.drivers }}"
+            cat ready.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          deploy/kit/scripts/compose-site.sh ps || true
+          docker ps -a || true
+          docker logs openelis-analyzer-bridge 2>&1 | tail -200 || true
+          docker logs openelisglobal-webapp 2>&1 | tail -200 || true
+          docker logs openelisglobal-database 2>&1 | tail -60 || true
+
+      - name: Tear down site stack
+        if: always()
+        env:
+          LIS_DEPLOY_CONFIRM_DESTROY: "true"
+        run: deploy/kit/scripts/compose-site.sh down -v || true
