@@ -54,6 +54,11 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx1
   mvn -B spotless:apply -DspotlessFiles='.*Foo(Test)?[.]java'   # regex over changed files
 ```
 
+- **Scope the regex to EVERY changed file, not just `.java`** — spotless also formats
+  XML (test fixtures, liquibase) and a hand-wrapped XML comment fails CI's
+  `spotless:check` exactly like Java would (burned PR #39: `testdata/*.xml` comment
+  wrapping). Build the regex from `git diff --name-only`, e.g.
+  `-DspotlessFiles='.*(autoverification.*[.]java|testdata/autoverification-gate[.]xml)'`.
 - Formatter config: `tools/OpenELIS_java_formatter.xml` (Eclipse JDT). Hand-formatting
   to match it is error-prone — always `spotless:apply`.
 - **Flaky:** spotless downloads the eclipse-jdt formatter bundle at runtime and often
