@@ -55,10 +55,11 @@ in the controlled evidence store, not in the git repository or tracker comments.
   handshaking conductors must remain disconnected.
 - Approved bench-only patient, QC, and calibration material as applicable.
 
-Create one controlled run directory outside the repository:
+Create one controlled run directory outside the repository (replace the placeholder
+with the site's approved evidence-store mount):
 
 ```text
-evidence/bench/lifotronic-h9/<YYYYMMDD>-<device-serial>/
+/path/to/controlled-evidence/lifotronic-h9/<YYYYMMDD>-<device-serial>/
 ```
 
 Copy the evidence template there as `identity-and-inventory.md` and fill it during the
@@ -126,7 +127,7 @@ contain spaces:
 ```bash
 python3 scripts/h9_capture.py \
   --port /dev/serial/by-id/<adapter-id> \
-  --outdir evidence/bench/lifotronic-h9/<run>/archive \
+  --outdir /path/to/controlled-evidence/lifotronic-h9/<run>/archive \
   --frames 1 \
   --model "Lifotronic H9" \
   --serial-number "<device-serial>" \
@@ -137,10 +138,13 @@ python3 scripts/h9_capture.py \
   --operator "<operator>"
 ```
 
-Trigger one patient-measurement upload using a bench-only Sample SN. The tool stops
-after one structurally valid frame when `--frames 1` is used; omit `--frames` to capture
-until Ctrl-C. Run separate, labeled captures for QC (`Q`) and calibration (`C`) only if
-the validation owner approves those analyzer operations.
+Trigger one patient-measurement upload using a bench-only Sample SN. With `--frames 1`,
+the tool waits for a structurally valid frame and then for one second of serial-line
+quiet before finalizing; this settle window prevents a valid-length in-frame ETX prefix
+from cutting off a later tail. Use `--settle <seconds>` only when bench evidence justifies
+a different quiet window. Omit `--frames` to capture until Ctrl-C. Run separate, labeled
+captures for QC (`Q`) and calibration (`C`) only if the validation owner approves those
+analyzer operations.
 
 Manual-A0 structural hypotheses reported in the sidecar are:
 
@@ -165,9 +169,9 @@ The output layout is `<outdir>/<digest-prefix>/<digest>.msg` beside `<digest>.js
 Verify the raw file independently and compare the value to the JSON `digest` field:
 
 ```bash
-sha256sum evidence/bench/lifotronic-h9/<run>/archive/<prefix>/<digest>.msg
+sha256sum /path/to/controlled-evidence/lifotronic-h9/<run>/archive/<prefix>/<digest>.msg
 python3 scripts/h9_capture.py \
-  --replay evidence/bench/lifotronic-h9/<run>/archive/<prefix>/<digest>.msg
+  --replay /path/to/controlled-evidence/lifotronic-h9/<run>/archive/<prefix>/<digest>.msg
 ```
 
 Confirm in the sidecar:
@@ -181,7 +185,9 @@ Confirm in the sidecar:
   specimen payload in metadata.
 
 Identical byte streams resolve to the same immutable archive entry. Do not edit a `.msg`
-or `.json` in place; create a new capture if metadata or bytes are wrong.
+or `.json` in place; create a new capture if metadata or bytes are wrong. Replay and
+re-archival reject a missing, malformed, or raw-inconsistent sidecar. The live CLI also
+rejects output paths inside this repository checkout.
 
 ## 6. Close the evidence packet
 
