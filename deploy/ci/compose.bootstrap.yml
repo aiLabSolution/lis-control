@@ -1,18 +1,15 @@
-# LIS Stage 0 — reproducible-bootstrap compose overlay (umbrella-owned).
+# LEGACY TEARDOWN COMPATIBILITY ONLY
+# NEVER USE FOR up/config or any new deployment operation.
 #
-# Applied ON TOP OF core/openelis/docker-compose.yml. Pins every core image to a
-# content digest so `compose up` is byte-for-byte reproducible — the base compose
-# uses rolling `:develop` tags, which is NOT acceptable for the ISO 15189 / IQ-OQ-PQ
-# traceability story (see docs/adr/0002-stage0-bootstrap-and-ci.md).
+# This file remains at its exact historical path only because the merged
+# deploy-kit wrapper can replay a legacy recorded `down` whose compose model
+# included it. `down` launches no images and needs the original service image
+# overrides to identify and remove that older stack safely.
 #
-# Service names must match the base compose. Digests captured 2026-06-22 from the
-# `itechuw/*:develop` tags that the base compose referenced at core pin 5318e61.
-# Refresh DELIBERATELY (record the bump in an ADR / commit), never silently.
-#
-# CAVEAT: these prebuilt images track upstream `:develop` and can lag/diverge from
-# the pinned *source* SHA in core/openelis. Full source-reproducibility (build from
-# the pinned SHA) is blocked on the nested-submodule + analyzer-bridge-license open
-# items (see contexts/core-openelis/CONTEXT.md, HOLD-001) and is deferred.
+# The digest model below is intentionally unchanged from the retired Stage 0
+# bootstrap: upstream images captured 2026-06-22 from the `itechuw/*:develop`
+# tags referenced at core pin 5318e61. ADR-0021 supersedes this image-selection
+# model with builds from the exact umbrella-pinned OpenELIS source.
 services:
   certs:
     image: itechuw/certgen@sha256:e27a8194300ba73309e835a4070e9ce531687eb3ee604895de781f3061791635

@@ -9,25 +9,27 @@ the contract the CI gate (`.github/workflows/core-bootstrap-health.yml`) enforce
 - Docker Engine + Compose v2 (`docker compose version`).
 - A clean checkout of `lis-control` with the `core/openelis` submodule initialised:
   ```bash
-  git clone --recurse-submodules git@github.com:aiLabSolution/lis-control.git
-  # or, in an existing checkout:
+  git clone git@github.com:aiLabSolution/lis-control.git
+  cd lis-control
   git submodule update --init core/openelis
+  git -C core/openelis submodule update --init dataexport
   ```
   `core/openelis` is the **private** `aiLabSolution/OpenELIS-Global-2` repo — you need
-  read access. (First-level only; the nested submodules are not needed for the
-  prebuilt-image bootstrap — see the ADR.)
+  read access. The pinned `dataexport` nested repository is the source build's
+  required Maven dependency; the other nested repositories are not needed for
+  this bootstrap.
 
 ## Boot
 
-The bootstrap pulls **prebuilt images** (no source build) and applies the umbrella
-overlay that pins them by digest for reproducibility:
+The bootstrap builds images from the exact OpenELIS and `dataexport` SHAs pinned
+by the umbrella checkout:
 
 ```bash
 docker compose --project-directory core/openelis \
   -f core/openelis/docker-compose.yml \
+  -f core/openelis/build.docker-compose.yml \
   -f core/openelis/.github/ci/ci.memory-limits.yml \
-  -f deploy/ci/compose.bootstrap.yml \
-  up -d
+  up -d --build
 ```
 
 Then assert health:
@@ -36,7 +38,8 @@ Then assert health:
 bash deploy/ci/healthcheck.sh   # waits for: db healthy + webapp running + UI 200
 ```
 
-The webapp (Tomcat) needs ~60s after `up` to deploy the WAR and run Liquibase
+Allow 15-30 minutes for an uncached build on a small machine. After the image is
+built, the webapp (Tomcat) needs roughly 60s to deploy the WAR and run Liquibase
 migrations; `healthcheck.sh` polls until ready (default 420s).
 
 ## What "healthy" means
@@ -49,12 +52,9 @@ migrations; `healthcheck.sh` polls until ready (default 420s).
 
 Default admin credentials (dev only): `admin` / `adminADMIN!`.
 
-> **Note on the login health contract.** The project's stricter readiness check
-> (`core/openelis/scripts/e2e/wait-for-openelis-login.sh` → `verify-login.sh`, expecting
-> JSON `"authenticated": true`) only holds against the **from-source** build
-> (`build.docker-compose.yml`) used by the fork's e2e. With the prebuilt `:develop`
-> image the login API 302-redirects to the SPA, because the published image lags the
-> pinned source SHA. See the ADR for the reproducibility implications.
+The source build also keeps runtime behavior aligned with the pinned core. In
+particular, it avoids the login-contract drift previously observed in published
+upstream images.
 
 ## Local port / subnet collisions
 
@@ -80,6 +80,7 @@ networks:
 ```bash
 docker compose --project-directory core/openelis \
   -f core/openelis/docker-compose.yml \
+  -f core/openelis/build.docker-compose.yml \
   -f core/openelis/.github/ci/ci.memory-limits.yml \
-  -f deploy/ci/compose.bootstrap.yml down -v
+  down -v
 ```

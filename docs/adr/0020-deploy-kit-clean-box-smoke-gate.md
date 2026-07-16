@@ -14,11 +14,13 @@ ticket text also names a sync service, but ADR-0006 subsequently fixed the pilot
 topology as M1: fully onsite, single site, and no sync. The M3 central-sync spoke
 is post-pilot work and cannot become an implicit dependency of this gate.
 
-The existing Stage 0 bootstrap gate proves that an older digest-pinned OpenELIS
-snapshot boots. It does not exercise the deploy-kit wrapper, and its pinned
-webapp image predates the OpenELIS-backed `DiagnosticReport` read provider from
-LIS-41. Reusing that image would make the new FHIR assertion a false proof of a
-different API surface.
+At the time of this decision, the Stage 0 bootstrap gate proved that an older
+digest-pinned OpenELIS snapshot booted. It did not exercise the deploy-kit
+wrapper, and its pinned webapp image predated the OpenELIS-backed
+`DiagnosticReport` read provider from LIS-41. Reusing that image would have made
+the new FHIR assertion a false proof of a different API surface. ADR-0021 later
+moved Stage 0 to the pinned source build as well; this clean-box gate remains the
+distinct proof of the deploy-kit wrapper and public FHIR read.
 
 ## Decision
 
@@ -45,9 +47,9 @@ make reruns deterministic, and the workflow always deletes the proof volumes.
 - A pull request that changes the core pin, deploy-kit pin, or deploy CI assets
   must prove the deployable pinned pair rather than either component in
   isolation.
-- The gate builds the pinned OpenELIS webapp from source, so it is slower than
-  the Stage 0 digest bootstrap but tests the API implementation the umbrella
-  actually pins.
+- The gate builds the pinned OpenELIS webapp from source and tests the API
+  implementation the umbrella actually pins. Unlike the Stage 0 health gate, it
+  also proves deploy-kit composition and the public FHIR read.
 - The deploy-kit overlay requires the final PostgreSQL server process—not the
   temporary initialization server—to become healthy before Tomcat starts. This
   prevents first-install Liquibase failures that leave the container running

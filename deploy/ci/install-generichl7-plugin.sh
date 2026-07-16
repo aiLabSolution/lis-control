@@ -19,8 +19,8 @@
 #   deploy/ci/install-generichl7-plugin.sh --help
 #
 # After install you must recreate/restart the webapp so it re-scans the volume:
-#   C="-f core/openelis/docker-compose.yml -f core/openelis/.github/ci/ci.memory-limits.yml -f deploy/ci/compose.bootstrap.yml"
-#   docker compose --project-directory core/openelis $C up -d oe.openelis.org
+#   C="-f core/openelis/docker-compose.yml -f core/openelis/build.docker-compose.yml -f core/openelis/.github/ci/ci.memory-limits.yml"
+#   docker compose --project-directory core/openelis $C up -d --build oe.openelis.org
 # then re-run with --verify.
 set -euo pipefail
 
