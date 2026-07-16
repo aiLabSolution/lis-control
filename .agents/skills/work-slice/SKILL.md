@@ -93,12 +93,20 @@ edge ingestion slices land in BOTH `edge/drivers` and the `edge/sim` mirror.
 
 ## 7. Gate
 
-Run the **adversarial-reviewer** agent on the PR — it is the merge gate (umbrella CI is
-path-filtered, components have no CI). Run **ac-verifier** before moving the issue to
-Done.
+Run the **adversarial-reviewer** agent on the PR. Before merging every component PR,
+inspect the expected checks and failure logs on the exact reviewed head and require them
+to be green. A checkout/authentication/submodule failure is a red gate even when tests
+never start; GitHub allowing the merge does not waive it. Targeted local tests supplement
+but never replace component CI. Umbrella CI is repository-local and non-transitive, so
+never report an umbrella pass as proof that a component PR passed. Record component and
+umbrella conclusions separately on the Plane issue/PR. If component CI is red or cannot
+run, repair and rerun it or stop as blocked; do not merge or pin. Run **ac-verifier**
+before moving the issue to Done.
 
 ## 8. Merge + teardown (one-liners — detail in pin-bump)
 
+- Merge only with the §7 gate fully green (expected CI on the exact head + APPROVE
+  verdict).
 - `gh pr merge` from a linked worktree errors on its LOCAL post-step while the server
   merge succeeded — verify via REST `.merged`, then clean up by hand.
 - Root-owned `target/` from Docker builds blocks worktree removal:

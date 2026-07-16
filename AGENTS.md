@@ -71,6 +71,12 @@ the agent use the model and reasoning settings in its TOML definition.
   `LIS-NN` keys are accepted; priorities are the API's string enum.
 - Coordinate through the Plane issue and branch. Fetch/rebase before commits,
   push after commits, and never force-push a shared slice branch.
+- Treat CI as repository-local and non-transitive. Before merging a component
+  PR, verify the expected checks are green on that exact PR head; checkout,
+  authentication, and submodule failures still block even when tests never
+  start. Local targeted tests and green umbrella workflows supplement component
+  CI but never replace it. Do not merge or pin a red component PR merely because
+  GitHub permits the merge.
 - Keep `.claude/plane-context.json` and other per-checkout bookkeeping out of
   substantive diffs.
 - If you touch a submodule, keep the submodule commit and the umbrella pin bump

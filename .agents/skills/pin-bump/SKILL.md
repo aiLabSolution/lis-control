@@ -24,22 +24,33 @@ description: Land a submodule change through the two-level (component → umbrel
    branch. If the branch is behind main, `git merge origin/main` INTO it (fast-forward
    push) — do NOT rebase + force-push. Verify the PR diff stays clean with
    `git diff origin/main --stat`.
-2. **Merge the component PR** and verify the merge server-side (step 4) before touching
-   the umbrella pin.
-3. **Advance the pin to the component PR's `merge_commit_sha`** (not the branch head),
+2. **Gate the component PR on its own CI before merge.** Resolve the exact reviewed head,
+   inspect every expected component check and its failure logs, and require green. A
+   checkout/authentication/submodule failure blocks even when tests never start. Local
+   targeted tests and downstream/umbrella CI are supplemental, not substitutes; GitHub
+   mergeability or a successful merge API call is not evidence that checks passed. Record
+   the component conclusions separately from umbrella CI.
+3. **Merge the component PR** only after that gate passes and verify the merge server-side
+   (step 5) before touching the umbrella pin.
+4. **Advance the pin to the component PR's `merge_commit_sha`** (not the branch head),
    and confirm `git -C <submodule> merge-base --is-ancestor <pin> origin/<default>`
    after a fetch. Default branches: core=main, bridge=develop, kit=main, plugins
    fork=develop.
-4. **Verify every merge via REST, not the PR page:**
+5. **Verify every merge via REST, not the PR page:**
    `gh api repos/<owner>/<repo>/pulls/<n> --jq '{merged,merge_commit_sha,merged_at}'`.
    GraphQL (`gh pr view`) can show stale `OPEN` right after a merge.
-5. **Comment the review verdict** on the umbrella PR (audit trail for ISO traceability),
+6. **Comment the review verdict** on the umbrella PR (audit trail for ISO traceability),
    then merge. Self-merge is allowlisted via `Bash(gh pr merge*)` — but the rule is
    prefix-matched, so run `gh pr merge ...` **standalone**, never inside a compound
    command.
 
 ## Gotchas (each one caused a real incident)
 
+- **CI is non-transitive (LIS-133 / core PR #40):** a component PR can be red while an
+  umbrella pin PR is green. Umbrella workflows may use `submodules: false`, sparse
+  checkouts, prebuilt images, or test-skipping source builds, so they prove only their
+  named deployment/configuration behavior. Inspect the component PR itself and block on
+  any failed expected check, including infrastructure failures before tests.
 - **`gh pr merge` from a linked worktree** errors with `'main' is already used by
   worktree at ...` — that is only the LOCAL post-merge step failing; **the server merge
   already succeeded**. Verify via REST `.merged`, then clean up by hand:

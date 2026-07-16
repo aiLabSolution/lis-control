@@ -94,12 +94,28 @@ edge ingestion slices land in BOTH `edge/drivers` and the `edge/sim` mirror.
 
 ## 7. Gate
 
-Run the **adversarial-reviewer** agent on the PR — it is the merge gate (umbrella CI is
-path-filtered, components have no CI). Run **ac-verifier** before moving the issue to
-Done.
+Two gates, both hard:
+
+1. **That repo's CI on the exact PR head** — `gh pr checks <n> --repo <owner>/<repo>`.
+   OpenELIS core HAS CI (backend/frontend/e2e workflows) with a history of failing —
+   every expected check must conclude green before approval or merge. Red, errored, or
+   unrun expected checks = NO approval and NO merge, even if local Docker-maven runs are
+   green (local runs supplement CI, never replace it). Checkout/auth/submodule failures
+   are red even when zero tests ran. CI is non-transitive: umbrella green ≠ component
+   green. Fix and re-run CI, or stop the slice as blocked; never merge just because
+   branch protection permits it. Bridge/kit have no CI — the adversarial review is the
+   whole gate there.
+2. **adversarial-reviewer** agent on the PR — it verifies CI itself and cannot APPROVE
+   over a red or unrun head. Run **ac-verifier** before moving the issue to Done.
 
 ## 8. Merge + teardown (one-liners — detail in pin-bump)
 
+- Merge only with gate 7 fully green (CI on the head + APPROVE verdict). A PreToolUse
+  hook (`scripts/hook_merge_gate.py`) enforces the CI half mechanically: `gh pr merge`
+  (and REST-PUT merges) are blocked unless every check on the PR head is green — it
+  fails CLOSED when it cannot verify, so an unexpected block means fix/wait on CI, not
+  work around the hook (`LIS_MERGE_GATE_OVERRIDE=1` only for a deliberate, reviewed
+  exception).
 - `gh pr merge` from a linked worktree errors on its LOCAL post-step while the server
   merge succeeded — verify via REST `.merged`, then clean up by hand.
 - Root-owned `target/` from Docker builds blocks worktree removal:
