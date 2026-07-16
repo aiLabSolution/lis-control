@@ -31,6 +31,9 @@
   Answers a **bidirectional host-query** — a `QRY^R02` (QRD/QRF) is answered with an
   `ORF^R04` (`MSA-1 = AA`, query id echoed) and the returned result normalizes
   (LIS-18 / S1.6).
+  Mirrors the proprietary, upload-only **Lifotronic H9** positional stream framer
+  (`STX S/Q/C ... ETX`) with byte-position-first handling of embedded `0x02`/`0x03`,
+  configurable curve/frame bounds, and byte-preserving timeout quarantine (LIS-230).
 - **Isn't:** a production driver or the core persistence layer. The raw-message
   archive keeps the *wire bytes* (edge evidence); persisting the normalized row to
   the **core** append-only Result store is a separate seam (S1.3 / LIS-15, core
@@ -69,6 +72,7 @@ edge/sim/
     astm_simulator.py       # analyzer-side ASTM session harness + corruption injection (S2.3)
     e1394.py                # ASTM E1394 record parser: H>P>O>R>L -> typed record tree (S2.2)
     snibelis.py             # SnibeLis simplified ASTM E1394 session + Q -> H/P/O/L exchange (S3.0a)
+    h9.py                   # Lifotronic H9 structural stream framer + quarantine events (S3.H9.2)
     archive.py              # content-addressed, append-only, integrity-checked raw-message archive (S1.4)
     replay.py               # replay(fixture, transport) + deterministic replay round-trip -> normalized Result (S1.4)
     milestone.py            # Stage-1 milestone E2E: ORU^R01 over MLLP -> normalized Result + ACK (AA) (S1.5)
@@ -88,6 +92,7 @@ edge/sim/
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
     snibelis-maglumi-x3-result-upload/ # synthetic SnibeLis H/P/O/R/L result upload (S3.0a)
     snibelis-maglumi-x3-query-request/ # synthetic SnibeLis Q -> H/P/O/L query exchange (S3.0a)
+    lifotronic-h9-synthetic/     # Manual-A0 hex frame; shared Java/Python digest anchor (bench pending)
 ```
 
 ## Run
