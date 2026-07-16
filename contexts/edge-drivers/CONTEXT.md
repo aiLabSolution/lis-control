@@ -217,6 +217,7 @@ a restart; it ships no new code.
   LIS-28 (PR #6, release `3.0.7`) makes it registry-backed per analyzer
   (`AnalyzerEntry.unitToUcum`, pushed as `testUnitUcum`) with `UNIT_TO_UCUM` demoted to
   the fallback — OE-core doesn't send `testUnitUcum` yet (goes with the LIS-98 fix).
-  Remaining: OBX-11 finality + bridge↔sim cross-contract are **LIS-87** (the Patient/MRN
-  channel landed via ADR-0018 / PR #16; core-side surfacing of the identity is **LIS-97**,
-  the sim grouping mirror **LIS-157**).
+  The sim grouping + deterministic-minting mirror **landed via LIS-157** for HL7 OBR
+  and ASTM O-record batches, including per-group blank/QC/calibration typing. Remaining:
+  OBX-11 finality + bridge↔sim cross-contract are **LIS-87** (the Patient/MRN channel
+  landed via ADR-0018 / PR #16; core-side surfacing of the identity is **LIS-97**).

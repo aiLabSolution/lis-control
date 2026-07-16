@@ -133,7 +133,7 @@ class AstmResult:
 @dataclass(frozen=True)
 class AstmOrder:
     seq: str  # O-2
-    specimen_id: str  # O-3
+    specimen_id: str  # O-3 component 1 (accession; later components are location)
     test_code: str  # O-5 (universal test id; last code if repeated)
     assays: tuple[str, ...]  # O-5 split on the repeat delimiter (multi-assay orders)
     priority: str  # O-6
@@ -145,7 +145,7 @@ class AstmOrder:
 @dataclass(frozen=True)
 class AstmPatient:
     seq: str  # P-2
-    patient_id: str  # P-4 (lab id), falling back to P-3
+    patient_id: str  # first nonblank P-3 (practice), P-4 (lab), then P-5 (id #3)
     name: str  # P-6
     orders: tuple[AstmOrder, ...]
     raw: str
@@ -281,9 +281,15 @@ def _patient(p: dict) -> AstmPatient:
     orders = tuple(_order(o) for o in p["orders"])
     if rec is None:
         return AstmPatient(seq="", patient_id="", name="", orders=orders, raw="")
+    patient_id = ""
+    for field_number in (3, 4, 5):
+        candidate = rec.component(field_number, 1).strip()
+        if candidate:
+            patient_id = candidate
+            break
     return AstmPatient(
         seq=rec.field(2),
-        patient_id=rec.field(4) or rec.field(3),
+        patient_id=patient_id,
         name=rec.field(6),
         orders=orders,
         raw=rec.delimiters.field.join(rec.fields),
@@ -306,7 +312,7 @@ def _order(o: dict) -> AstmOrder:
         )
     return AstmOrder(
         seq=rec.field(2),
-        specimen_id=rec.field(3),
+        specimen_id=rec.component(3, 1).strip(),
         test_code=rec.test_code(5),
         assays=rec.test_codes(5),
         priority=rec.field(6),

@@ -72,9 +72,10 @@ from .oru import (
     OruParseError,
     OruReport,
     RawObservation,
+    SpecimenGroup,
     parse_oru_r01,
 )
-from .replay import ReplayResult, replay
+from .replay import ReplayResult, parse_analyzer_report, replay
 from .transport import AstmTransport, LoopbackTransport, MllpTransport, Transport, TransportError
 
 __all__ = [
@@ -117,6 +118,7 @@ __all__ = [
     "parse_message",
     "unescape",
     "OruReport",
+    "SpecimenGroup",
     "RawObservation",
     "OruParseError",
     "RESULT_TYPE_PATIENT",
@@ -124,6 +126,7 @@ __all__ = [
     "RESULT_TYPE_QC",
     "RESULT_TYPE_BLANK",
     "parse_oru_r01",
+    "parse_analyzer_report",
     "NormalizedObservation",
     "TerminologyMap",
     "Normalizer",
