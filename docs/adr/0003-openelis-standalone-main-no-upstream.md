@@ -53,6 +53,9 @@ the core's own build gate. A clean-mirror branch cannot hold those.
 
 ## Notes
 
-- ADR-0001's nested-submodule open item still applies; the prebuilt-image bootstrap (ADR-0002)
-  avoids it. The license-blocked `tools/openelis-analyzer-bridge` (HOLD-001) remains blocked
-  for reuse regardless of branch.
+- The earlier note that ADR-0002's prebuilt-image bootstrap avoided all nested
+  submodules is obsolete. ADR-0021 supersedes that image model: bootstrap builds
+  the pinned core source and explicitly checks out its pinned `dataexport` build
+  dependency. The license-blocked `tools/openelis-analyzer-bridge` (HOLD-001)
+  remains blocked for reuse regardless of branch and is not a bootstrap build
+  dependency.

@@ -1,9 +1,12 @@
 # ADR-0002 — Stage 0 reproducible bootstrap + where the health-check CI lives
 
-- **Status:** Proposed (pending review — LIS-4)
+- **Status:** Superseded
 - **Date:** 2026-06-22
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Relates to:** ADR-0001 (repository topology); LIS-2 (Stage 0 PRD); LIS-3 (fork/pin); LIS-4 (S0.2)
+- **Superseded by:** ADR-0021 (LIS-141), which replaces Decisions 2 and 4
+  with builds from the exact umbrella-pinned source. This document remains the
+  historical record of the original Stage 0 gate.
 
 ## Context
 

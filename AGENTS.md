@@ -125,8 +125,9 @@ Core bootstrap health is CI-backed and Docker-heavy:
 ```bash
 docker compose --project-directory core/openelis \
   -f core/openelis/docker-compose.yml \
+  -f core/openelis/build.docker-compose.yml \
   -f core/openelis/.github/ci/ci.memory-limits.yml \
-  -f deploy/ci/compose.bootstrap.yml up -d
+  up -d --build
 bash deploy/ci/healthcheck.sh
 ```
 

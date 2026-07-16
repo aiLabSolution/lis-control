@@ -1,8 +1,8 @@
-# LIS Stage 0 (LIS-4 / S0.2) — Reproducible bootstrap → 200 health check, in CI.
+# LIS Stage 0 (LIS-4 / S0.2) — Pinned-source bootstrap → 200 health check, in CI.
 #
 # Per ADR-0001 the umbrella `lis-control` is the reproducibility spine: a single
 # umbrella commit pins core/openelis at a known SHA. This job proves that pinned
-# snapshot boots reproducibly via `compose up` to a healthy core, with no manual
+# snapshot builds and boots reproducibly via `compose up` to a healthy core, with no manual
 # database or migration steps. (The fork's own e2e workflow is hard-gated to
 # `DIGI-UW/OpenELIS-Global-2` and does NOT run on our fork; unit/component tests
 # run on the fork via its inherited `backend.yml`.)
@@ -30,14 +30,16 @@ jobs:
   bootstrap-health:
     name: compose up → 200 health check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Uncached source builds can take 15-30 minutes on a 2-core runner before
+    # the health wait; retain the same cold-cache budget as the deploy-kit gate.
+    timeout-minutes: 60
     env:
       # core/openelis volume paths are relative to the compose file's dir.
       PD: core/openelis
       COMPOSE: >-
         -f core/openelis/docker-compose.yml
+        -f core/openelis/build.docker-compose.yml
         -f core/openelis/.github/ci/ci.memory-limits.yml
-        -f deploy/ci/compose.bootstrap.yml
     steps:
       # Checkout in two steps so the cross-repo token stays least-privilege:
       # the umbrella uses the default GITHUB_TOKEN; the private core submodule uses a
@@ -57,17 +59,28 @@ jobs:
           repository: aiLabSolution/OpenELIS-Global-2
           ref: ${{ steps.pin.outputs.sha }}
           path: core/openelis
-          # First-level only (no submodules): the prebuilt-image bootstrap doesn't need
-          # OpenELIS's nested submodules (SSH-only Consolidated-Server, license-blocked
-          # tools/openelis-analyzer-bridge). See docs/adr/0002-stage0-bootstrap-and-ci.md.
+          # Nested repositories are resolved explicitly so the private core PAT
+          # remains scoped to the core repository.
           submodules: false
           token: ${{ secrets.OPENELIS_SUBMODULE_TOKEN }}
+
+      - name: Resolve pinned dataexport SHA
+        id: nested
+        run: echo "dataexport=$(git -C core/openelis rev-parse HEAD:dataexport)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned dataexport build dependency
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/dataexport
+          ref: ${{ steps.nested.outputs.dataexport }}
+          path: core/openelis/dataexport
+          persist-credentials: false
 
       - name: Resolve compose images (sanity)
         run: docker compose --project-directory "$PD" $COMPOSE config --images
 
-      - name: compose up (prebuilt, digest-pinned — no source build, no manual steps)
-        run: docker compose --project-directory "$PD" $COMPOSE up -d
+      - name: Build and compose up from pinned source (no manual steps)
+        run: docker compose --project-directory "$PD" $COMPOSE up -d --build
 
       - name: Health check (DB ready + webapp deployed + UI 200)
         run: bash deploy/ci/healthcheck.sh

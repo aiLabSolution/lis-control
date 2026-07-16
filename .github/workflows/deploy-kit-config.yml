@@ -11,8 +11,9 @@
 #   2. fails when the kit carries a profile the core mirror doesn't have;
 #      core-only profiles (not yet adopted for deployment) are informational;
 #   3. shellchecks the kit's wrapper + proof scripts;
-#   4. renders `compose config` for all three wrapper modes (deployed,
-#      bootstrap-digests, local-proof — the proof overlay's !override needs
+#   4. runs the kit's public wrapper regression harness; and
+#   5. renders `compose config` for both supported wrapper modes (deployed and
+#      local-proof — the proof overlay's !override needs
 #      Compose >= 2.24.4, satisfied on ubuntu-latest runners).
 name: Deploy-kit config integrity
 
@@ -111,18 +112,19 @@ jobs:
             | sed 's/^/NOTE core-only (not adopted by the kit): /'
           exit "$fail"
 
-      - name: Shellcheck kit scripts
-        run: shellcheck deploy/kit/scripts/*.sh
+      - name: Shellcheck kit scripts and public tests
+        run: shellcheck deploy/kit/scripts/*.sh deploy/kit/tests/*.sh
 
-      - name: Render compose config for all wrapper modes
+      - name: Test deploy-kit wrapper guardrails
+        run: bash deploy/kit/tests/compose-openelis-wrapper.sh
+
+      - name: Render compose config for supported wrapper modes
         run: |
           set -euo pipefail
           docker compose version
           w=deploy/kit/scripts/compose-openelis.sh
           chmod +x "$w"
-          echo "--- deployed"
+          echo "--- deployed (authoritative pinned-source default)"
           "$w" config -q
-          echo "--- bootstrap digests"
-          LIS_DEPLOY_USE_BOOTSTRAP_DIGESTS=true "$w" config -q
           echo "--- local proof (!override)"
           LIS_DEPLOY_USE_LOCAL_PROOF=true "$w" config -q

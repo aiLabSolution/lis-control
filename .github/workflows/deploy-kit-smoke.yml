@@ -38,7 +38,7 @@ jobs:
     # 600s health wait; 45 minutes is too tight on a cold cache.
     timeout-minutes: 60
     env:
-      LIS_DEPLOY_USE_SOURCE_BUILD: "true"
+      # Source build is the deploy-kit wrapper's mandatory default (ADR-0021).
       LIS_DEPLOY_USE_LOCAL_PROOF: "true"
       WEBAPP_CONTAINER: lis-proof-openelisglobal-webapp
       DB_CONTAINER: lis-proof-openelisglobal-database
@@ -88,9 +88,9 @@ jobs:
           deploy/kit/scripts/compose-openelis.sh config -q
           deploy/kit/scripts/compose-openelis.sh config --images
 
-      - name: Install pinned single-site stack from source
+      - name: Install pinned single-site stack using authoritative source default
         run: >-
-          deploy/kit/scripts/compose-openelis.sh up -d --build
+          deploy/kit/scripts/compose-openelis.sh up -d
           certs db.openelis.org oe.openelis.org
 
       - name: Wait for database, webapp, and 200 health response

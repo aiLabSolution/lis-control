@@ -356,16 +356,16 @@ docker network rm erpnexttrial_default 2>/dev/null || true   # frees the 172.20.
 
 # 2) Install the GenericHL7 plugin into the webapp's plugin volume (LIS-94).
 #    SD1 is a Dashboard-configured HL7 analyzer, so it needs the GenericHL7 plugin —
-#    which is NOT in the prebuilt image's volume. The script builds it from the pinned
+#    which is delivered separately from the core source image. The script builds it from the pinned
 #    plugins submodule (the aiLabSolution fork, which carries the commons-lang3 build
 #    fix — ADR-0017) and installs it with no manual jar copying; run it BEFORE `up`
 #    so the webapp loads it on startup.
 cd /home/marloeu/projects/lis-control
 deploy/ci/install-generichl7-plugin.sh          # → core/openelis/volume/plugins/GenericHL7-1.0.jar
 
-# 3) Lean bring-up (digest-pinned images; FHIR dropped).
-C="-f core/openelis/docker-compose.yml -f core/openelis/.github/ci/ci.memory-limits.yml -f deploy/ci/compose.bootstrap.yml"
-docker compose --project-directory core/openelis $C up -d certs db.openelis.org oe.openelis.org frontend.openelis.org proxy
+# 3) Lean bring-up from the umbrella-pinned core source (FHIR dropped).
+C="-f core/openelis/docker-compose.yml -f core/openelis/build.docker-compose.yml -f core/openelis/.github/ci/ci.memory-limits.yml"
+docker compose --project-directory core/openelis $C up -d --build certs db.openelis.org oe.openelis.org frontend.openelis.org proxy
 bash deploy/ci/healthcheck.sh        # waits: db healthy + webapp running + UI 200
 
 # 4) Confirm the plugin loaded and its analyzer type registered (no manual jar copy).
@@ -388,9 +388,9 @@ deploy/ci/install-generichl7-plugin.sh --verify
 - **Current Wi-Fi LAN check:** `https://192.168.1.128` should reach the same OpenELIS proxy
   while this box keeps that `wlan0` address.
 
-> To exercise the **full LOINC seed** beyond `GLU`, run the from-source `openelis-dev` build
-> (`lis-8`) per the bring-up note — but for *this* bench, the prebuilt webapp is fine; treat the
-> unmapped panel rows as the LIS-87 follow-up (see §1).
+> This pinned-source bring-up includes the **full LOINC seed** beyond `GLU`.
+> Treat any remaining unmapped panel rows as the LIS-87 configuration follow-up
+> (see §1), not as an image-version limitation.
 
 **Register the SD1 analyzer** so its codes can map and its results are reviewable:
 1. UI → **Admin → Analyzer Configuration** (`/analyzers`). The first SD1 bundle from an unknown
