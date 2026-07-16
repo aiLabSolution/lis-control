@@ -106,7 +106,9 @@ before moving the issue to Done.
 ## 8. Merge + teardown (one-liners — detail in pin-bump)
 
 - Merge only with the §7 gate fully green (expected CI on the exact head + APPROVE
-  verdict).
+  verdict). An empty or missing check list is NOT green for a repo that has CI
+  configured — an expected check that never ran (workflow not triggered on the head)
+  is red, exactly like a checkout failure before tests start.
 - `gh pr merge` from a linked worktree errors on its LOCAL post-step while the server
   merge succeeded — verify via REST `.merged`, then clean up by hand.
 - Root-owned `target/` from Docker builds blocks worktree removal:

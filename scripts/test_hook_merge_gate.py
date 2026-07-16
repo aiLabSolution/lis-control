@@ -164,6 +164,23 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("cannot tell which PR", proc.stderr)
 
+    def test_cd_across_wrapper_boundary_blocks_even_when_green(self):
+        # round-2 P2: the wrong-PR hazard one wrapper level down.
+        proc = self._run(_payload("cd /tmp && bash -c 'gh pr merge --squash'"), pr=GREEN)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("cannot tell which PR", proc.stderr)
+
+    def test_glued_xput_rest_gated(self):
+        # round-2 P1: pflag-glued method value (`-XPUT` is curl muscle memory).
+        proc = self._run(_payload("gh api -XPUT repos/o/r/pulls/5/merge"), pr=RED)
+        self.assertEqual(proc.returncode, 2)
+
+    def test_wrapper_with_long_flag_gated(self):
+        proc = self._run(
+            _payload("bash --login -c 'gh pr merge 5 --repo o/r'"), pr=RED
+        )
+        self.assertEqual(proc.returncode, 2)
+
     # -- fail-closed once a merge is detected ----------------------------------
     def test_gh_failure_blocks(self):
         proc = self._run(_payload("gh pr merge 5 --repo o/r"), gh_exit=1)
@@ -271,6 +288,42 @@ class Parser(unittest.TestCase):
 
     def test_wrapper_shell_recursed(self):
         self.assertEqual(self.parse_one("/bin/bash -lc 'gh pr merge 5 --repo o/r'"),
+                         {"selector": "5", "repo": "o/r"})
+
+    def test_glued_method_put(self):
+        self.assertEqual(self.parse_one("gh api -XPUT repos/o/r/pulls/5/merge"),
+                         {"selector": "5", "repo": "o/r"})
+
+    def test_glued_method_equals_put(self):
+        self.assertEqual(self.parse_one("gh api -X=PUT repos/o/r/pulls/5/merge"),
+                         {"selector": "5", "repo": "o/r"})
+
+    def test_glued_method_get_is_not_a_merge(self):
+        self.assertEqual(self.parse("gh api -XGET repos/o/r/pulls/5/merge"), [])
+
+    def test_glued_repo_value_captured(self):
+        # round-2 P1: `-Rother/red` must gate other/red, not the cwd repo.
+        got = self.parse_one("gh pr merge 5 -Rother/red --squash")
+        self.assertEqual(got, {"selector": "5", "repo": "other/red"})
+
+    def test_dangling_value_flag_does_not_hide_next_merge(self):
+        got = self.parse("gh pr merge 5 --repo o/r -t; gh pr merge 6 --repo o/r")
+        self.assertEqual([t["selector"] for t in got], ["5", "6"])
+
+    def test_dangling_api_flag_does_not_hide_next_api_merge(self):
+        got = self.parse("gh api -f; gh api -X PUT repos/o/r/pulls/5/merge")
+        self.assertEqual([t["selector"] for t in got], ["5"])
+
+    def test_cd_across_wrapper_marks_ambiguous(self):
+        got = self.parse_one("cd /tmp && bash -c 'gh pr merge --squash'")
+        self.assertTrue(got.get("ambiguous_cwd"))
+
+    def test_wrapper_long_flag_before_c(self):
+        self.assertEqual(self.parse_one("bash --login -c 'gh pr merge 5 --repo o/r'"),
+                         {"selector": "5", "repo": "o/r"})
+
+    def test_query_string_endpoint_still_a_merge(self):
+        self.assertEqual(self.parse_one('gh api -X PUT "repos/o/r/pulls/5/merge?f=1"'),
                          {"selector": "5", "repo": "o/r"})
 
     def test_unrelated_commands(self):

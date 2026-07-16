@@ -13,17 +13,21 @@ while the umbrella pin PR shows green. This hook makes the gate mechanical.
 What it gates
 -------------
 Bash commands that merge a GitHub PR — EVERY such invocation in the command,
-including inside `sh|bash|zsh|dash -c '…'` wrapper strings (two levels deep):
+including inside `sh|bash|zsh|dash [flags] -c '…'` wrapper strings (two
+levels deep):
   * `gh pr merge ...`, and
-  * `gh api ... repos/<owner>/<repo>/pulls/<n>/merge` with an explicit PUT
-    method (a method-less call to that endpoint is the read-only "is it
+  * `gh api ... repos/<owner>/<repo>/pulls/<n>/merge[?…]` with an explicit
+    PUT method (a method-less call to that endpoint is the read-only "is it
     merged?" probe pin-bump uses, and stays allowed).
-It resolves each PR via `gh pr view --json headRefOid,statusCheckRollup` and
-blocks unless every rollup entry is green (CheckRun concluded
-SUCCESS/NEUTRAL/SKIPPED; StatusContext state SUCCESS). A branch-inferred
-merge (`gh pr merge` with no selector) after a directory change in the same
-command is blocked outright: the hook would resolve the PR from the pre-cd
-cwd and could gate the wrong PR — use an explicit number + --repo.
+Flag values never hide a merge: spaced (`-X PUT`), equals (`--method=PUT`,
+`-X=PUT`), and pflag-glued (`-XPUT`, `-Ro/r`) forms are all parsed. Each PR
+is resolved via `gh pr view --json headRefOid,statusCheckRollup` and blocked
+unless every rollup entry is green (CheckRun concluded SUCCESS/NEUTRAL/
+SKIPPED; StatusContext state SUCCESS). A branch-inferred merge (`gh pr
+merge` with no selector) after a directory change anywhere earlier in the
+command — including across a wrapper boundary — is blocked outright: the
+hook would resolve the PR from the pre-cd cwd and could gate the wrong PR;
+use an explicit number + --repo.
 
 An EMPTY rollup passes. That covers repos with no CI configured (bridge,
 kit) and path-filtered umbrella PRs, but ALSO a CI repo whose workflows
@@ -35,9 +39,12 @@ over them.
 Known limitations (deliberate-evasion shapes, out of scope): invocations the
 tokenizer cannot see — gh hidden behind another script or alias, command
 substitution, an absolute path like /usr/bin/gh, endpoints assembled from
-variables. The override below is the sanctioned exception path; anything
-that routes around the hook instead is a protocol violation the PR trail
-will show.
+variables, wrappers nested more than two deep. The override below is the
+sanctioned exception path; anything that routes around the hook instead is
+a protocol violation the PR trail will show. The override token is also
+honored when it appears quoted elsewhere in the same command (e.g. inside a
+commit message) — accepted: it is whitespace-bounded, always visible in the
+audited command, and that accident window is narrow.
 
 Failure policy — deliberately split
 -----------------------------------
@@ -82,13 +89,15 @@ _PUNCTUATION = "();<>|&"
 # case is a spurious block whose message shows exactly what was resolved.
 _VALUE_FLAGS = {"-R", "--repo", "-t", "--subject", "-b", "--body", "-F",
                 "--body-file", "--match-head-commit", "-A", "--author-email"}
+_PR_SHORT_VALUE = {"-R", "-t", "-b", "-F", "-A"}
 # `gh api` flags that consume a value token (so the value is never mistaken
 # for the endpoint — `gh api -X PUT -f merge_method=squash repos/…/merge`
 # must still be detected as a merge).
 _API_VALUE_FLAGS = {"-f", "--raw-field", "-F", "--field", "-H", "--header",
                     "--input", "-q", "--jq", "-t", "--template",
                     "--hostname", "-p", "--preview", "--cache"}
-_API_MERGE_RE = re.compile(r"\brepos/([\w.-]+)/([\w.-]+)/pulls/(\d+)/merge/?$")
+_API_SHORT_VALUE = {"-f", "-F", "-H", "-q", "-t", "-p"}
+_API_MERGE_RE = re.compile(r"\brepos/([\w.-]+)/([\w.-]+)/pulls/(\d+)/merge/?(?:\?\S*)?$")
 _WRAPPER_SHELLS = {"bash", "sh", "zsh", "dash"}
 _DIR_CHANGERS = {"cd", "pushd"}
 
@@ -108,16 +117,23 @@ def _is_sep(token):
     return bool(token) and all(c in _PUNCTUATION for c in token)
 
 
-def _value_after(tokens, start, names):
-    for j in range(start, len(tokens)):
-        if _is_sep(tokens[j]):
-            return None
-        if tokens[j] in names and j + 1 < len(tokens):
-            return tokens[j + 1]
+def _glued_value(token, shorts):
+    """pflag-glued short-flag value: '-XPUT' / '-X=PUT' → ('-X', 'PUT'); else None."""
+    if len(token) > 2 and token[0] == "-" and token[1] != "-" and token[:2] in shorts:
+        value = token[2:]
+        return (token[:2], value[1:] if value.startswith("=") else value)
     return None
 
 
-def _parse_gh_pr_merge(tokens):
+def _skip_value_flag(tokens, j):
+    """Index after a spaced value flag; never swallows a shell separator
+    (`gh pr merge -t; gh pr merge 6 …` must not hide the second merge)."""
+    if j + 1 < len(tokens) and not _is_sep(tokens[j + 1]):
+        return j + 2
+    return j + 1
+
+
+def _parse_gh_pr_merge(tokens, dir_changed):
     """Every `gh pr merge` invocation → [{'selector','repo',…}, …]."""
     targets = []
     i = 0
@@ -132,20 +148,28 @@ def _parse_gh_pr_merge(tokens):
             if tok in ("-h", "--help"):
                 help_seen = True  # merges nothing
             if tok in _VALUE_FLAGS:
-                j += 2
+                if tok in ("-R", "--repo") and j + 1 < len(tokens) and not _is_sep(tokens[j + 1]):
+                    repo = tokens[j + 1]
+                j = _skip_value_flag(tokens, j)
                 continue
-            if tok.startswith("--repo=") or tok.startswith("-R="):
+            glued = _glued_value(tok, _PR_SHORT_VALUE)
+            if glued:
+                if glued[0] == "-R":
+                    repo = glued[1]
+                j += 1
+                continue
+            if tok.startswith("--repo="):
                 repo = tok.split("=", 1)[1]
             elif tok.startswith("-"):
                 pass  # boolean flag (or --flag=value that isn't a repo)
             elif selector is None:
                 selector = tok
             j += 1
-        if repo is None:
-            repo = _value_after(tokens, i + 3, ("-R", "--repo"))
         if not help_seen:
             target = {"selector": selector, "repo": repo}
-            if selector is None and any(t in _DIR_CHANGERS for t in tokens[:i]):
+            if selector is None and (
+                dir_changed or any(t in _DIR_CHANGERS for t in tokens[:i])
+            ):
                 # branch-inferred merge after cd: the hook would resolve the
                 # PR from the pre-cd cwd and could gate the WRONG PR.
                 target["ambiguous_cwd"] = True
@@ -167,12 +191,21 @@ def _parse_gh_api_merge(tokens):
         j = i + 2
         while j < len(tokens) and not _is_sep(tokens[j]):
             tok = tokens[j]
-            if tok in ("-X", "--method") and j + 1 < len(tokens):
-                put = tokens[j + 1].upper() == "PUT"
-                j += 2
+            if tok in ("-X", "--method"):
+                if j + 1 < len(tokens) and not _is_sep(tokens[j + 1]):
+                    put = tokens[j + 1].upper() == "PUT"
+                j = _skip_value_flag(tokens, j)
+                continue
+            method_glued = _glued_value(tok, {"-X"})
+            if method_glued:
+                put = method_glued[1].upper() == "PUT"
+                j += 1
                 continue
             if tok in _API_VALUE_FLAGS:
-                j += 2
+                j = _skip_value_flag(tokens, j)
+                continue
+            if _glued_value(tok, _API_SHORT_VALUE):
+                j += 1
                 continue
             if tok.startswith("--method="):
                 put = tok.split("=", 1)[1].upper() == "PUT"
@@ -188,18 +221,37 @@ def _parse_gh_api_merge(tokens):
     return targets
 
 
-def _parse_merge_invocations(command, depth=0):
+def _wrapper_payloads(tokens):
+    """(payload, dir_changed_before) for each `sh|bash|… [flags] -c '…'`."""
+    payloads = []
+    for i, tok in enumerate(tokens):
+        if tok.rsplit("/", 1)[-1] not in _WRAPPER_SHELLS:
+            continue
+        k = i + 1
+        while k < len(tokens) and not _is_sep(tokens[k]):
+            t = tokens[k]
+            if t.startswith("--"):
+                k += 1  # long flag before -c (e.g. bash --login -c '…')
+                continue
+            if t.startswith("-") and "c" in t:
+                if k + 1 < len(tokens) and not _is_sep(tokens[k + 1]):
+                    dir_changed = any(x in _DIR_CHANGERS for x in tokens[:i])
+                    payloads.append((tokens[k + 1], dir_changed))
+                break
+            break  # first non-flag token: script-file form, not -c
+    return payloads
+
+
+def _parse_merge_invocations(command, depth=0, dir_changed=False):
     tokens = _tokens(command)
-    targets = _parse_gh_pr_merge(tokens) + _parse_gh_api_merge(tokens)
+    targets = _parse_gh_pr_merge(tokens, dir_changed) + _parse_gh_api_merge(tokens)
     if depth < 2:
-        # `bash -c '…'` (also -lc/-ec clusters): the quoted script is one
-        # token — re-tokenize it so wrapped merges are still gated.
-        for i, tok in enumerate(tokens):
-            base = tok.rsplit("/", 1)[-1]
-            if base in _WRAPPER_SHELLS and i + 2 < len(tokens):
-                flag = tokens[i + 1]
-                if flag.startswith("-") and not flag.startswith("--") and "c" in flag:
-                    targets += _parse_merge_invocations(tokens[i + 2], depth + 1)
+        # `bash -c '…'`: the quoted script is one token — re-tokenize it so
+        # wrapped merges are still gated, carrying the outer cd context in.
+        for payload, changed_before in _wrapper_payloads(tokens):
+            targets += _parse_merge_invocations(
+                payload, depth + 1, dir_changed or changed_before
+            )
     return targets
 
 
