@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bench Capture"
+  short_description: "Route analyzer bench wire-capture sessions"
+  default_prompt: "Use $bench-capture to prepare an EDAN H60S bench capture."
