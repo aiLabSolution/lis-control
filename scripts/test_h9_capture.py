@@ -134,6 +134,33 @@ class TestExactByteArchive(unittest.TestCase):
                     bench={},
                 )
 
+    def test_existing_raw_without_sidecar_is_rejected_instead_of_reprovenanced(self):
+        raw = h9_frame("Q", 109)
+        with tempfile.TemporaryDirectory() as outdir:
+            entry = hc.archive_capture(
+                raw,
+                outdir,
+                capture_started_at="2026-07-16T08:00:00.000Z",
+                capture_ended_at="2026-07-16T08:00:01.000Z",
+                source="first-port",
+                read_events=[],
+                bench={"firmware": "first"},
+            )
+            entry.sidecar_path.unlink()
+
+            with self.assertRaises(hc.ArchiveIntegrityError):
+                hc.archive_capture(
+                    raw,
+                    outdir,
+                    capture_started_at="2099-01-01T00:00:00.000Z",
+                    capture_ended_at="2099-01-01T00:00:01.000Z",
+                    source="second-port",
+                    read_events=[],
+                    bench={"firmware": "second"},
+                )
+
+            self.assertFalse(entry.sidecar_path.exists())
+
 
 class TestFrameAnalysis(unittest.TestCase):
     def test_recovers_a0_measurement_qc_and_calibration_lengths(self):
@@ -163,6 +190,16 @@ class TestFrameAnalysis(unittest.TestCase):
         self.assertEqual(len(analysis["frames"]), 1)
         self.assertEqual(analysis["frames"][0]["application_length"], 120)
         self.assertTrue(analysis["frames"][0]["length_valid"])
+
+    def test_malformed_stx_s_stream_is_analyzed_in_linear_time(self):
+        raw = b"\x02S" * 20_000
+
+        started = time.monotonic()
+        analysis = hc.analyze_stream(raw)
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(analysis, {"frames": [], "noise_byte_count": len(raw)})
+        self.assertLess(elapsed, 2.0)
 
 
 class TestPassiveSerialCapture(unittest.TestCase):

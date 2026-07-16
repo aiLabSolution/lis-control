@@ -86,6 +86,7 @@ def capture_serial(
     raw = bytearray()
     read_events: list[dict] = []
     last_data_at: float | None = None
+    frame_limit_reached = False
     archive_root = Path(outdir)
     archive_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     pending_stamp = capture_started_at.replace(":", "").replace("-", "")
@@ -96,11 +97,7 @@ def capture_serial(
             with open_serial_read_only(port) as fd:
                 while True:
                     quiet_remaining: float | None = None
-                    if (
-                        frame_limit
-                        and last_data_at is not None
-                        and len(analyze_stream(raw)["frames"]) >= frame_limit
-                    ):
+                    if frame_limit_reached and last_data_at is not None:
                         quiet_remaining = settle_seconds - (time.monotonic() - last_data_at)
                         if quiet_remaining <= 0:
                             break
@@ -114,6 +111,13 @@ def capture_serial(
                         timeout = min(timeout, remaining)
                     readable, _, _ = select.select([fd], [], [], timeout)
                     if not readable:
+                        # Analyze only while the line is idle. Serial input must be
+                        # drained ahead of CPU work so malformed/noisy streams cannot
+                        # make the receive loop fall behind the adapter buffer.
+                        if frame_limit and last_data_at is not None and not frame_limit_reached:
+                            frame_limit_reached = (
+                                len(analyze_stream(raw)["frames"]) >= frame_limit
+                            )
                         continue
                     try:
                         chunk = os.read(fd, 4096)
@@ -171,6 +175,9 @@ def analyze_stream(raw: bytes) -> dict:
     byte_count = len(raw)
     scores: list[tuple[int, int]] = [(0, 0)] * (byte_count + 1)
     choices: list[int | None] = [None] * byte_count
+    best_s_end_by_residue: list[
+        tuple[tuple[int, int], int] | None
+    ] = [None] * 6
 
     # Dynamic programming chooses a non-overlapping set with the most valid
     # frames, then the most covered bytes. This prefers a longer valid S frame
@@ -178,22 +185,45 @@ def analyze_stream(raw: bytes) -> dict:
     # while still preferring two concatenated valid frames over one that swallows
     # both. Bytes outside the chosen frames remain explicit noise in the summary.
     for start in range(byte_count - 1, -1, -1):
+        # A valid S frame starting here can end at start+121+6N. As the scan
+        # moves left, add the one newly eligible ETX to a residue-indexed suffix
+        # maximum. This replaces the old all-lengths loop with O(n) work.
+        newly_eligible_end = start + 121
+        if newly_eligible_end < byte_count and raw[newly_eligible_end] == ETX:
+            tail_score = scores[newly_eligible_end + 1]
+            endpoint_key = (
+                tail_score[0],
+                tail_score[1] + newly_eligible_end,
+            )
+            residue = newly_eligible_end % 6
+            current = best_s_end_by_residue[residue]
+            if (
+                current is None
+                or endpoint_key > current[0]
+                or (endpoint_key == current[0] and newly_eligible_end < current[1])
+            ):
+                best_s_end_by_residue[residue] = (
+                    endpoint_key,
+                    newly_eligible_end,
+                )
+
         best_score = scores[start + 1]
         best_end: int | None = None
         if raw[start] == STX and start + 1 < byte_count:
             block_type = chr(raw[start + 1])
             if block_type == "S":
-                lengths = range(120, byte_count - start - 1, 6)
+                best_s = best_s_end_by_residue[(start + 121) % 6]
+                ends = () if best_s is None else (best_s[1],)
             elif block_type == "Q":
-                lengths = (109,)
+                ends = (start + 110,)
             elif block_type == "C":
-                lengths = (64,)
+                ends = (start + 65,)
             else:
-                lengths = ()
-            for application_length in lengths:
-                end = start + 1 + application_length
+                ends = ()
+            for end in ends:
                 if end >= byte_count or raw[end] != ETX:
                     continue
+                application_length = end - start - 1
                 tail_score = scores[end + 1]
                 candidate_score = (
                     tail_score[0] + 1,
@@ -322,15 +352,20 @@ def archive_capture(
     shard = Path(outdir) / digest[:2]
     raw_path = shard / f"{digest}.msg"
     sidecar_path = shard / f"{digest}.json"
-    if raw_path.is_file():
+    raw_exists = raw_path.exists()
+    sidecar_exists = sidecar_path.exists()
+    if raw_exists or sidecar_exists:
+        if not raw_path.is_file() or not sidecar_path.is_file():
+            raise ArchiveIntegrityError(
+                f"incomplete archive entry {digest}: raw and sidecar must both exist"
+            )
         actual = hashlib.sha256(raw_path.read_bytes()).hexdigest()
         if actual != digest:
             raise ArchiveIntegrityError(
                 f"archive corruption: bytes under {digest} hash to {actual}"
             )
-        if sidecar_path.is_file():
-            _load_and_validate_sidecar(sidecar_path, raw, digest)
-            return ArchiveEntry(digest=digest, raw_path=raw_path, sidecar_path=sidecar_path)
+        _load_and_validate_sidecar(sidecar_path, raw, digest)
+        return ArchiveEntry(digest=digest, raw_path=raw_path, sidecar_path=sidecar_path)
 
     analysis = analyze_stream(raw)
     sidecar = {
