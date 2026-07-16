@@ -105,3 +105,23 @@ def test_astm_mint_hashes_patient_identity_even_when_sanitized_prefixes_match():
     assert baseline.startswith("PATA-")
     assert accession("PAT A", "DOE^JANE") != baseline
     assert accession("PAT/A", "DOE^JOHN") != baseline
+
+
+def test_astm_patient_id_precedence_matches_bridge_p3_then_p4_then_p5():
+    def group(patient_record: str):
+        message = (
+            "H|\\^&|||SNIBE^MAGLUMI-X3|||||||P|E1394-97|20260716120000\r"
+            f"{patient_record}\r"
+            "O|1|||^^^TSH|R\r"
+            "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N\r"
+            "L|1|N\r"
+        ).encode("ascii")
+        return parse_analyzer_report(message).groups[0]
+
+    all_ids = group("P|1|PRACTICE-ID|LAB-ID|ALT-ID|DOE^JANE")
+    p5_only = group("P|1|||ALT-ID|DOE^JANE")
+
+    assert all_ids.patient_id == "PRACTICE-ID"
+    assert all_ids.specimen_id == "PRACTICE-ID-6c998eef15"
+    assert p5_only.patient_id == "ALT-ID"
+    assert p5_only.specimen_id == "ALT-ID-dad311ed02"
