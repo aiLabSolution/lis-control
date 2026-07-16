@@ -33,6 +33,7 @@ from .oru import (
     RawObservation,
     SpecimenGroup,
     mint_accession,
+    normalized_patient_name,
     parse_oru_r01,
 )
 from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT, RESULT_TYPE_QC
@@ -283,10 +284,13 @@ def _astm_report(msg: AstmMessage) -> OruReport:
             if observations:
                 specimen_id = order.specimen_id
                 if not specimen_id.strip():
+                    patient_id_for_mint = (patient.patient_id or "").strip()
                     specimen_id = mint_accession(
                         "ASTM",
-                        patient.patient_id,
+                        patient_id_for_mint,
                         msg.header.raw if msg.header else "",
+                        patient_id_for_mint,
+                        normalized_patient_name(patient.name),
                         "\r".join([order.raw, *(result.raw for result in order.results)]),
                         str(current_index),
                     )

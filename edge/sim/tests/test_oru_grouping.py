@@ -40,8 +40,9 @@ def test_idless_hl7_group_mints_bridge_compatible_accession_beside_patient_ident
     group = parse_oru_r01(message).groups[0]
 
     # Bridge AccessionMinter anchor: SHA-256 over analyzer identity, MSH-7,
-    # MSH-10, raw OBR+OBX records, and group index; each part ends in 0x1e.
-    assert group.specimen_id == "PAT0157-5134815b45"
+    # MSH-10, patient id/name, raw OBR+OBX records, and group index; each part
+    # ends in 0x1e.
+    assert group.specimen_id == "PAT0157-59d496ebba"
     assert group.patient_id == "PAT / 0157"
     assert len(group.specimen_id) <= 25
 
@@ -84,7 +85,7 @@ def test_hl7_mint_sanitizes_raw_patient_component_but_keeps_unescaped_identity()
 
     group = parse_oru_r01(message).groups[0]
 
-    assert group.specimen_id == "PATF0157-616589d3b4"
+    assert group.specimen_id == "PATF0157-ccc89d41b0"
     assert group.patient_id == "PAT|0157"
 
 
@@ -119,3 +120,20 @@ def test_idless_hl7_group_without_patient_uses_protocol_prefix():
     assert group.patient_id == ""
     assert group.specimen_id.startswith("HL7-")
     assert len(group.specimen_id) == 14
+
+
+def test_hl7_mint_hashes_patient_identity_even_when_sanitized_prefixes_match():
+    def accession(patient_id: str, patient_name: str) -> str:
+        message = (
+            "MSH|^~\\&|RAC-050|RAYTO|LIS|LAB|20260716120000||ORU^R01|LIS157-ID|P|2.3\r"
+            f"PID|1||{patient_id}||{patient_name}\r"
+            "OBR|1|||CHEM\r"
+            "OBX|1|NM|GLU||98|mg/dL\r"
+        ).encode("ascii")
+        return parse_oru_r01(message).groups[0].specimen_id
+
+    baseline = accession("PAT/A", "DOE^JANE")
+
+    assert baseline.startswith("PATA-")
+    assert accession("PAT A", "DOE^JANE") != baseline
+    assert accession("PAT/A", "DOE^JOHN") != baseline

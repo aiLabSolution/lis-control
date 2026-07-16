@@ -172,6 +172,12 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
     groups_list: list[SpecimenGroup] = []
     for group_index, builder in enumerate(builders):
         if builder.observations:
+            patient_id_for_mint = (
+                _patient_id(builder.patient, edan).strip() if builder.patient else ""
+            )
+            patient_name_for_mint = normalized_patient_name(
+                builder.patient.field(5) if builder.patient else ""
+            )
             groups_list.append(
                 _specimen_group(
                     builder,
@@ -183,6 +189,8 @@ def parse_oru_r01(message: Message | bytes | str) -> OruReport:
                         f"{msh.field(3).strip()}|{msh.field(4).strip()}",
                         msh.field(7).strip(),
                         msh.field(10).strip(),
+                        patient_id_for_mint,
+                        patient_name_for_mint,
                         "\r".join(builder.raw_records),
                         str(group_index),
                     ),
@@ -298,6 +306,11 @@ def mint_accession(protocol_tag: str, patient_id: str, *content_parts: str) -> s
         digest.update((part or "").encode("utf-8"))
         digest.update(b"\x1e")
     return f"{prefix}-{digest.hexdigest()[:10]}"
+
+
+def normalized_patient_name(raw_name: str) -> str:
+    """Match the bridge PatientIdentity name used in accession digest inputs."""
+    return " ".join(part.strip() for part in (raw_name or "").split("^") if part.strip())
 
 
 def _raw_segment(segment: Segment) -> str:

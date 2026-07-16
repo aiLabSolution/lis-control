@@ -64,9 +64,10 @@ def test_idless_astm_order_mints_bridge_compatible_accession():
 
     group = parse_analyzer_report(message).groups[0]
 
-    # Bridge ASTM mint inputs are the raw H record, this O+R group's raw
-    # records, and the O-record group index, each followed by byte 0x1e.
-    assert group.specimen_id == "PATASTM-3c87818b97"
+    # Bridge ASTM mint inputs are the raw H record, patient id/name, this O+R
+    # group's raw records, and the O-record group index, each followed by byte
+    # 0x1e.
+    assert group.specimen_id == "PATASTM-a785026786"
     assert group.patient_id == "PAT / ASTM"
 
 
@@ -86,3 +87,21 @@ def test_idless_astm_orders_mint_distinct_accessions_deterministically():
 
     assert accessions == replayed
     assert accessions[0] != accessions[1]
+
+
+def test_astm_mint_hashes_patient_identity_even_when_sanitized_prefixes_match():
+    def accession(patient_id: str, patient_name: str) -> str:
+        message = (
+            "H|\\^&|||SNIBE^MAGLUMI-X3|||||||P|E1394-97|20260716120000\r"
+            f"P|1||{patient_id}||{patient_name}\r"
+            "O|1|||^^^TSH|R\r"
+            "R|1|^^^TSH|2.31|uIU/mL|0.27 to 4.20|N\r"
+            "L|1|N\r"
+        ).encode("ascii")
+        return parse_analyzer_report(message).groups[0].specimen_id
+
+    baseline = accession("PAT/A", "DOE^JANE")
+
+    assert baseline.startswith("PATA-")
+    assert accession("PAT A", "DOE^JANE") != baseline
+    assert accession("PAT/A", "DOE^JOHN") != baseline
