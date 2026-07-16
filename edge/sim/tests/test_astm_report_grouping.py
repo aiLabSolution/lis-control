@@ -125,3 +125,20 @@ def test_astm_patient_id_precedence_matches_bridge_p3_then_p4_then_p5():
     assert all_ids.specimen_id == "PRACTICE-ID-6c998eef15"
     assert p5_only.patient_id == "ALT-ID"
     assert p5_only.specimen_id == "ALT-ID-dad311ed02"
+
+
+def test_astm_order_accession_uses_only_first_o3_component():
+    located = (
+        "H|\\^&|||A^B|||||||P|E1394-97|20260716120000\r"
+        "P|1|PRACTICE-ID|||DOE^JANE\r"
+        "O|1|SPEC-1^RACK5||^^^TSH|R\r"
+        "R|1|^^^TSH|2.31|uIU/mL\r"
+        "L|1|N\r"
+    ).encode("ascii")
+    location_only = located.replace(b"SPEC-1^RACK5", b"^RACK5")
+
+    assert parse_analyzer_report(located).groups[0].specimen_id == "SPEC-1"
+    assert (
+        parse_analyzer_report(location_only).groups[0].specimen_id
+        == "PRACTICE-ID-ceb5ed0209"
+    )

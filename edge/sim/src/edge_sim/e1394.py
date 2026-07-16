@@ -133,7 +133,7 @@ class AstmResult:
 @dataclass(frozen=True)
 class AstmOrder:
     seq: str  # O-2
-    specimen_id: str  # O-3
+    specimen_id: str  # O-3 component 1 (accession; later components are location)
     test_code: str  # O-5 (universal test id; last code if repeated)
     assays: tuple[str, ...]  # O-5 split on the repeat delimiter (multi-assay orders)
     priority: str  # O-6
@@ -312,7 +312,7 @@ def _order(o: dict) -> AstmOrder:
         )
     return AstmOrder(
         seq=rec.field(2),
-        specimen_id=rec.field(3),
+        specimen_id=rec.component(3, 1).strip(),
         test_code=rec.test_code(5),
         assays=rec.test_codes(5),
         priority=rec.field(6),
