@@ -67,15 +67,25 @@ def capture_serial(
     outdir: str | os.PathLike[str],
     *,
     frame_limit: int = 0,
+    settle_seconds: float = 1.0,
     duration_seconds: float = 0,
     bench: dict | None = None,
 ) -> ArchiveEntry:
-    """Read a live serial stream passively and archive every received byte."""
+    """Read a live serial stream passively and archive every received byte.
+
+    A reached frame limit is finalized only after ``settle_seconds`` of line
+    quiet. The quiet window prevents a structurally valid in-frame ETX prefix
+    from ending the capture before a later tail arrives.
+    """
+
+    if frame_limit < 0 or settle_seconds < 0 or duration_seconds < 0:
+        raise ValueError("frame_limit, settle_seconds, and duration_seconds must be non-negative")
 
     capture_started_at = _utc_now()
     deadline = time.monotonic() + duration_seconds if duration_seconds > 0 else None
     raw = bytearray()
     read_events: list[dict] = []
+    last_data_at: float | None = None
     archive_root = Path(outdir)
     archive_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     pending_stamp = capture_started_at.replace(":", "").replace("-", "")
@@ -85,9 +95,18 @@ def capture_serial(
         try:
             with open_serial_read_only(port) as fd:
                 while True:
-                    if frame_limit and len(analyze_stream(raw)["frames"]) >= frame_limit:
-                        break
+                    quiet_remaining: float | None = None
+                    if (
+                        frame_limit
+                        and last_data_at is not None
+                        and len(analyze_stream(raw)["frames"]) >= frame_limit
+                    ):
+                        quiet_remaining = settle_seconds - (time.monotonic() - last_data_at)
+                        if quiet_remaining <= 0:
+                            break
                     timeout = 0.25
+                    if quiet_remaining is not None:
+                        timeout = min(timeout, quiet_remaining)
                     if deadline is not None:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
@@ -107,6 +126,7 @@ def capture_serial(
                     pending.flush()
                     os.fsync(pending.fileno())
                     raw.extend(chunk)
+                    last_data_at = time.monotonic()
                     read_events.append(
                         {
                             "received_at": _utc_now(),
@@ -148,51 +168,71 @@ def analyze_stream(raw: bytes) -> dict:
     """
 
     raw = bytes(raw)
+    byte_count = len(raw)
+    scores: list[tuple[int, int]] = [(0, 0)] * (byte_count + 1)
+    choices: list[int | None] = [None] * byte_count
+
+    # Dynamic programming chooses a non-overlapping set with the most valid
+    # frames, then the most covered bytes. This prefers a longer valid S frame
+    # over an embedded ETX at a shorter, coincidentally valid 120+6N prefix,
+    # while still preferring two concatenated valid frames over one that swallows
+    # both. Bytes outside the chosen frames remain explicit noise in the summary.
+    for start in range(byte_count - 1, -1, -1):
+        best_score = scores[start + 1]
+        best_end: int | None = None
+        if raw[start] == STX and start + 1 < byte_count:
+            block_type = chr(raw[start + 1])
+            if block_type == "S":
+                lengths = range(120, byte_count - start - 1, 6)
+            elif block_type == "Q":
+                lengths = (109,)
+            elif block_type == "C":
+                lengths = (64,)
+            else:
+                lengths = ()
+            for application_length in lengths:
+                end = start + 1 + application_length
+                if end >= byte_count or raw[end] != ETX:
+                    continue
+                tail_score = scores[end + 1]
+                candidate_score = (
+                    tail_score[0] + 1,
+                    tail_score[1] + application_length + 2,
+                )
+                if candidate_score > best_score:
+                    best_score = candidate_score
+                    best_end = end
+        scores[start] = best_score
+        choices[start] = best_end
+
     frames: list[dict] = []
-    noise_byte_count = 0
     cursor = 0
-    while cursor < len(raw):
-        start = raw.find(bytes([STX]), cursor)
-        if start < 0:
-            noise_byte_count += len(raw) - cursor
-            break
-        noise_byte_count += start - cursor
-        if start + 1 >= len(raw):
-            noise_byte_count += len(raw) - start
-            break
-
-        block_type = chr(raw[start + 1]) if 0x20 <= raw[start + 1] < 0x7F else "?"
-        first_etx = raw.find(bytes([ETX]), start + 2)
-        end = first_etx
-        candidate = first_etx
-        while candidate >= 0:
-            application_length = candidate - start - 1
-            if _valid_application_length(block_type, application_length):
-                end = candidate
-                break
-            candidate = raw.find(bytes([ETX]), candidate + 1)
-
-        if end < 0:
-            noise_byte_count += len(raw) - start
-            break
-
-        application_length = end - start - 1
-        frame_bytes = raw[start : end + 1]
+    while cursor < byte_count:
+        end = choices[cursor]
+        if end is None:
+            cursor += 1
+            continue
+        application_length = end - cursor - 1
+        frame_bytes = raw[cursor : end + 1]
         frames.append(
             {
                 "index": len(frames) + 1,
-                "block_type": block_type,
-                "start_offset": start,
+                "block_type": chr(raw[cursor + 1]),
+                "start_offset": cursor,
                 "end_offset_exclusive": end + 1,
                 "frame_byte_count": len(frame_bytes),
                 "application_length": application_length,
-                "length_valid": _valid_application_length(block_type, application_length),
+                "length_valid": True,
                 "sha256": hashlib.sha256(frame_bytes).hexdigest(),
             }
         )
         cursor = end + 1
 
-    return {"frames": frames, "noise_byte_count": noise_byte_count}
+    framed_byte_count = sum(frame["frame_byte_count"] for frame in frames)
+    return {
+        "frames": frames,
+        "noise_byte_count": byte_count - framed_byte_count,
+    }
 
 
 @dataclass(frozen=True)
@@ -213,6 +253,56 @@ def _write_atomic(path: Path, data: bytes) -> None:
         output.flush()
         os.fsync(output.fileno())
     os.replace(temporary, path)
+
+
+def _load_and_validate_sidecar(path: Path, raw: bytes, digest: str) -> dict:
+    """Load required provenance and verify its raw-bound structural fields."""
+
+    try:
+        sidecar = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ArchiveIntegrityError(f"invalid archive sidecar {path}: {exc}") from exc
+    if not isinstance(sidecar, dict):
+        raise ArchiveIntegrityError(f"invalid archive sidecar {path}: root must be an object")
+
+    required_types = {
+        "v": int,
+        "digest": str,
+        "byte_count": int,
+        "received_at": str,
+        "capture_started_at": str,
+        "capture_ended_at": str,
+        "source": str,
+        "protocol": str,
+        "transport": str,
+        "serial": dict,
+        "bench": dict,
+        "read_events": list,
+        "frames": list,
+        "noise_byte_count": int,
+    }
+    for key, expected_type in required_types.items():
+        if not isinstance(sidecar.get(key), expected_type):
+            raise ArchiveIntegrityError(
+                f"invalid archive sidecar {path}: {key!r} must be {expected_type.__name__}"
+            )
+    if sidecar["v"] != _SIDECAR_VERSION:
+        raise ArchiveIntegrityError(
+            f"unsupported archive sidecar version {sidecar['v']} in {path}"
+        )
+    if sidecar["digest"] != digest or sidecar["byte_count"] != len(raw):
+        raise ArchiveIntegrityError(
+            f"archive sidecar {path} does not match raw digest/byte count"
+        )
+    analysis = analyze_stream(raw)
+    if (
+        sidecar["frames"] != analysis["frames"]
+        or sidecar["noise_byte_count"] != analysis["noise_byte_count"]
+    ):
+        raise ArchiveIntegrityError(
+            f"archive sidecar {path} frame map does not match raw bytes"
+        )
+    return sidecar
 
 
 def archive_capture(
@@ -239,6 +329,7 @@ def archive_capture(
                 f"archive corruption: bytes under {digest} hash to {actual}"
             )
         if sidecar_path.is_file():
+            _load_and_validate_sidecar(sidecar_path, raw, digest)
             return ArchiveEntry(digest=digest, raw_path=raw_path, sidecar_path=sidecar_path)
 
     analysis = analyze_stream(raw)
@@ -306,10 +397,17 @@ def _parser() -> argparse.ArgumentParser:
         "--replay", help="analyze an existing raw .msg/.bin capture offline"
     )
     parser.add_argument(
-        "--outdir", default="./h9-capture", help="content-addressed archive root"
+        "--outdir",
+        help="required for live capture; controlled archive directory outside the repo",
     )
     parser.add_argument(
         "--frames", type=int, default=0, help="stop after N structurally complete frames"
+    )
+    parser.add_argument(
+        "--settle",
+        type=float,
+        default=1.0,
+        help="quiet seconds after --frames is reached before finalizing (default: 1)",
     )
     parser.add_argument(
         "--duration", type=float, default=0, help="stop after N seconds (0 = Ctrl-C)"
@@ -343,11 +441,27 @@ def main(argv: list[str] | None = None) -> int:
                 f"but bytes hash to {actual_digest}"
             )
             return 1
+        if is_content_addressed:
+            sidecar_path = replay_path.with_suffix(".json")
+            if not sidecar_path.is_file():
+                print(f"INTEGRITY ERROR: archive sidecar is missing: {sidecar_path}")
+                return 1
+            try:
+                _load_and_validate_sidecar(sidecar_path, raw, actual_digest)
+            except ArchiveIntegrityError as exc:
+                print(f"INTEGRITY ERROR: {exc}")
+                return 1
         _print_summary(raw)
         return 0
 
-    if args.frames < 0 or args.duration < 0:
-        _parser().error("--frames and --duration must be non-negative")
+    if args.frames < 0 or args.settle < 0 or args.duration < 0:
+        _parser().error("--frames, --settle, and --duration must be non-negative")
+    if not args.outdir:
+        _parser().error("--outdir is required for live capture")
+    archive_root = Path(args.outdir).expanduser().resolve()
+    repository_root = Path(__file__).resolve().parents[1]
+    if archive_root == repository_root or repository_root in archive_root.parents:
+        _parser().error("--outdir must be outside the repository checkout")
     bench = {
         "model": args.model,
         "serial_number": args.serial_number,
@@ -364,8 +478,9 @@ def main(argv: list[str] | None = None) -> int:
     print("Safety: use an RX+GND-only passive lead; do not connect the host TX conductor.")
     entry = capture_serial(
         args.port,
-        args.outdir,
+        archive_root,
         frame_limit=args.frames,
+        settle_seconds=args.settle,
         duration_seconds=args.duration,
         bench=bench,
     )

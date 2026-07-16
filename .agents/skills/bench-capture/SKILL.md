@@ -19,7 +19,8 @@ duplicate them, open them.
 | EDAN H99S | no standalone tool — attaches via the production bridge (shared EDAN H90-family wire) | 7999 | HL7 v2 MLLP | `docs/runbooks/edan-h99s-bench-conformance.md` |
 
 ```bash
-python3 scripts/h9_capture.py --port /dev/serial/by-id/<adapter> --outdir ./h9-capture --frames 1
+python3 scripts/h9_capture.py --port /dev/serial/by-id/<adapter> \
+  --outdir /path/to/controlled-evidence/lifotronic-h9/<run>/archive --frames 1
 python3 scripts/x3_astm_capture.py --port 12010 --outdir ./x3-capture
 python3 scripts/h60s_mllp_capture.py --port 7999 --outdir ./h60s-capture
 ```
@@ -29,7 +30,8 @@ python3 scripts/h60s_mllp_capture.py --port 7999 --outdir ./h60s-capture
 - **H9**: passive capture only. Connect the capture adapter's RX + signal ground;
   leave TX and handshake conductors disconnected. The tool opens the port read-only
   and never ACKs. Confirm analyzer DB-9 pinout and straight-vs-null-modem topology at
-  the bench instead of assuming DTE/DCE from connector gender.
+  the bench instead of assuming DTE/DCE from connector gender. Live capture requires
+  an explicit controlled output directory outside the repository checkout.
 - **X3**: start in `simplified` mode (the default). If the link desyncs after the
   first frame and the summary reports checksummed framing, restart with
   `--mode framed` (classic E1381 checksummed-frame ACK cadence).
