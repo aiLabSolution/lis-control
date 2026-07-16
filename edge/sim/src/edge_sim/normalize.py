@@ -17,6 +17,7 @@ work that later slices layer on.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -261,6 +262,27 @@ def _is_histogram_attachment(obs: RawObservation) -> bool:
     return (obs.value_type or "").strip().upper() == "ST" and code.endswith(_EDAN_HISTOGRAM_SUFFIX)
 
 
+# Off-scale qualified values (<0.008, >1000, <=0.01, >=500, and the Unicode ≤/≥
+# forms) are numeric, not anomalies. This mirrors the bridge's shared classifier
+# FhirBundleBuilder.parseQualifiedNumeric so the sim never drops a qualified NM/SN
+# row to KIND_ANOMALY when the bridge would keep it (LIS-252).
+_COMPARATOR = re.compile(r"^(<=|>=|<|>|≤|≥)\s*(.*)$")
+# HL7 v2 SN (structured numeric) carries the comparator in its own component,
+# "<^0.008"; collapse it to the ASCII qualified form before classifying.
+_SN_STRUCTURED = re.compile(r"^(<=|>=|<|>|≤|≥)\s*\^\s*(.+)$")
+
+
+def _qualified_magnitude(value: str) -> str:
+    """Strip a leading comparator (and any SN component separator) so only the
+    numeric magnitude remains; returns the value unchanged when there is no
+    comparator."""
+    structured = _SN_STRUCTURED.match(value)
+    if structured:
+        value = f"{structured.group(1)}{structured.group(2).strip()}"
+    comparator = _COMPARATOR.match(value)
+    return comparator.group(2).strip() if comparator else value
+
+
 def _is_unparseable_numeric(obs: RawObservation) -> bool:
     value_type = (obs.value_type or "").strip().upper()
     if value_type not in {"NM", "SN"}:
@@ -269,7 +291,7 @@ def _is_unparseable_numeric(obs: RawObservation) -> bool:
     if not value:
         return False
     try:
-        return not Decimal(value).is_finite()
+        return not Decimal(_qualified_magnitude(value)).is_finite()
     except InvalidOperation:
         return True
 
