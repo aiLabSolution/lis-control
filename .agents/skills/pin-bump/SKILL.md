@@ -24,19 +24,27 @@ description: Land a submodule change through the two-level (component → umbrel
    branch. If the branch is behind main, `git merge origin/main` INTO it (fast-forward
    push) — do NOT rebase + force-push. Verify the PR diff stays clean with
    `git diff origin/main --stat`.
-2. **Merge the component PR** and verify the merge server-side (step 4) before touching
+2. **Verify the component repo's CI is green on the exact PR head** before merging:
+   `gh pr checks <n> --repo <owner>/<repo>` — every expected check must conclude
+   `success`. OpenELIS core HAS CI and it has a history of failing; a failing, errored,
+   or unrun expected check blocks BOTH the component merge and the pin bump, no matter
+   how green local Docker-maven runs are (local tests supplement CI, never replace it;
+   checkout/auth/submodule failures are red even when no tests ran). Fix and re-run CI
+   or stop as blocked — never merge just because branch protection permits it.
+   Bridge/kit have no CI; there the adversarial review is the whole gate.
+3. **Merge the component PR** and verify the merge server-side (step 5) before touching
    the umbrella pin.
-3. **Advance the pin to the component PR's `merge_commit_sha`** (not the branch head),
+4. **Advance the pin to the component PR's `merge_commit_sha`** (not the branch head),
    and confirm `git -C <submodule> merge-base --is-ancestor <pin> origin/<default>`
    after a fetch. Default branches: core=main, bridge=develop, kit=main, plugins
-   fork=develop.
-4. **Verify every merge via REST, not the PR page:**
+   fork=develop. Never pin a SHA whose component PR was red or unchecked.
+5. **Verify every merge via REST, not the PR page:**
    `gh api repos/<owner>/<repo>/pulls/<n> --jq '{merged,merge_commit_sha,merged_at}'`.
    GraphQL (`gh pr view`) can show stale `OPEN` right after a merge.
-5. **Comment the review verdict** on the umbrella PR (audit trail for ISO traceability),
-   then merge. Self-merge is allowlisted via `Bash(gh pr merge*)` — but the rule is
-   prefix-matched, so run `gh pr merge ...` **standalone**, never inside a compound
-   command.
+6. **Comment the review verdict** on the umbrella PR (audit trail for ISO traceability),
+   then merge — only with that PR's own expected checks green too. Self-merge is
+   allowlisted via `Bash(gh pr merge*)` — but the rule is prefix-matched, so run
+   `gh pr merge ...` **standalone**, never inside a compound command.
 
 ## Gotchas (each one caused a real incident)
 
@@ -63,6 +71,11 @@ description: Land a submodule change through the two-level (component → umbrel
   rename PR. Sanity-check with read-only `git merge-tree --write-tree`.
 - **Upstream-sync PRs** (DIGI-UW → core) need merge commits, not squash, to keep
   upstream SHAs reachable.
+- **CI is non-transitive (LIS-133 / core PR #40):** a component PR can be red while an
+  umbrella pin PR is green. Umbrella workflows may use `submodules: false`, sparse
+  checkouts, prebuilt images, or test-skipping source builds, so they prove only their
+  named deployment/configuration behavior. Inspect the component PR itself and block on
+  any failed expected check, including infrastructure failures before tests.
 
 ## After landing
 

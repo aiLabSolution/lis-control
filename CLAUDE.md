@@ -34,8 +34,11 @@ open a PR. Non-negotiables:
   once reviewed and CI is green. Run `scripts/setup-githooks.sh` once per clone to enable the
   tracked `.githooks/pre-push` guard, which rejects direct pushes to `main` locally (a git
   hook, not a Claude PreToolUse — a blocked push just fails and you re-route to a PR).
-- **Submodule changes are two-level**: PR the component repo first, then bump the pin in the
-  umbrella PR.
+- **Submodule changes are two-level**: PR the component repo first, verify that repo's
+  expected checks are green on the exact PR head, then bump the pin in the umbrella PR.
+  CI is non-transitive: targeted local tests and green umbrella workflows do not replace
+  component CI. Checkout/auth/submodule failures are red gates even when tests never start,
+  and a component PR must not be merged or pinned merely because GitHub allows it.
 - **Coordinate across sessions via the Plane issue** — assignee = the *taken* flag, plus a
   TTL'd claim ledger (`scripts/slice.py status` / `claim` / `heartbeat` / `release`). Check
   status and claim before editing; a live claim by another agent is a cooperative lock.
