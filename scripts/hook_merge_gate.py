@@ -12,16 +12,32 @@ while the umbrella pin PR shows green. This hook makes the gate mechanical.
 
 What it gates
 -------------
-Bash commands that merge a GitHub PR:
-  * `gh pr merge ...` (any position in a compound command), and
+Bash commands that merge a GitHub PR — EVERY such invocation in the command,
+including inside `sh|bash|zsh|dash -c '…'` wrapper strings (two levels deep):
+  * `gh pr merge ...`, and
   * `gh api ... repos/<owner>/<repo>/pulls/<n>/merge` with an explicit PUT
     method (a method-less call to that endpoint is the read-only "is it
     merged?" probe pin-bump uses, and stays allowed).
-It resolves the PR via `gh pr view --json headRefOid,statusCheckRollup` and
+It resolves each PR via `gh pr view --json headRefOid,statusCheckRollup` and
 blocks unless every rollup entry is green (CheckRun concluded
-SUCCESS/NEUTRAL/SKIPPED; StatusContext state SUCCESS). An EMPTY rollup passes:
-repos with no CI configured (bridge, kit) and path-filtered umbrella PRs get
-zero checks by design — there the adversarial review is the whole gate.
+SUCCESS/NEUTRAL/SKIPPED; StatusContext state SUCCESS). A branch-inferred
+merge (`gh pr merge` with no selector) after a directory change in the same
+command is blocked outright: the hook would resolve the PR from the pre-cd
+cwd and could gate the wrong PR — use an explicit number + --repo.
+
+An EMPTY rollup passes. That covers repos with no CI configured (bridge,
+kit) and path-filtered umbrella PRs, but ALSO a CI repo whose workflows
+never triggered on the head (the LIS-210 "core CI dead" scenario) — the
+hook cannot tell these apart. The doc layer closes that residual hole: the
+adversarial reviewer treats unrun EXPECTED checks as red and cannot APPROVE
+over them.
+
+Known limitations (deliberate-evasion shapes, out of scope): invocations the
+tokenizer cannot see — gh hidden behind another script or alias, command
+substitution, an absolute path like /usr/bin/gh, endpoints assembled from
+variables. The override below is the sanctioned exception path; anything
+that routes around the hook instead is a protocol violation the PR trail
+will show.
 
 Failure policy — deliberately split
 -----------------------------------
@@ -31,8 +47,11 @@ Failure policy — deliberately split
 * After a merge is detected but the checks cannot be verified (gh missing,
   network/auth error, cwd not a repo): FAIL CLOSED. This diverges from the
   edit-guard convention on purpose: merges are rare, high-stakes, and cheap
-  to retry, and the block message says exactly what failed. Escape hatch for
-  a deliberate, reviewed exception: LIS_MERGE_GATE_OVERRIDE=1.
+  to retry, and the block message says exactly what failed.
+
+Escape hatch for a deliberate, reviewed exception: prefix the command itself
+with LIS_MERGE_GATE_OVERRIDE=1 (honored as a token in the command string —
+the hook process env works too but is not normally reachable mid-session).
 
 Wired in .claude/settings.json as a PreToolUse hook on Bash. Contract: hook
 payload JSON on stdin; exit 0 allows, exit 2 blocks (stderr goes back to the
@@ -47,10 +66,11 @@ import sys
 
 _OVERRIDE = "LIS_MERGE_GATE_OVERRIDE"
 _HATCH = (
-    "Deliberate, reviewed exception only: re-run with "
-    f"{_OVERRIDE}=1 (this is audited by the PR trail, not a convenience flag)."
+    "Deliberate, reviewed exception only: prefix the command itself with "
+    f"{_OVERRIDE}=1 (this is audited via the PR trail, not a convenience flag)."
 )
-_GH_TIMEOUT = 45  # seconds; one networked gh call
+_OVERRIDE_TOKEN_RE = re.compile(r"(?:^|\s)" + _OVERRIDE + r"=1(?:\s|$)")
+_GH_TIMEOUT = 45  # seconds; one networked gh call per merge target
 
 # CheckRun conclusions that count as green. Anything else — FAILURE, ERROR,
 # CANCELLED, TIMED_OUT, ACTION_REQUIRED, STALE, or an unfinished run — blocks.
@@ -61,8 +81,16 @@ _PUNCTUATION = "();<>|&"
 # mistaken for the PR selector). Unknown flags are assumed boolean; the worst
 # case is a spurious block whose message shows exactly what was resolved.
 _VALUE_FLAGS = {"-R", "--repo", "-t", "--subject", "-b", "--body", "-F",
-                "--body-file", "--match-head-commit"}
+                "--body-file", "--match-head-commit", "-A", "--author-email"}
+# `gh api` flags that consume a value token (so the value is never mistaken
+# for the endpoint — `gh api -X PUT -f merge_method=squash repos/…/merge`
+# must still be detected as a merge).
+_API_VALUE_FLAGS = {"-f", "--raw-field", "-F", "--field", "-H", "--header",
+                    "--input", "-q", "--jq", "-t", "--template",
+                    "--hostname", "-p", "--preview", "--cache"}
 _API_MERGE_RE = re.compile(r"\brepos/([\w.-]+)/([\w.-]+)/pulls/(\d+)/merge/?$")
+_WRAPPER_SHELLS = {"bash", "sh", "zsh", "dash"}
+_DIR_CHANGERS = {"cd", "pushd"}
 
 
 def _tokens(command):
@@ -80,32 +108,6 @@ def _is_sep(token):
     return bool(token) and all(c in _PUNCTUATION for c in token)
 
 
-def _parse_gh_pr_merge(tokens):
-    """{'selector':…,'repo':…} for the first `gh pr merge`, else None."""
-    for i in range(len(tokens) - 2):
-        if tokens[i] == "gh" and tokens[i + 1] == "pr" and tokens[i + 2] == "merge":
-            selector, repo = None, None
-            j = i + 3
-            while j < len(tokens) and not _is_sep(tokens[j]):
-                tok = tokens[j]
-                if tok in ("-h", "--help"):
-                    return None  # help invocation merges nothing
-                if tok in _VALUE_FLAGS:
-                    j += 2
-                    continue
-                if tok.startswith("--repo="):
-                    repo = tok.split("=", 1)[1]
-                elif tok.startswith("-"):
-                    pass  # boolean flag (or --flag=value that isn't --repo)
-                elif selector is None:
-                    selector = tok
-                j += 1
-            if tok_repo := _value_after(tokens, i + 3, ("-R", "--repo")):
-                repo = tok_repo
-            return {"selector": selector, "repo": repo}
-    return None
-
-
 def _value_after(tokens, start, names):
     for j in range(start, len(tokens)):
         if _is_sep(tokens[j]):
@@ -115,10 +117,50 @@ def _value_after(tokens, start, names):
     return None
 
 
+def _parse_gh_pr_merge(tokens):
+    """Every `gh pr merge` invocation → [{'selector','repo',…}, …]."""
+    targets = []
+    i = 0
+    while i + 2 < len(tokens):
+        if not (tokens[i] == "gh" and tokens[i + 1] == "pr" and tokens[i + 2] == "merge"):
+            i += 1
+            continue
+        selector, repo, help_seen = None, None, False
+        j = i + 3
+        while j < len(tokens) and not _is_sep(tokens[j]):
+            tok = tokens[j]
+            if tok in ("-h", "--help"):
+                help_seen = True  # merges nothing
+            if tok in _VALUE_FLAGS:
+                j += 2
+                continue
+            if tok.startswith("--repo=") or tok.startswith("-R="):
+                repo = tok.split("=", 1)[1]
+            elif tok.startswith("-"):
+                pass  # boolean flag (or --flag=value that isn't a repo)
+            elif selector is None:
+                selector = tok
+            j += 1
+        if repo is None:
+            repo = _value_after(tokens, i + 3, ("-R", "--repo"))
+        if not help_seen:
+            target = {"selector": selector, "repo": repo}
+            if selector is None and any(t in _DIR_CHANGERS for t in tokens[:i]):
+                # branch-inferred merge after cd: the hook would resolve the
+                # PR from the pre-cd cwd and could gate the WRONG PR.
+                target["ambiguous_cwd"] = True
+            targets.append(target)
+        i = j
+    return targets
+
+
 def _parse_gh_api_merge(tokens):
-    """REST merge (PUT on pulls/<n>/merge) → {'selector','repo'}, else None."""
-    for i in range(len(tokens) - 1):
-        if tokens[i] != "gh" or tokens[i + 1] != "api":
+    """Every REST merge (PUT on pulls/<n>/merge) → [{'selector','repo'}, …]."""
+    targets = []
+    i = 0
+    while i + 1 < len(tokens):
+        if not (tokens[i] == "gh" and tokens[i + 1] == "api"):
+            i += 1
             continue
         put = False
         endpoint = None
@@ -127,6 +169,9 @@ def _parse_gh_api_merge(tokens):
             tok = tokens[j]
             if tok in ("-X", "--method") and j + 1 < len(tokens):
                 put = tokens[j + 1].upper() == "PUT"
+                j += 2
+                continue
+            if tok in _API_VALUE_FLAGS:
                 j += 2
                 continue
             if tok.startswith("--method="):
@@ -138,13 +183,24 @@ def _parse_gh_api_merge(tokens):
             match = _API_MERGE_RE.search(endpoint)
             if match:
                 owner, repo, number = match.groups()
-                return {"selector": number, "repo": f"{owner}/{repo}"}
-    return None
+                targets.append({"selector": number, "repo": f"{owner}/{repo}"})
+        i = j
+    return targets
 
 
-def _parse_merge_invocation(command):
+def _parse_merge_invocations(command, depth=0):
     tokens = _tokens(command)
-    return _parse_gh_pr_merge(tokens) or _parse_gh_api_merge(tokens)
+    targets = _parse_gh_pr_merge(tokens) + _parse_gh_api_merge(tokens)
+    if depth < 2:
+        # `bash -c '…'` (also -lc/-ec clusters): the quoted script is one
+        # token — re-tokenize it so wrapped merges are still gated.
+        for i, tok in enumerate(tokens):
+            base = tok.rsplit("/", 1)[-1]
+            if base in _WRAPPER_SHELLS and i + 2 < len(tokens):
+                flag = tokens[i + 1]
+                if flag.startswith("-") and not flag.startswith("--") and "c" in flag:
+                    targets += _parse_merge_invocations(tokens[i + 2], depth + 1)
+    return targets
 
 
 def _not_green(rollup):
@@ -180,6 +236,12 @@ def _infra_message(detail):
 
 
 def _gate(target, cwd):
+    if target.get("ambiguous_cwd"):
+        return _infra_message(
+            "the command changes directory before a branch-inferred `gh pr merge`, "
+            "so the hook cannot tell which PR would be merged. Use an explicit PR "
+            "number plus --repo owner/repo."
+        )
     args = ["gh", "pr", "view"]
     if target["selector"]:
         args.append(target["selector"])
@@ -206,7 +268,7 @@ def _gate(target, cwd):
 
     bad = _not_green(data.get("statusCheckRollup"))
     if not bad:
-        return None  # all green, or a genuine no-CI/path-filtered PR (empty rollup)
+        return None  # all green, or an empty rollup (see docstring caveat)
     head = (data.get("headRefOid") or "?")[:12]
     where = data.get("url") or f"PR #{data.get('number', '?')}"
     return (
@@ -230,13 +292,19 @@ def check(payload):
         command = (payload.get("tool_input") or {}).get("command")
         if not isinstance(command, str) or "gh" not in command:
             return None
-        target = _parse_merge_invocation(command)
+        if _OVERRIDE_TOKEN_RE.search(command):
+            return None  # sanctioned override, visible in the command itself
+        targets = _parse_merge_invocations(command)
     except Exception:
         return None  # cannot even classify the command — fail open
-    if target is None:
+    if not targets:
         return None
     try:
-        return _gate(target, payload.get("cwd"))
+        for target in targets:
+            message = _gate(target, payload.get("cwd"))
+            if message:
+                return message
+        return None
     except Exception as exc:  # a detected merge must never slip through on a bug
         return _infra_message(f"unexpected hook error: {exc!r}")
 

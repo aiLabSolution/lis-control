@@ -114,8 +114,10 @@ Two gates, both hard:
   hook (`scripts/hook_merge_gate.py`) enforces the CI half mechanically: `gh pr merge`
   (and REST-PUT merges) are blocked unless every check on the PR head is green — it
   fails CLOSED when it cannot verify, so an unexpected block means fix/wait on CI, not
-  work around the hook (`LIS_MERGE_GATE_OVERRIDE=1` only for a deliberate, reviewed
-  exception).
+  work around the hook (prefix the command with `LIS_MERGE_GATE_OVERRIDE=1` only for a
+  deliberate, reviewed exception). An EMPTY check rollup passes the hook vacuously —
+  including when a CI repo's workflows never triggered — so gate 7's "unrun expected
+  checks are red" rule still applies on top.
 - `gh pr merge` from a linked worktree errors on its LOCAL post-step while the server
   merge succeeded — verify via REST `.merged`, then clean up by hand.
 - Root-owned `target/` from Docker builds blocks worktree removal:

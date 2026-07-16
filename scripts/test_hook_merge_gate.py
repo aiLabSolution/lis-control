@@ -142,9 +142,27 @@ class EndToEnd(unittest.TestCase):
         proc = self._run(_payload("gh api -X PUT repos/o/r/pulls/5/merge"), pr=RED)
         self.assertEqual(proc.returncode, 2)
 
+    def test_rest_put_flag_first_gated(self):
+        # adversarial-review P1: value flags before the endpoint must not hide it.
+        proc = self._run(
+            _payload("gh api -X PUT -f merge_method=squash repos/o/r/pulls/5/merge"),
+            pr=RED,
+        )
+        self.assertEqual(proc.returncode, 2)
+
     def test_compound_command_gated(self):
         proc = self._run(_payload("cd /tmp && gh pr merge 5 --repo o/r --squash"), pr=RED)
         self.assertEqual(proc.returncode, 2)
+
+    def test_bash_c_wrapper_gated(self):
+        proc = self._run(_payload('bash -c "gh pr merge 5 --repo o/r"'), pr=RED)
+        self.assertEqual(proc.returncode, 2)
+
+    def test_cd_then_branch_inferred_blocks_even_when_green(self):
+        # the hook would resolve the PR from the pre-cd cwd → wrong PR; fail closed.
+        proc = self._run(_payload("cd /tmp && gh pr merge --squash"), pr=GREEN)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("cannot tell which PR", proc.stderr)
 
     # -- fail-closed once a merge is detected ----------------------------------
     def test_gh_failure_blocks(self):
@@ -158,62 +176,113 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("could not verify", proc.stderr)
 
     # -- escape hatch -----------------------------------------------------------
-    def test_override_allows(self):
+    def test_override_command_prefix_allows(self):
+        # the route a session can actually take: the assignment token in the command.
+        proc = self._run(
+            _payload("LIS_MERGE_GATE_OVERRIDE=1 gh pr merge 5 --repo o/r"), pr=RED
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_override_env_form_allows(self):
+        proc = self._run(
+            _payload("env LIS_MERGE_GATE_OVERRIDE=1 gh pr merge 5 --repo o/r"), pr=RED
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_override_process_env_allows(self):
+        # hook-process env (Claude Code startup env) — secondary path, still honored.
         proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED, override=True)
         self.assertEqual(proc.returncode, 0)
 
 
 class Parser(unittest.TestCase):
     def parse(self, command):
-        return hook_merge_gate._parse_merge_invocation(command)
+        return hook_merge_gate._parse_merge_invocations(command)
+
+    def parse_one(self, command):
+        targets = self.parse(command)
+        self.assertEqual(len(targets), 1, targets)
+        return targets[0]
 
     def test_selector_and_repo(self):
-        got = self.parse("gh pr merge 12 --repo aiLabSolution/lis-control --squash")
+        got = self.parse_one("gh pr merge 12 --repo aiLabSolution/lis-control --squash")
         self.assertEqual(got, {"selector": "12", "repo": "aiLabSolution/lis-control"})
 
     def test_repo_equals_form(self):
-        self.assertEqual(self.parse("gh pr merge 3 --repo=o/r"),
+        self.assertEqual(self.parse_one("gh pr merge 3 --repo=o/r"),
                          {"selector": "3", "repo": "o/r"})
 
     def test_short_repo_flag(self):
-        self.assertEqual(self.parse("gh pr merge -R o/r 9 --merge"),
+        self.assertEqual(self.parse_one("gh pr merge -R o/r 9 --merge"),
                          {"selector": "9", "repo": "o/r"})
 
+    def test_glued_short_repo_flag(self):
+        self.assertEqual(self.parse_one("gh pr merge 3 -R=o/r"),
+                         {"selector": "3", "repo": "o/r"})
+
     def test_value_flag_never_selector(self):
-        got = self.parse('gh pr merge --subject "gh pr merge title" 7 -R o/r')
+        got = self.parse_one('gh pr merge --subject "gh pr merge title" 7 -R o/r')
+        self.assertEqual(got["selector"], "7")
+
+    def test_author_email_value_flag(self):
+        got = self.parse_one("gh pr merge -A a@b.example 7 --repo o/r")
         self.assertEqual(got["selector"], "7")
 
     def test_branch_inferred_merge(self):
-        self.assertEqual(self.parse("gh pr merge --squash"),
+        self.assertEqual(self.parse_one("gh pr merge --squash"),
                          {"selector": None, "repo": None})
 
+    def test_cd_marks_branch_inferred_ambiguous(self):
+        got = self.parse_one("cd ../lis-control-lis-54 && gh pr merge --squash")
+        self.assertTrue(got.get("ambiguous_cwd"))
+
+    def test_cd_with_explicit_selector_not_ambiguous(self):
+        got = self.parse_one("cd /tmp && gh pr merge 5 --repo o/r")
+        self.assertNotIn("ambiguous_cwd", got)
+
     def test_semicolon_stops_scan(self):
-        got = self.parse("gh pr merge 5; echo done --repo x/y")
+        got = self.parse_one("gh pr merge 5; echo done --repo x/y")
         self.assertEqual(got, {"selector": "5", "repo": None})
 
+    def test_every_merge_in_compound_collected(self):
+        got = self.parse("gh pr merge 5 --repo o/r && gh pr merge 6 --repo o/r")
+        self.assertEqual([t["selector"] for t in got], ["5", "6"])
+
+    def test_help_yields_no_target(self):
+        self.assertEqual(self.parse("gh pr merge --help"), [])
+
     def test_api_get_is_not_a_merge(self):
-        self.assertIsNone(self.parse("gh api repos/o/r/pulls/5/merge"))
+        self.assertEqual(self.parse("gh api repos/o/r/pulls/5/merge"), [])
 
     def test_api_put_is_a_merge(self):
-        self.assertEqual(self.parse("gh api --method PUT repos/o/r/pulls/5/merge"),
+        self.assertEqual(self.parse_one("gh api --method PUT repos/o/r/pulls/5/merge"),
                          {"selector": "5", "repo": "o/r"})
 
     def test_api_method_equals_form(self):
-        self.assertEqual(self.parse("gh api --method=put repos/o/r/pulls/5/merge"),
+        self.assertEqual(self.parse_one("gh api --method=put repos/o/r/pulls/5/merge"),
+                         {"selector": "5", "repo": "o/r"})
+
+    def test_api_value_flags_before_endpoint(self):
+        got = self.parse_one(
+            'gh api -X PUT -H "Accept: application/vnd.github+json" '
+            "-f merge_method=squash repos/o/r/pulls/5/merge"
+        )
+        self.assertEqual(got, {"selector": "5", "repo": "o/r"})
+
+    def test_wrapper_shell_recursed(self):
+        self.assertEqual(self.parse_one("/bin/bash -lc 'gh pr merge 5 --repo o/r'"),
                          {"selector": "5", "repo": "o/r"})
 
     def test_unrelated_commands(self):
-        for cmd in ("echo gh pr merge is fun? no --",
-                    "git merge origin/main",
-                    "gh pr view 5 --json state"):
-            if cmd.startswith("echo"):
-                continue  # echo'd text IS caught conservatively; see below
-            self.assertIsNone(self.parse(cmd), cmd)
+        for cmd in ("git merge origin/main",
+                    "gh pr view 5 --json state",
+                    "scripts/setup-githooks.sh"):
+            self.assertEqual(self.parse(cmd), [], cmd)
 
     def test_echoed_merge_text_is_caught_conservatively(self):
         # A false positive here fail-closes into a clear override path; that is
         # the accepted trade-off, so pin the behavior down.
-        self.assertIsNotNone(self.parse("echo gh pr merge 5"))
+        self.assertTrue(self.parse("echo gh pr merge 5"))
 
 
 if __name__ == "__main__":
