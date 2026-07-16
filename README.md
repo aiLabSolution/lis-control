@@ -32,12 +32,15 @@ git submodule update --init --recursive
 
 ## Component repositories and original sources
 
-Every submodule clone URL uses an `aiLabSolution` repository as `origin`. The
-original project URLs are retained here for attribution and deliberate source
-review only; clones do not configure standing `upstream` remotes. In particular,
-OpenELIS core follows the standalone `aiLabSolution/main` model from ADR-0003.
+Every submodule clone URL uses an `aiLabSolution` repository as `origin`. These
+repositories are private, standalone repositories: they do not carry GitHub
+fork-network metadata (`fork=false`, `parent=null`). The original project
+relationships are recorded only in the table below for code-lineage attribution
+and deliberate source review; clones do not configure standing `upstream`
+remotes. In particular, OpenELIS core follows the standalone
+`aiLabSolution/main` model from ADR-0003.
 
-| Mount | `origin` | Original source |
+| Mount | `origin` | Original source relationship (documentation only) |
 |---|---|---|
 | `core/openelis/` | [`aiLabSolution/OpenELIS-Global-2`](https://github.com/aiLabSolution/OpenELIS-Global-2) | [`DIGI-UW/OpenELIS-Global-2`](https://github.com/DIGI-UW/OpenELIS-Global-2) |
 | `edge/drivers/` and `core/openelis/tools/openelis-analyzer-bridge/` | [`aiLabSolution/openelis-analyzer-bridge`](https://github.com/aiLabSolution/openelis-analyzer-bridge) | [`DIGI-UW/openelis-analyzer-bridge`](https://github.com/DIGI-UW/openelis-analyzer-bridge) |
