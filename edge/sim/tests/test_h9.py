@@ -451,6 +451,8 @@ def test_flagged_patient_measurement_emits_no_accept_ready_observation_and_holds
     held = only_result(group, IFCC_HELD_CODE)
     assert held.kind == KIND_ANOMALY
     assert "48.00" in held.value  # raw IFCC preserved as evidence
+    # KB §6.4 manual token, byte-identical with the Java held text (parity).
+    assert "test-error e1" in held.value
     assert held.units is None
 
 
@@ -458,7 +460,9 @@ def test_flagged_qc_measurement_is_also_held_not_accepted():
     group = parse(measurement("S", 0, QC_MATERIAL, E2))
     assert group.result_type == RESULT_TYPE_QC
     assert observations(group) == []
-    assert only_result(group, IFCC_HELD_CODE).kind == KIND_ANOMALY
+    held = only_result(group, IFCC_HELD_CODE)
+    assert held.kind == KIND_ANOMALY
+    assert "test-error E2" in held.value
 
 
 def test_no_error_flag_yields_no_warning_row():

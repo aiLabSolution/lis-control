@@ -464,7 +464,7 @@ class BloodType(Enum):
 class ErrorFlag(Enum):
     NONE = "none"
     E1_ASPIRATION_LOW = "e1"
-    E2_ASPIRATION_HIGH = "e2"
+    E2_ASPIRATION_HIGH = "E2"  # KB §6.4 prints this token uppercase (matches the warning note)
 
 
 class Classification(Enum):
