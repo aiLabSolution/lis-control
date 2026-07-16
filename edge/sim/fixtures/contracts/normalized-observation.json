@@ -1,0 +1,8 @@
+{
+  "value": "6.8",
+  "rawCode": "WBC",
+  "rawUnit": "10^9/L",
+  "loinc": "6690-2",
+  "ucumValue": "10*9/L",
+  "status": "NORMALIZED"
+}
