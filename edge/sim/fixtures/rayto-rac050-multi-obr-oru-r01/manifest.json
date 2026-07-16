@@ -1,0 +1,22 @@
+{
+  "id": "rayto-rac050-multi-obr-oru-r01",
+  "description": "Synthetic HL7 v2.3 ORU^R01 batch from a RAYTO RAC-050 with two OBR specimen groups. Proves that each OBX remains attributed to its own accession instead of collapsing onto the first order. NOT a real instrument capture.",
+  "analyzer": { "vendor": "RAYTO", "model": "RAC-050" },
+  "protocol": "hl7v2",
+  "transport": "mllp",
+  "direction": "analyzer-to-host",
+  "message": { "path": "message.hl7", "encoding": "ascii", "framing": "mllp" },
+  "source": {
+    "reference": "synthetic seed (LIS-157 / ADR-0018)",
+    "note": "Application payload only. The two OBR records are distinct specimen boundaries; each owns the OBX records that follow it until the next OBR."
+  },
+  "synthetic": true,
+  "expected": {
+    "message_type": "ORU^R01",
+    "patient_id": "PID-0157",
+    "groups": [
+      { "specimen_id": "SPEC-0157-A", "raw_codes": ["GLU", "NA"] },
+      { "specimen_id": "SPEC-0157-B", "raw_codes": ["HGB"] }
+    ]
+  }
+}

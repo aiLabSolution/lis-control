@@ -193,19 +193,45 @@ class Normalizer:
         )
 
     def normalize_report(self, report: OruReport) -> list[NormalizedObservation]:
-        rows = [self.normalize_observation(obs) for obs in report.observations]
-        if report.result_type == RESULT_TYPE_CALIBRATION:
+        if report.groups:
+            return [
+                row
+                for group in report.groups
+                for row in self._normalize_group(
+                    group.observations,
+                    result_type=group.result_type,
+                    message_type=report.message_type,
+                    edan=group.edan,
+                )
+            ]
+        return self._normalize_group(
+            report.observations,
+            result_type=report.result_type,
+            message_type=report.message_type,
+            edan=report.edan,
+        )
+
+    def _normalize_group(
+        self,
+        observations,
+        *,
+        result_type: str,
+        message_type: str,
+        edan: bool,
+    ) -> list[NormalizedObservation]:
+        rows = [self.normalize_observation(obs) for obs in observations]
+        if result_type == RESULT_TYPE_CALIBRATION:
             return [_with_kind(row, KIND_CALIBRATION) if row.kind == KIND_RESULT else row for row in rows]
-        if report.result_type == RESULT_TYPE_BLANK:
+        if result_type == RESULT_TYPE_BLANK:
             return [_with_kind(row, KIND_BLANK) if row.kind == KIND_RESULT else row for row in rows]
-        if report.result_type == RESULT_TYPE_QC:
+        if result_type == RESULT_TYPE_QC:
             # ASTM E1394 QC (LIS-33) and EDAN HL7 QC (LIS-110, report.edan — the
             # H60/H90-series MSH-16 map has no calibration value and fails closed to
             # QC, so its patient-stream rows must actually leave that stream) both
             # re-kind here. The SD1/generic-HL7 QC gap (message_type=="ORU^R01" and
             # not report.edan) is a deliberately unfixed bound left from LIS-33 —
             # those rows stay KIND_RESULT in the sim; tracked under LIS-95.
-            if report.message_type == "ASTM^E1394" or report.edan:
+            if message_type == "ASTM^E1394" or edan:
                 return [
                     _with_kind(row, KIND_QC) if row.kind == KIND_RESULT else row
                     for row in rows

@@ -99,6 +99,8 @@ unchanged).
   - Core ignores the Patient resource today (staged rows still carry no identity); the
     accept queue shows minted accessions (MRN-prefixed) instead of bare MRNs — a
     deliberate trade: readable, unique, and honest about specimen ≠ patient.
-  - `edge/sim`'s `oru.py` still parses only the first OBR (single-`OruReport` shape) —
-    the two-level bridge+sim mirror rule (LIS-90) is owed a sim-side grouping mirror,
-    tracked as a follow-up issue rather than widening this slice.
+  - **Closed 2026-07-16 by LIS-157:** `edge/sim` now exposes one `SpecimenGroup`
+    per HL7 OBR / ASTM O record, applies blank/QC/calibration typing per group, and
+    mirrors the bridge's deterministic 25-character accession minting. The legacy
+    `OruReport` scalar view remains first-group compatible while observations stay
+    flattened in wire order.

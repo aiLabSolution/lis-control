@@ -27,7 +27,14 @@ from .archive import RawMessageArchive, archive_fixture
 from .fixtures import Fixture
 from .e1394 import AstmMessage, parse_e1394
 from .normalize import KIND_RESULT, KIND_WARNING, NormalizedObservation, Normalizer
-from .oru import OruParseError, OruReport, RawObservation, parse_oru_r01
+from .oru import (
+    OruParseError,
+    OruReport,
+    RawObservation,
+    SpecimenGroup,
+    mint_accession,
+    parse_oru_r01,
+)
 from .oru import RESULT_TYPE_CALIBRATION, RESULT_TYPE_PATIENT, RESULT_TYPE_QC
 from .transport import Transport
 
@@ -49,6 +56,7 @@ __all__ = [
     "ReplayResult",
     "replay",
     "NormalizedReplay",
+    "parse_analyzer_report",
     "replay_normalized",
     "replay_from_archive",
     "deterministic_round_trip",
@@ -117,7 +125,7 @@ def replay_normalized(
     """
     sent = bytes(message)
     received = transport.roundtrip(sent)
-    report = _parse_report(received)
+    report = parse_analyzer_report(received)
     rows = tuple((normalizer or Normalizer()).normalize_report(report))
     return NormalizedReplay(
         digest=hashlib.sha256(sent).hexdigest(),
@@ -234,7 +242,7 @@ def _check_rows(key: str, expected_rows, got_rows) -> list[str]:
     return problems
 
 
-def _parse_report(message: bytes) -> OruReport:
+def parse_analyzer_report(message: bytes) -> OruReport:
     """Parse a replayed analyzer payload into the transport-neutral report shape.
 
     Stage 1 only accepted HL7 ORU^R01. LIS-26 adds ASTM E1394 chemistry panels:
@@ -248,14 +256,13 @@ def _parse_report(message: bytes) -> OruReport:
 
 
 def _astm_report(msg: AstmMessage) -> OruReport:
-    first_patient = msg.patients[0] if msg.patients else None
-    first_order = next(
-        (order for patient in msg.patients for order in patient.orders),
-        None,
-    )
-    observations = []
+    groups: list[SpecimenGroup] = []
+    group_index = 0
     for patient in msg.patients:
         for order in patient.orders:
+            current_index = group_index
+            group_index += 1
+            observations = []
             for result in order.results:
                 observations.append(
                     RawObservation(
@@ -273,18 +280,46 @@ def _astm_report(msg: AstmMessage) -> OruReport:
                         completion_time=result.completion_time,
                     )
                 )
+            if observations:
+                specimen_id = order.specimen_id
+                if not specimen_id.strip():
+                    specimen_id = mint_accession(
+                        "ASTM",
+                        patient.patient_id,
+                        msg.header.raw if msg.header else "",
+                        "\r".join([order.raw, *(result.raw for result in order.results)]),
+                        str(current_index),
+                    )
+                groups.append(
+                    SpecimenGroup(
+                        patient_id=patient.patient_id,
+                        patient_name=patient.name,
+                        specimen_id=specimen_id,
+                        order_code=order.test_code,
+                        observations=tuple(observations),
+                        result_type=_astm_order_result_type(order),
+                    )
+                )
     header = msg.header
+    first = groups[0] if groups else SpecimenGroup(
+        patient_id="",
+        patient_name="",
+        specimen_id="",
+        order_code="",
+        observations=(),
+    )
     return OruReport(
         message_type="ASTM^E1394",
         sending_app=header.sender_name if header else "",
         sending_facility=header.sender_model if header else "",
         message_control_id="",
-        patient_id=first_patient.patient_id if first_patient else "",
-        patient_name=first_patient.name if first_patient else "",
-        specimen_id=first_order.specimen_id if first_order else "",
-        order_code=first_order.test_code if first_order else "",
-        observations=tuple(observations),
-        result_type=_astm_result_type(msg),
+        patient_id=first.patient_id,
+        patient_name=first.patient_name,
+        specimen_id=first.specimen_id,
+        order_code=first.order_code,
+        observations=tuple(obs for group in groups for obs in group.observations),
+        result_type=first.result_type,
+        groups=tuple(groups),
     )
 
 
@@ -296,22 +331,26 @@ def _astm_result_type(msg: AstmMessage) -> str:
     X3 QC Sample-ID convention used by the synthetic fixture, or O.12=Q when the
     analyzer emits the ASTM action code.
 
-    Classification is message-level, like the HL7 MSH-16 path: the whole report
-    carries one result type. This mirrors the sim's current single-specimen
-    ASTM model (``_astm_report`` collapses a multi-``O`` upload onto the first
-    order); per-specimen grouping — and with it per-order QC/calibration in a
-    mixed batch — arrives with LIS-157. The production bridge already classifies
-    per O-record. Prefixes are therefore only asserted on single-purpose QC or
-    calibration uploads here; they are never inferred from bare leading letters
-    (see the prefixes' trailing hyphens)."""
+    Kept as a compatibility helper for single-purpose messages; grouped report
+    conversion calls :func:`_astm_order_result_type` for each O record so a mixed
+    batch cannot contaminate sibling orders. Prefixes include a trailing hyphen
+    so a patient id that merely begins with CAL/QC is not misclassified."""
     for patient in msg.patients:
         for order in patient.orders:
-            specimen_id = (order.specimen_id or "").strip().upper()
-            if specimen_id.startswith(_CALIBRATION_SPECIMEN_PREFIX):
-                return RESULT_TYPE_CALIBRATION
-            action_code = (order.action_code or "").strip().upper()
-            if action_code == "Q" or specimen_id.startswith(_QC_SPECIMEN_PREFIX):
-                return RESULT_TYPE_QC
+            result_type = _astm_order_result_type(order)
+            if result_type != RESULT_TYPE_PATIENT:
+                return result_type
+    return RESULT_TYPE_PATIENT
+
+
+def _astm_order_result_type(order) -> str:
+    """Classify one ASTM O record without leaking its type to sibling orders."""
+    specimen_id = (order.specimen_id or "").strip().upper()
+    if specimen_id.startswith(_CALIBRATION_SPECIMEN_PREFIX):
+        return RESULT_TYPE_CALIBRATION
+    action_code = (order.action_code or "").strip().upper()
+    if action_code == "Q" or specimen_id.startswith(_QC_SPECIMEN_PREFIX):
+        return RESULT_TYPE_QC
     return RESULT_TYPE_PATIENT
 
 
