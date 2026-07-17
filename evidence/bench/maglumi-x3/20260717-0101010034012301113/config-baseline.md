@@ -50,6 +50,38 @@ measurement, and was never uploaded anywhere (LIS status is red). Recorded
 here only because the FT3 II normal range is a real configured value, useful
 input for the LIS-38 dictionary later — not evidence of a wire transaction.
 
+## UPDATE 2026-07-17 ~11:50 — first live connect: LIS indicator GREEN (software-only)
+
+Same session, later in the day. Laptop (capture host) direct-cabled to the
+operation PC's second Ethernet port; analyzer chassis still NOT connected
+(PLC red throughout).
+
+- Network: operation PC `192.168.1.100/24` (pre-existing static on "Ethernet 2");
+  capture laptop given `192.168.1.50` (the `10.1.52.78:2003` target found saved
+  in the Online screen turned out to be from an older, different-subnet setup —
+  target repointed to `192.168.1.50:2003` on the Online screen).
+- Windows-side plumbing on the capture laptop: static IP + `netsh portproxy`
+  `192.168.1.50:2003 → WSL:2003` + TCP-2003 firewall rule; listener =
+  `scripts/x3_astm_capture.py --port 2003` (ACK mode simplified).
+- `Online Setting` flipped `None → TCP/IP`, Save → **LIS dot GREEN**
+  (`lis-indicator-green.jpeg`, `online-screen-tcpip-configured.jpeg`).
+- Listener observed the connect: sessions `raw-20260717-114829-003` (held open)
+  and `raw-20260717-115031-004` (opened 11:50:31, closed 11:51:20) — **both
+  0 bytes**. The software opens a bare TCP connection and sends nothing until
+  it has a message to deliver.
+
+Wire-facts established (software-only, chassis absent):
+
+1. The X3 operation software connects to a **non-SNIBE host** and shows LIS
+   green — the slice's highest-risk unknown, answered affirmatively at the
+   software level. (Full AC1 sign-off still wants the chassis attached.)
+2. LIS-green requires only a successful TCP connect — **no ASTM handshake and
+   no host-identity exchange happens at connect time**, so peer-identity
+   enforcement (AC6), if any, must occur at message time, not connect time.
+3. Vendor PC ships with `192.168.1.100/24` static on its LIS-side NIC —
+   registry source-IP for this bench is therefore `192.168.1.100` (or the
+   docker-NAT rewrite, per the configuration.yml dev-bench note).
+
 ## What's still needed (unblocks AC1/AC2/AC4/AC5, firms up AC6)
 
 1. Reconnect the analyzer chassis to this operation PC (private link).
