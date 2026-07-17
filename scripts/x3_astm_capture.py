@@ -48,6 +48,7 @@ import os
 import re
 import socket
 import sys
+import threading
 
 # --- ASTM E1394 / E1381 control bytes ---------------------------------------
 ENQ = 0x05
@@ -374,13 +375,14 @@ class CaptureServer:
         self.once = once
         self.ack_on = _FRAMED_ACK_ON if mode == "framed" else _SIMPLIFIED_ACK_ON
         self._seq = 0  # monotonic per-connection counter for unique archive names
+        self._seq_lock = threading.Lock()
         os.makedirs(outdir, exist_ok=True)
 
     def serve(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
             srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             srv.bind((self.host, self.port))
-            srv.listen(1)
+            srv.listen(16)
             print(
                 f"[{_now_iso()}] X3 ASTM capture listening on {self.host}:{self.port} "
                 f"(ACK mode={self.mode}); archiving to {self.outdir}. Ctrl-C to stop.",
@@ -388,20 +390,41 @@ class CaptureServer:
             )
             while True:
                 conn, peer = srv.accept()
-                try:
-                    self._handle(conn, peer)
-                except Exception as exc:  # never let one session kill the listener
-                    print(f"[{_now_iso()}] session error from {peer}: {exc}", file=sys.stderr, flush=True)
-                finally:
-                    conn.close()
                 if self.once:
+                    try:
+                        self._handle_safely(conn, peer)
+                    finally:
+                        conn.close()
                     break
+                # Bench-observed (LIS-75, 2026-07-17): the X3 operation software
+                # holds one idle status connection open (the green LIS dot) and
+                # opens a SECOND, parallel connection to deliver a message. A
+                # serve-one-at-a-time loop leaves the delivery connection queued
+                # until the software's timeout fires -- so each session gets its
+                # own thread.
+                threading.Thread(
+                    target=self._serve_conn, args=(conn, peer), daemon=True
+                ).start()
+
+    def _serve_conn(self, conn: socket.socket, peer) -> None:
+        try:
+            self._handle_safely(conn, peer)
+        finally:
+            conn.close()
+
+    def _handle_safely(self, conn: socket.socket, peer) -> None:
+        try:
+            self._handle(conn, peer)
+        except Exception as exc:  # never let one session kill the listener
+            print(f"[{_now_iso()}] session error from {peer}: {exc}", file=sys.stderr, flush=True)
 
     def _handle(self, conn: socket.socket, peer) -> None:
-        self._seq += 1
+        with self._seq_lock:
+            self._seq += 1
+            seq = self._seq
         # Second-resolution stamp + a per-connection sequence keeps archive names
         # unique even when the analyzer reconnects within the same wall-clock second.
-        stamp = f"{_now()}-{self._seq:03d}"
+        stamp = f"{_now()}-{seq:03d}"
         raw_path = os.path.join(self.outdir, f"raw-{stamp}.bin")
         log_path = os.path.join(self.outdir, f"annotated-{stamp}.log")
         msg = bytearray()  # bytes of the CURRENT message; reset at each EOT

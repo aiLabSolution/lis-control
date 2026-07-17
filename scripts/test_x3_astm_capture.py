@@ -265,6 +265,73 @@ class TestSocketHandshake(unittest.TestCase):
         self.assertIn("Framing: SIMPLIFIED", log)
 
 
+class TestConcurrentConnections(unittest.TestCase):
+    """Regression for the bench-observed failure (LIS-75, 2026-07-17): the X3
+    operation software holds one idle status connection open (the green LIS dot)
+    and opens a SEPARATE, parallel connection to deliver a message. A
+    serve-one-connection-at-a-time loop blocks the delivery connection behind the
+    idle one until the software's ~3s timeout fires ("Communication timeout
+    between software and LIS!"). ``serve()`` must handle each connection on its
+    own thread so a lingering idle connection never starves a delivery."""
+
+    def test_idle_connection_does_not_block_a_parallel_delivery(self):
+        outdir = tempfile.mkdtemp()
+        server = xc.CaptureServer(host="127.0.0.1", port=0, outdir=outdir, mode="simplified", once=False)
+        srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv_sock.bind(("127.0.0.1", 0))
+        srv_sock.listen(16)
+        port = srv_sock.getsockname()[1]
+
+        # Drive the accept loop by hand (serve() blocks forever); this exercises
+        # the same per-connection threading serve() uses.
+        stop = threading.Event()
+
+        def accept_loop():
+            srv_sock.settimeout(0.25)
+            while not stop.is_set():
+                try:
+                    conn, peer = srv_sock.accept()
+                except socket.timeout:
+                    continue
+                threading.Thread(target=server._serve_conn, args=(conn, peer), daemon=True).start()
+
+        loop = threading.Thread(target=accept_loop, daemon=True)
+        loop.start()
+        try:
+            # 1) An idle status connection that sends nothing and stays open.
+            idle = socket.create_connection(("127.0.0.1", port), timeout=5)
+
+            # 2) A parallel delivery connection completes the full handshake while
+            #    the idle one is still open. Each control token must be ACKed
+            #    promptly (well under the analyzer's ~3s timeout).
+            data = socket.create_connection(("127.0.0.1", port), timeout=5)
+            data.settimeout(3)
+            body = "".join(rec + CR for rec in KB_6_4_RECORDS).encode("latin-1")
+            data.sendall(ENQ)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(STX)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(body)
+            data.sendall(ETX)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(EOT)
+            self.assertEqual(data.recv(1), ACK)
+            data.close()
+            idle.close()
+        finally:
+            stop.set()
+            loop.join(timeout=5)
+            srv_sock.close()
+
+        # The delivery was archived byte-for-byte despite the idle connection.
+        raw_files = [f for f in os.listdir(outdir) if f.startswith("raw-")]
+        delivered = [f for f in raw_files if os.path.getsize(os.path.join(outdir, f)) > 0]
+        self.assertEqual(len(delivered), 1)
+        with open(os.path.join(outdir, delivered[0]), "rb") as f:
+            self.assertEqual(f.read(), ENQ + STX + body + ETX + EOT)
+
+
 class TestReplay(unittest.TestCase):
     def test_replay_reads_archived_capture(self):
         with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:

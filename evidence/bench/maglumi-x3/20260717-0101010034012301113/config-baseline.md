@@ -82,15 +82,87 @@ Wire-facts established (software-only, chassis absent):
    registry source-IP for this bench is therefore `192.168.1.100` (or the
    docker-NAT rewrite, per the configuration.yml dev-bench note).
 
-## What's still needed (unblocks AC1/AC2/AC4/AC5, firms up AC6)
+## UPDATE 2026-07-17 ~13:35 — FIRST REAL WIRE CAPTURE (all 5 unknowns pinned)
 
-1. Reconnect the analyzer chassis to this operation PC (private link).
-2. Flip `Online Setting` from `None` to `TCP/IP`, point `IP Address`/`Port` at
-   the capture host (`scripts/x3_astm_capture.py`) or the bridge's `snibe`
-   listener (port 12021, LIS-174), `Save`.
-3. Watch the `LIS` status light — green (or a documented refusal) satisfies
-   AC1.
-4. Run a real result and capture the raw bytes — satisfies AC2/AC3/AC4/AC5.
-5. Optionally vary `Analyzer ID` to test whether an exact-name match is
-   enforced — settles AC6 fully (currently only the *values*, not the
-   *matching requirement*, are pinned).
+Re-sent a stored historical result via the `Result` tab's `→LIS Online`
+button (the manual-upload path; the analyzer chassis is still disconnected, so
+this is a software-driven replay of a completed record, not a fresh run). First
+genuine X3 firmware ASTM message captured — raw bytes in
+`raw-20260717-133451-004.bin`, decoded in `annotated-20260717-133451-004.log`.
+
+Redacted wire (O-record sample-id was real PHI, replaced with a bench
+placeholder — see PHI note below):
+
+```
+<ENQ><STX>H|\^&||PSWD|Maglumi X3|||||Lis||P|E1394-97|20260717<CR>
+P|1<CR>
+O|1|BENCH-SAMPLE-001||^^^FT3<CR>
+R|1|^^^FT3|5.43|pmol/L|3.08 - 6.468|N||||||20250320153245<CR>
+L|1|N<CR>
+<ETX><EOT>
+```
+
+Handshake: per-token ACK on `ENQ`, `STX`, `ETX`, `EOT` (the whole H/P/O/R/L
+body arrives in two `recv`s between the STX-ACK and the ETX, un-ACKed
+individually). No NAK, no checksum, no frame number, no LF.
+
+**Five unknowns — all answered from real bytes:**
+
+1. **AC1 — non-SNIBE host:** ✅ the software both *connects* (LIS green) and
+   *delivers a message* to our stdlib listener. No SnibeLis anywhere.
+2. **AC3 — framing:** ✅ **SIMPLIFIED** — `ENQ/STX/…/ETX/EOT`, per-token ACK,
+   **no checksum** (matches `Enable Checksum` = off), no frame#, no LF.
+3. **AC4 — R-record completion-timestamp field:** ✅ **field 13**
+   (`20250320153245`), resolving the documented 11/12/13 vendor off-by-one
+   against real firmware bytes. (KB fixtures land at 12; this real X3 is 13.)
+4. **AC5 — Lis-ID / units / range:** ✅ assay `^^^FT3` (bare `FT3`, note: **not**
+   the `FT3 II` shown in the assay-selection UI), unit `pmol/L`, reference-range
+   string `"3.08 - 6.468"` (space-hyphen-space form), abnormal flag `N`.
+5. **AC6 — peer identity:** ✅ H-record sender/Analyzer-ID `Maglumi X3`,
+   receiver/Host-ID `Lis`, version `E1394-97`, delimiters `\^&`. Field 4 carries
+   a literal `PSWD` token. (Whether an exact host-name *match* is enforced is
+   still only inferable — the connect succeeded with our arbitrary host; a
+   deliberate mismatch test was not run.)
+
+**Concurrent-connection behavior (new wire-fact, feeds LIS-174):** the software
+does NOT reuse the idle status connection to deliver. It opens a fresh TCP
+connection per upload attempt (observed ports 58973/58974/63906…) while the
+green-LIS status connection stays open in parallel. A serve-one-at-a-time host
+leaves the delivery connection queued until the software's ~3s timeout fires
+(that was the "Communication timeout between software and LIS!" error seen
+before the fix). `scripts/x3_astm_capture.py` was patched to accept each
+connection on its own thread (24 self-tests still green); the receive path
+LIS-174 must be concurrent for the same reason.
+
+**PHI note:** the O-record sample-id field carried a real personal name. Per the
+runbook, the pristine capture is kept ONLY in the offline validation evidence
+store (not committed); the in-repo `raw-*.bin` / `annotated-*.log` have that one
+field replaced with `BENCH-SAMPLE-001`. Every other byte is verbatim. The
+measurement itself (FT3 5.43) is a real historical patient result — treat the
+values as illustrative of *format*, not as a bench control.
+
+## AC status after the 13:35 capture
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC1 connect / LIS green | **MET** (software level) | `lis-indicator-green.jpeg` + delivered message |
+| AC2 raw wire capture archived | **MET** | `raw-20260717-133451-004.bin` (+ pristine offline) |
+| AC3 framing classified + checksum state | **MET** | SIMPLIFIED, checksum off |
+| AC4 R-timestamp field position | **MET** | field 13 |
+| AC5 real Lis-ID / units / range | **MET** | `^^^FT3`, `pmol/L`, `3.08 - 6.468` |
+| AC6 peer identity | **PARTIAL** | H-record values pinned; name-match enforcement not tested |
+
+## Residual / nice-to-have (not blocking)
+
+1. **Confirm with the live chassis attached.** Today's capture is a software
+   replay of a stored result over the real ASTM stack — genuine firmware bytes,
+   but the analyzer chassis was disconnected (PLC red). A fresh run with the
+   chassis on the table would upgrade AC1 from "software-level" to full and
+   confirm auto-upload (vs. manual `→LIS Online`) frames identically.
+2. **Settle AC6's match question** by deliberately varying `Analyzer ID` /
+   `Host ID` and observing whether the software still uploads or refuses.
+3. **QC path (runbook §9):** capture a QC upload and check for a wire
+   discriminator (feeds LIS-33).
+4. **Fixture graduation (LIS-38):** the redacted payload can seed a
+   `synthetic: false` `edge/sim` fixture — but note `^^^FT3` here vs. the
+   existing `FT3 II` synthetic seeds; reconcile the assay-code strings there.
