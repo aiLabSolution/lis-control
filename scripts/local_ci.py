@@ -704,14 +704,22 @@ def run_engine(
         if commit_mode
         else select_checks(registry, pr.repository, pr.changed_paths)
     )
-    summary_eligible = (
-        commit_mode
-        or not requested_checks
+    summary_eligible = not commit_mode and (
+        not requested_checks
         or {check.name for check in checks}
         == {check.name for check in normal_checks}
     )
     preflight_memory(checks)
-    if not summary_eligible:
+    if commit_mode:
+        requested_names = ", ".join(check.name for check in checks) or "(none)"
+        print(
+            "local_ci: EXACT-COMMIT EVIDENCE ONLY: running explicitly requested "
+            f"checks [{requested_names}]. Individual check evidence will be "
+            f"published, but {SUMMARY_CONTEXT} and its summary gist will not. "
+            "This run cannot satisfy the merge gate because no PR changed-file "
+            "selection was verified."
+        )
+    elif not summary_eligible:
         requested_names = ", ".join(check.name for check in checks) or "(none)"
         normal_names = ", ".join(check.name for check in normal_checks) or "(none)"
         print(

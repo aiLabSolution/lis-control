@@ -309,33 +309,29 @@ def _requires_local_summary(repository):
     """Whether the umbrella registry enables the local summary gate.
 
     Registry discovery is anchored to this hook's checkout, never payload cwd.
-    Missing, syntactically invalid, or structurally unusable registry data
-    disables only this additive check; the existing rollup gate still runs.
+    Validation is delegated lazily to the co-located local-CI engine so the
+    additive gate cannot disagree with the authoritative registry schema.
+    Missing, invalid, or unavailable engine/registry data disables only this
+    additive check; the existing rollup gate still runs.
     """
     if not repository:
         return False
     try:
-        with _REGISTRY_PATH.open(encoding="utf-8") as handle:
-            registry = json.load(handle)
-    except (OSError, ValueError, TypeError):
-        return False
-    if not isinstance(registry, dict) or registry.get("version") != 1:
-        return False
-    if registry.get("mode") != "local":
-        return False
-    repositories = registry.get("repositories")
-    if not isinstance(repositories, dict):
-        return False
-    wanted = repository.lower()
-    for name, settings in repositories.items():
-        if not isinstance(name, str) or not isinstance(settings, dict):
+        # Lazy import keeps non-merge hook startup independent of the engine.
+        # Normal script execution puts this co-located scripts directory first
+        # on sys.path; refuse a shadowed module if an unusual importer does not.
+        import local_ci
+
+        expected_engine = Path(__file__).resolve().with_name("local_ci.py")
+        if Path(local_ci.__file__).resolve() != expected_engine:
             return False
-        gate_required = settings.get("gate_required", False)
-        if type(gate_required) is not bool:
-            return False
-        if name.lower() == wanted:
-            return gate_required
-    return False
+        registry = local_ci.load_registry(_REGISTRY_PATH)
+    except Exception:
+        return False
+    settings = registry.repositories.get(repository.lower())
+    return bool(
+        registry.mode == "local" and settings is not None and settings.gate_required
+    )
 
 
 def _local_summary_problem(rollup):

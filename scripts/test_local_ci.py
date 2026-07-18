@@ -770,7 +770,7 @@ class EngineTests(unittest.TestCase):
     @mock.patch("local_ci.post_status")
     @mock.patch("local_ci.preflight_memory")
     @mock.patch("local_ci.verify_checkout")
-    def test_exact_commit_mode_verifies_and_publishes_without_pr_resolution(
+    def test_exact_commit_mode_runs_check_without_aggregate_summary(
         self, verify, _memory, post, _gist, resolve
     ):
         component = Path("/component-main")
@@ -789,11 +789,12 @@ class EngineTests(unittest.TestCase):
             seen.append((checkout, selected, revision, host, control_root))
             return local_ci.CheckResult(selected.name, True, 0.1, "passed", None)
 
+        output = io.StringIO()
         with mock.patch("local_ci.global_lock", side_effect=locked), mock.patch(
             "local_ci.run_check", side_effect=record_run
         ), mock.patch("local_ci.socket.gethostname", return_value="ci-host"), mock.patch(
             "local_ci.time.monotonic", side_effect=[1.0, 2.0]
-        ):
+        ), contextlib.redirect_stdout(output):
             result = local_ci.run_engine(
                 Path("/control"),
                 registry(core_check),
@@ -809,6 +810,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(result, 0)
         resolve.assert_not_called()
         verify.assert_called_once_with(component, SHA)
+        self.assertEqual([item[1].name for item in seen], ["core-i18n"])
         revision = seen[0][2]
         self.assertEqual(revision.sha, SHA)
         self.assertEqual(revision.base_sha, SHA)
@@ -824,15 +826,15 @@ class EngineTests(unittest.TestCase):
                 for call in post.call_args_list
             )
         )
-        self.assertEqual(
-            [
-                call.args[4]
+        self.assertFalse(
+            any(
+                call.args[3] == "local-ci/summary"
                 for call in post.call_args_list
-                if call.args[3] == "local-ci/summary"
-            ],
-            ["pending", "success"],
+            )
         )
-        self.assertTrue(any(call.args[1] == "summary" for call in _gist.call_args_list))
+        self.assertFalse(any(call.args[1] == "summary" for call in _gist.call_args_list))
+        self.assertIn("exact-commit evidence only", output.getvalue().lower())
+        self.assertIn("cannot satisfy the merge gate", output.getvalue().lower())
 
     def test_exact_commit_mode_requires_repo_branch_and_explicit_check(self):
         arguments = {

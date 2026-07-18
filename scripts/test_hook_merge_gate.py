@@ -22,6 +22,7 @@ import hook_merge_gate
 import local_ci
 
 GATE = Path(__file__).resolve().parent / "hook_merge_gate.py"
+LOCAL_CI = Path(__file__).resolve().parent / "local_ci.py"
 
 _SHA = "a" * 40
 
@@ -70,6 +71,7 @@ class EndToEnd(unittest.TestCase):
         scripts.mkdir(parents=True)
         self.gate = scripts / "hook_merge_gate.py"
         self.gate.write_text(GATE.read_text())
+        (scripts / "local_ci.py").write_text(LOCAL_CI.read_text())
         self.registry = self.control / "local_ci.json"
         self._write_registry("hosted")
         self.bin = root / "bin"
@@ -87,11 +89,19 @@ class EndToEnd(unittest.TestCase):
         self.empty.mkdir()
 
     def _write_registry(self, mode, repositories=None):
+        repositories = repositories or {"o/r": {"gate_required": True}}
         self.registry.write_text(json.dumps({
             "version": 1,
             "mode": mode,
-            "repositories": repositories or {"o/r": {"gate_required": True}},
-            "checks": [],
+            "repositories": repositories,
+            "checks": [{
+                "name": "hook-fixture",
+                "repository": next(iter(repositories)),
+                "paths": ["**"],
+                "command": ["true"],
+                "class": "fast",
+                "timeout_seconds": 30,
+            }],
         }))
 
     def _run(self, stdin_text, pr=None, gh_exit=0, override=False, no_gh=False):
@@ -301,6 +311,27 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(empty.returncode, 0, empty.stderr)
         self.assertEqual(red.returncode, 2)
         self.assertIn("frontend: failure", red.stderr)
+
+    def test_schema_invalid_registries_fail_open_only_for_summary_check(self):
+        self._write_registry("local")
+        valid = json.loads(self.registry.read_text())
+        unknown_top_level = dict(valid, surprise=True)
+        empty_checks = dict(valid, checks=[])
+        unknown_check_field = json.loads(json.dumps(valid))
+        unknown_check_field["checks"][0]["surprise"] = True
+
+        for label, value in (
+            ("unknown top-level field", unknown_top_level),
+            ("empty checks", empty_checks),
+            ("unknown check field", unknown_check_field),
+        ):
+            with self.subTest(label=label):
+                self.registry.write_text(json.dumps(value))
+                empty = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+                red = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED)
+                self.assertEqual(empty.returncode, 0, empty.stderr)
+                self.assertEqual(red.returncode, 2)
+                self.assertIn("frontend: failure", red.stderr)
 
     def test_red_blocks(self):
         proc = self._run(_payload("gh pr merge 5 --repo o/r --squash"), pr=RED)
