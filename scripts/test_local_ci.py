@@ -2,6 +2,7 @@
 """Stdlib-only tests for the LIS-281 local CI engine."""
 
 import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -279,6 +280,23 @@ class SelectionTests(unittest.TestCase):
         )
         self.assertEqual([item.name for item in selected], ["scripts-tests"])
 
+    def test_explicit_check_for_another_repository_refuses(self):
+        core = check(
+            "core-i18n",
+            repository="aiLabSolution/OpenELIS-Global-2",
+            paths=("frontend/src/languages/**",),
+        )
+        with self.assertRaisesRegex(
+            local_ci.LocalCIError,
+            "not applicable.*aiLabSolution/lis-control.*core-i18n",
+        ):
+            local_ci.select_checks(
+                registry(core),
+                "aiLabSolution/lis-control",
+                ("README.md",),
+                requested=("core-i18n",),
+            )
+
 
 class PullRequestTests(unittest.TestCase):
     @mock.patch("local_ci._run")
@@ -534,6 +552,177 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(summary_calls[-1].args[5], "ci-host")
         self.assertEqual(summary_calls[-1].args[6], 3.0)
 
+    def test_partial_explicit_pr_run_posts_no_summary_or_summary_gist(self):
+        first = check("scripts-tests", paths=("scripts/**",))
+        cases = (
+            (
+                "subset",
+                check("docs-test", paths=("scripts/**",)),
+                ("scripts-tests",),
+                ["scripts-tests"],
+            ),
+            (
+                "superset",
+                check("docs-test", paths=("docs/**",)),
+                ("scripts-tests", "docs-test"),
+                ["scripts-tests", "docs-test"],
+            ),
+        )
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        for label, second, requested, expected in cases:
+            with self.subTest(label=label):
+                seen = []
+
+                def record_run(_root, selected, _pr, _host, _control_root):
+                    seen.append(selected.name)
+                    return local_ci.CheckResult(
+                        selected.name, True, 1.0, "passed", None
+                    )
+
+                output = io.StringIO()
+                with mock.patch("local_ci.resolve_pr", return_value=PR), mock.patch(
+                    "local_ci.verify_checkout"
+                ), mock.patch("local_ci.preflight_memory"), mock.patch(
+                    "local_ci.global_lock", side_effect=locked
+                ), mock.patch(
+                    "local_ci.run_check", side_effect=record_run
+                ), mock.patch("local_ci.post_status") as post, mock.patch(
+                    "local_ci.publish_gist"
+                ) as gist, mock.patch(
+                    "local_ci.socket.gethostname", return_value="ci-host"
+                ), mock.patch(
+                    "local_ci.time.monotonic", side_effect=[1.0, 2.0]
+                ), contextlib.redirect_stdout(output):
+                    result = local_ci.run_engine(
+                        Path("/control"),
+                        registry(first, second),
+                        "281",
+                        None,
+                        Path("/tmp/lock"),
+                        requested,
+                    )
+
+                self.assertEqual(result, 0)
+                self.assertEqual(seen, expected)
+                self.assertFalse(
+                    any(
+                        call.args[3] == "local-ci/summary"
+                        for call in post.call_args_list
+                    )
+                )
+                gist.assert_not_called()
+                self.assertIn("partial evidence", output.getvalue().lower())
+                self.assertIn(
+                    "cannot satisfy the merge gate", output.getvalue().lower()
+                )
+
+    def test_explicit_pr_set_equal_to_normal_selection_can_publish_summary(self):
+        first = check("scripts-tests", paths=("scripts/**",))
+        second = check("docs-test", paths=("scripts/**",))
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        def passed(_root, selected, _pr, _host, _control_root):
+            return local_ci.CheckResult(selected.name, True, 1.0, "passed", None)
+
+        with mock.patch("local_ci.resolve_pr", return_value=PR), mock.patch(
+            "local_ci.verify_checkout"
+        ), mock.patch("local_ci.preflight_memory"), mock.patch(
+            "local_ci.global_lock", side_effect=locked
+        ), mock.patch("local_ci.run_check", side_effect=passed), mock.patch(
+            "local_ci.post_status"
+        ) as post, mock.patch(
+            "local_ci.publish_gist", return_value=None
+        ) as gist, mock.patch(
+            "local_ci.socket.gethostname", return_value="ci-host"
+        ), mock.patch("local_ci.time.monotonic", side_effect=[1.0, 2.0]):
+            result = local_ci.run_engine(
+                Path("/control"),
+                registry(first, second),
+                "281",
+                None,
+                Path("/tmp/lock"),
+                ("docs-test", "scripts-tests"),
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            [
+                call.args[4]
+                for call in post.call_args_list
+                if call.args[3] == "local-ci/summary"
+            ],
+            ["pending", "success"],
+        )
+        self.assertTrue(any(call.args[1] == "summary" for call in gist.call_args_list))
+
+    def test_normal_zero_check_pr_run_can_publish_summary(self):
+        unrelated = check("scripts-tests", paths=("README.md",))
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        with mock.patch("local_ci.resolve_pr", return_value=PR), mock.patch(
+            "local_ci.verify_checkout"
+        ), mock.patch("local_ci.preflight_memory"), mock.patch(
+            "local_ci.global_lock", side_effect=locked
+        ), mock.patch("local_ci.run_check") as run_check_mock, mock.patch(
+            "local_ci.post_status"
+        ) as post, mock.patch(
+            "local_ci.publish_gist", return_value=None
+        ) as gist, mock.patch(
+            "local_ci.socket.gethostname", return_value="ci-host"
+        ), mock.patch("local_ci.time.monotonic", side_effect=[1.0, 2.0]):
+            result = local_ci.run_engine(
+                Path("/control"),
+                registry(unrelated),
+                "281",
+                None,
+                Path("/tmp/lock"),
+            )
+
+        self.assertEqual(result, 0)
+        run_check_mock.assert_not_called()
+        self.assertEqual(
+            [
+                call.args[4]
+                for call in post.call_args_list
+                if call.args[3] == "local-ci/summary"
+            ],
+            ["pending", "success"],
+        )
+        self.assertTrue(any(call.args[1] == "summary" for call in gist.call_args_list))
+
+    def test_inapplicable_explicit_pr_check_refuses_before_status_or_gist(self):
+        core = check(
+            "core-i18n",
+            repository="aiLabSolution/OpenELIS-Global-2",
+            paths=("frontend/src/languages/**",),
+        )
+        with mock.patch("local_ci.resolve_pr", return_value=PR), mock.patch(
+            "local_ci.verify_checkout"
+        ), mock.patch("local_ci.post_status") as post, mock.patch(
+            "local_ci.publish_gist"
+        ) as gist:
+            with self.assertRaisesRegex(local_ci.LocalCIError, "not applicable"):
+                local_ci.run_engine(
+                    Path("/control"),
+                    registry(core),
+                    "281",
+                    None,
+                    Path("/tmp/lock"),
+                    ("core-i18n",),
+                )
+        post.assert_not_called()
+        gist.assert_not_called()
+
     @mock.patch("local_ci.publish_gist", return_value=None)
     @mock.patch("local_ci.post_status")
     @mock.patch("local_ci.preflight_memory")
@@ -635,6 +824,15 @@ class EngineTests(unittest.TestCase):
                 for call in post.call_args_list
             )
         )
+        self.assertEqual(
+            [
+                call.args[4]
+                for call in post.call_args_list
+                if call.args[3] == "local-ci/summary"
+            ],
+            ["pending", "success"],
+        )
+        self.assertTrue(any(call.args[1] == "summary" for call in _gist.call_args_list))
 
     def test_exact_commit_mode_requires_repo_branch_and_explicit_check(self):
         arguments = {

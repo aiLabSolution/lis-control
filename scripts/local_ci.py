@@ -396,6 +396,18 @@ def select_checks(
     missing = sorted(requested_set - known)
     if missing:
         raise LocalCIError(f"unknown requested check(s): {', '.join(missing)}")
+    if requested_set:
+        applicable = {
+            check.name
+            for check in registry.checks
+            if check.paths_for_repository(repository_lower) is not None
+        }
+        inapplicable = sorted(requested_set - applicable)
+        if inapplicable:
+            raise LocalCIError(
+                f"requested check(s) not applicable to repository {repository}: "
+                f"{', '.join(inapplicable)}"
+            )
     selected = []
     for check in registry.checks:
         trigger_paths = check.paths_for_repository(repository_lower)
@@ -651,7 +663,8 @@ def run_engine(
     root = root.resolve()
     checkout = (checkout or root).resolve()
     requested_checks = tuple(requested_checks)
-    if commit_sha is not None:
+    commit_mode = commit_sha is not None
+    if commit_mode:
         if selector is not None:
             raise LocalCIError("provide a PR selector or --commit, not both")
         if not repo:
@@ -686,21 +699,43 @@ def run_engine(
     # This validation deliberately precedes every status/gist call.
     verify_checkout(checkout, pr.sha)
     checks = select_checks(registry, pr.repository, pr.changed_paths, requested_checks)
+    normal_checks = (
+        ()
+        if commit_mode
+        else select_checks(registry, pr.repository, pr.changed_paths)
+    )
+    summary_eligible = (
+        commit_mode
+        or not requested_checks
+        or {check.name for check in checks}
+        == {check.name for check in normal_checks}
+    )
     preflight_memory(checks)
+    if not summary_eligible:
+        requested_names = ", ".join(check.name for check in checks) or "(none)"
+        normal_names = ", ".join(check.name for check in normal_checks) or "(none)"
+        print(
+            "local_ci: PARTIAL EVIDENCE ONLY: explicit --check set "
+            f"[{requested_names}] does not exactly match the normal path-selected "
+            f"set [{normal_names}]. Individual check evidence will be published, "
+            f"but {SUMMARY_CONTEXT} and its summary gist will not. This run cannot "
+            "satisfy the merge gate."
+        )
     host = socket.gethostname()
     run_start = time.monotonic()
     results: list[CheckResult] = []
     with global_lock(lock_path):
-        post_status(
-            root,
-            pr.repository,
-            pr.sha,
-            SUMMARY_CONTEXT,
-            "pending",
-            host,
-            0.0,
-            f"running {len(checks)} check(s)",
-        )
+        if summary_eligible:
+            post_status(
+                root,
+                pr.repository,
+                pr.sha,
+                SUMMARY_CONTEXT,
+                "pending",
+                host,
+                0.0,
+                f"running {len(checks)} check(s)",
+            )
         for check in checks:
             print(f"local_ci: running {check.name}: {' '.join(check.command)}")
             results.append(run_check(checkout, check, pr, host, root))
@@ -709,31 +744,32 @@ def run_engine(
         summary_detail = (
             f"{sum(result.passed for result in results)}/{len(results)} checks passed"
         )
-        summary_log = (
-            f"local_ci summary\nrepository: {pr.repository}\nPR: {pr.url}\n"
-            f"head: {pr.sha}\nhost: {host}\nduration_seconds: {duration:.3f}\n"
-            f"registry_mode: {registry.mode}\nselected_checks: "
-            f"{', '.join(check.name for check in checks) or '(none)'}\nresult: "
-            f"{summary_detail}\n"
-            + "".join(
-                f"\n{result.name}: {result.detail} ({result.duration_seconds:.3f}s)"
-                f" log={result.log_url or '(gist unavailable)'}"
-                for result in results
+        if summary_eligible:
+            summary_log = (
+                f"local_ci summary\nrepository: {pr.repository}\nPR: {pr.url}\n"
+                f"head: {pr.sha}\nhost: {host}\nduration_seconds: {duration:.3f}\n"
+                f"registry_mode: {registry.mode}\nselected_checks: "
+                f"{', '.join(check.name for check in checks) or '(none)'}\nresult: "
+                f"{summary_detail}\n"
+                + "".join(
+                    f"\n{result.name}: {result.detail} ({result.duration_seconds:.3f}s)"
+                    f" log={result.log_url or '(gist unavailable)'}"
+                    for result in results
+                )
+                + "\n"
             )
-            + "\n"
-        )
-        summary_url = publish_gist(root, "summary", pr.sha, summary_log)
-        post_status(
-            root,
-            pr.repository,
-            pr.sha,
-            SUMMARY_CONTEXT,
-            "success" if passed else "failure",
-            host,
-            duration,
-            summary_detail,
-            summary_url,
-        )
+            summary_url = publish_gist(root, "summary", pr.sha, summary_log)
+            post_status(
+                root,
+                pr.repository,
+                pr.sha,
+                SUMMARY_CONTEXT,
+                "success" if passed else "failure",
+                host,
+                duration,
+                summary_detail,
+                summary_url,
+            )
     return 0 if passed else 1
 
 
@@ -776,7 +812,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--check",
         action="append",
         default=[],
-        help="run a named registered check regardless of paths (repeatable)",
+        help=(
+            "run a named applicable check regardless of paths (repeatable); a PR "
+            "run publishes merge-gate summary evidence only when the explicit set "
+            "equals normal path selection"
+        ),
     )
     return parser
 

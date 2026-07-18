@@ -7,6 +7,7 @@ faked by a shell stub first on PATH that replays a canned `gh pr view --json`
 payload (or fails, for the fail-closed cases). Parser cases import the module
 directly.
 """
+import contextlib
 import json
 import os
 import subprocess
@@ -14,9 +15,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hook_merge_gate
+import local_ci
 
 GATE = Path(__file__).resolve().parent / "hook_merge_gate.py"
 
@@ -215,6 +218,73 @@ class EndToEnd(unittest.TestCase):
         proc = self._run(_payload("gh pr merge --squash"), pr=GREEN)
         self.assertEqual(proc.returncode, 2)
         self.assertIn("local-ci/summary", proc.stderr)
+
+    def test_partial_engine_evidence_cannot_unlock_local_merge_gate(self):
+        self._write_registry("local")
+        first = local_ci.CheckConfig(
+            "first", "o/r", ("scripts/**",), ("true",), "fast", 30
+        )
+        second = local_ci.CheckConfig(
+            "second", "o/r", ("scripts/**",), ("true",), "fast", 30
+        )
+        registry = local_ci.Registry(
+            1,
+            "local",
+            {"o/r": local_ci.RepositoryConfig("o/r", True)},
+            (first, second),
+        )
+        pr = local_ci.PullRequest(
+            _SHA,
+            "https://github.com/o/r/pull/5",
+            "o/r",
+            ("scripts/changed.py",),
+            "b" * 40,
+            "lis-285-test",
+        )
+        statuses = []
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        def record_run(_checkout, selected, _pr, _host, _control_root):
+            statuses.append({
+                "__typename": "StatusContext",
+                "context": f"local-ci/{selected.name}",
+                "state": "SUCCESS",
+            })
+            return local_ci.CheckResult(selected.name, True, 0.1, "passed", None)
+
+        with mock.patch("local_ci.resolve_pr", return_value=pr), mock.patch(
+            "local_ci.verify_checkout"
+        ), mock.patch("local_ci.preflight_memory"), mock.patch(
+            "local_ci.global_lock", side_effect=locked
+        ), mock.patch("local_ci.run_check", side_effect=record_run), mock.patch(
+            "local_ci.post_status"
+        ) as post, mock.patch("local_ci.publish_gist") as gist, mock.patch(
+            "local_ci.socket.gethostname", return_value="ci-host"
+        ), mock.patch("local_ci.time.monotonic", side_effect=[1.0, 2.0]):
+            result = local_ci.run_engine(
+                self.control,
+                registry,
+                "5",
+                "o/r",
+                Path(self.tmp.name) / "lock",
+                ("first",),
+                self.control,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertFalse(
+            any(
+                call.args[3] == "local-ci/summary"
+                for call in post.call_args_list
+            )
+        )
+        gist.assert_not_called()
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=_pr(statuses))
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("missing successful StatusContext", proc.stderr)
 
     def test_missing_registry_fails_open_only_for_summary_check(self):
         self.registry.unlink()
