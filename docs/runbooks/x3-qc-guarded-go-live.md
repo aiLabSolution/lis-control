@@ -1,9 +1,20 @@
 # Runbook — X3 QC/calibration guarded go-live (LIS-269 / LIS-173)
 
-**Posture: GUARDED GO-LIVE (Pinote, QA/regulatory owner, 2026-07-19).** Patient results on the
-MAGLUMI X3 native-ASTM path are **allowed to go live**. QC/calibration classification on that
-path is **not wire-proven** — a real chassis-attached QC/calibration capture (LIS-266) has not
-yet run. Go-live is conditioned on two things both being true at the same time:
+**Posture: PROPOSED guarded go-live — PENDING verifiable QA sign-off (Pinote, QA/regulatory
+owner).** The drafting session recorded a 2026-07-19 sign-off, but no verifiable artifact of it
+exists in the repo, the compliance ledger, or a Pinote-authored tracker comment (adversarial
+review, PR #159). Until the sign-off is recorded — a `docs/compliance/sign-off/` entry or a
+Pinote-authored comment on LIS-269, following the ADR-0019 precedent — this posture is a
+**proposal**, not an authorization.
+
+Scope: this runbook governs **only the QC/calibration-misroute residual** on the MAGLUMI X3
+native-ASTM path. It does not waive the other verified open go-live gates from the 2026-07-19
+X3 production-readiness review (tracked as LIS-267..279 — notably LIS-265 idle-sever silent
+loss, LIS-272 missing core X3 seed: the real wire codes FT3 / "FT4 II" / "TSH II" are unmapped,
+so real results stage read-only "configuration needed" and QC processing fails on a null testId
+until that seed lands, and LIS-38/39 sign-off artifacts). Under the proposed posture, patient
+results on this path may go live **for the QC/calibration axis** once conditioned on two things
+both being true at the same time:
 
 1. **QC-provisioning config is present** — the analyzer profile that seeds `analyzer_qc_rule`
    rows and the calibration rule type it can express both exist (this runbook's companion
@@ -66,6 +77,11 @@ Chain verified by adversarial review 2026-07-19 (LIS-269):
 - Every value in the profile that claims to discriminate QC/calibration traffic carries the label
   **"PROVISIONAL — pending LIS-266 chassis-attached QC capture to confirm the real X3
   QC/calibration discriminator; do not treat as wire-proven."** verbatim in its `description`.
+- **Provisioning order matters:** create the X3 analyzer only on a core that includes the LIS-173
+  change (core PR #51). On an older core, `createQcRulesFromProfile` silently skips the
+  `CALIBRATION_*` placeholder (per-rule catch, warn-log only) and the skip does **not** self-heal
+  on a later core upgrade — profile rules seed at analyzer creation only, so the analyzer must be
+  re-provisioned (recreated from the profile) to pick the rule up.
 
 ## Required operator QC-review SOP (compensating control)
 
@@ -83,8 +99,11 @@ calibration rule does not fire at all (shipped inactive).
    naming convention used at that site, an implausible value for the ordered test, or a result
    landing with no matching patient order. Treat any such finding as a suspected classification
    miss, not a data-entry error.
-3. **On any suspected miss:** hold the result (do not release), capture the raw ASTM bytes if
-   still available (bridge raw-message archive, ADR-0012), and file it against LIS-266/LIS-269
+3. **On any suspected miss:** hold the result (do not release) and capture the raw ASTM bytes.
+   Note the production bridge has **no inbound raw-message archive** (ADR-0012 is Proposed and
+   edge/sim-only; ADR-0022, Proposed, covers the future H9-style raw archive) — capture at the
+   network layer instead (tcpdump/capture rig on the bridge host, per the bench runbook's
+   capture tooling), and file it against LIS-266/LIS-269
    with the captured bytes attached. Do not silently correct and move on — a repeatable miss means
    the discriminator is wrong and the profile needs to change.
 4. **Calibration:** because the calibration rule ships inactive, no host-side calibration
@@ -110,9 +129,10 @@ calibration rule does not fire at all (shipped inactive).
 - **LOINC/UCUM mappings in the profile (TSH, FT4) are synthetic seeds**, the same ones already
   carried in the bridge's `configuration.yml` ("real dictionary = LIS-38"), not a validated vendor
   dictionary.
-- This runbook's SOP is the accepted compensating control for the above, per QA/regulatory
-  sign-off (Pinote, 2026-07-19). It does not eliminate the risk; it bounds it to "caught by daily
-  human review" instead of "undetected."
+- This runbook's SOP is the proposed compensating control for the above; it becomes the
+  *accepted* control only when the QA/regulatory sign-off (Pinote) is verifiably recorded (see
+  Posture). It does not eliminate the risk; it bounds it to "caught by daily human review"
+  instead of "undetected."
 
 ## Traceability
 
@@ -121,8 +141,9 @@ calibration rule does not fire at all (shipped inactive).
 - LIS-266 — chassis-attached QC/calibration capture (the still-open proof this runbook stands in
   for).
 - LIS-33 — [S3.2] X3 QC results classified host-side, kept out of the patient stream. Its "Done"
-  label predates this slice's finding that the discriminator was never wire-verified; disposition
-  (reopen or supersede) is tracked separately and not resolved by this runbook.
+  label predates this slice's finding that the discriminator was never wire-verified; the recorded
+  disposition (LIS-33 ledger, 2026-07-18) retains it as Done with LIS-269 as the superseding live
+  remediation on the native path.
 - LIS-38 — MAGLUMI X3 bench-conformance sign-off (LOINC/UCUM dictionary, framing confirmation).
 - LIS-75 — SNIBE MAGLUMI X3 native-ASTM bench capture (`docs/runbooks/snibe-maglumi-x3-bench.md`).
 - ADR-0019 — QC-acceptance responsibility allocation (never auto-accept; engineer sign-off owned

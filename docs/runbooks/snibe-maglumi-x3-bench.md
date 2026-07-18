@@ -329,11 +329,17 @@ Once §9 has produced a real QC bin, close the loop:
 2. Replay the captured QC bin through the deployed stack:
 
    ```
-   python3 scripts/x3_astm_capture.py --replay <archived raw-*.bin> --to <bridge-host>:12020
+   python3 scripts/x3_astm_capture.py --replay <archived raw-*.bin> --to <bridge-host>:<x3-port>
    ```
 
+   The X3 listener port depends on topology: the deploy-kit site stack publishes
+   `${LIS_SITE_X3_BIND:-12021}:12021` (`deploy/kit/compose/bridge-site.yml`), so a site
+   replay targets **12021** by default; the dev-bench compose maps host **12020** → container
+   12021 (`docs/runbooks/snibe-maglumi-x3-bridge-openelis-bringup.md`).
+
 3. Verify staging: the QC row must land in `analyzer_results` with
-   `is_control = true` and `read_only = true` (QC meta-tag path), and must **never**
+   `iscontrol = true` and `read_only = true` (QC meta-tag path; the column is
+   `iscontrol`, no underscore), and must **never**
    be acceptable into the patient stream. A patient-shaped replay from the same
    session must still stage as a patient result (no over-classification).
 4. Archive the replay evidence next to the capture and note the verdict on LIS-269;
