@@ -434,7 +434,26 @@ def available_memory_mib(meminfo: Path = Path("/proc/meminfo")) -> int:
     raise LocalCIError(f"{meminfo} does not contain MemAvailable")
 
 
-def preflight_memory(checks: Iterable[CheckConfig], available_mib: int | None = None) -> None:
+def running_container_names() -> tuple[str, ...]:
+    """Return visible running containers without mutating Docker state."""
+    try:
+        result = _run(
+            ("docker", "ps", "--format", "{{.Names}}"),
+            cwd=Path.cwd(),
+            timeout=15,
+        )
+    except LocalCIError:
+        return ()
+    if result.returncode:
+        return ()
+    return tuple(sorted(line.strip() for line in result.stdout.splitlines() if line.strip()))
+
+
+def preflight_memory(
+    checks: Iterable[CheckConfig],
+    available_mib: int | None = None,
+    running_containers: Iterable[str] | None = None,
+) -> None:
     heavy = [check for check in checks if check.check_class == "heavy"]
     if not heavy:
         return
@@ -442,9 +461,19 @@ def preflight_memory(checks: Iterable[CheckConfig], available_mib: int | None = 
     available = available_memory_mib() if available_mib is None else available_mib
     if available < threshold:
         names = ", ".join(check.name for check in heavy)
+        containers = tuple(
+            running_container_names()
+            if running_containers is None
+            else running_containers
+        )
+        container_detail = (
+            " Running containers (left untouched): " + ", ".join(containers) + "."
+            if containers
+            else " No running container names were visible."
+        )
         raise LocalCIError(
             f"heavy check(s) {names} require {threshold} MiB available RAM; only "
-            f"{available} MiB is available. Stop or move co-resident OpenELIS "
+            f"{available} MiB is available.{container_detail} Stop or move co-resident OpenELIS "
             "dev/site/proof stacks yourself, then retry. local_ci never stops "
             "containers."
         )

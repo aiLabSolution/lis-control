@@ -156,7 +156,7 @@ class RegistryTests(unittest.TestCase):
 
 
 class CommittedRegistryTests(unittest.TestCase):
-    def test_committed_registry_is_hosted_and_wires_tracer_plus_five_fast_checks(self):
+    def test_committed_registry_is_hosted_and_wires_fast_plus_stack_checks(self):
         parsed = local_ci.load_registry(REPO_ROOT / "local_ci.json")
         self.assertEqual(parsed.mode, "hosted")
         self.assertEqual(
@@ -168,6 +168,9 @@ class CommittedRegistryTests(unittest.TestCase):
                 "kit-lint",
                 "core-i18n",
                 "bridge-tests",
+                "stage0-bootstrap",
+                "stage4-smoke",
+                "site-stack-smoke",
             ],
         )
         self.assertEqual(
@@ -197,14 +200,29 @@ class CommittedRegistryTests(unittest.TestCase):
             (
                 "aiLabSolution/lis-control",
                 "core/openelis",
-                {"deploy-kit-config"},
+                {
+                    "deploy-kit-config",
+                    "stage0-bootstrap",
+                    "stage4-smoke",
+                    "site-stack-smoke",
+                },
             ),
             (
                 "aiLabSolution/lis-control",
                 "deploy/kit",
-                {"deploy-kit-config", "kit-lint"},
+                {
+                    "deploy-kit-config",
+                    "kit-lint",
+                    "stage0-bootstrap",
+                    "stage4-smoke",
+                    "site-stack-smoke",
+                },
             ),
-            ("aiLabSolution/lis-control", "edge/drivers", {"bridge-tests"}),
+            (
+                "aiLabSolution/lis-control",
+                "edge/drivers",
+                {"bridge-tests", "site-stack-smoke"},
+            ),
             (
                 "aiLabSolution/OpenELIS-Global-2",
                 "frontend/src/languages/en.json",
@@ -380,10 +398,16 @@ class MemoryPreflightTests(unittest.TestCase):
     def test_heavy_refusal_is_actionable_and_never_stops_containers(self):
         heavy = check("core-backend", check_class="heavy", memory=8192)
         with self.assertRaises(local_ci.LocalCIError) as caught:
-            local_ci.preflight_memory([heavy], available_mib=4096)
+            local_ci.preflight_memory(
+                [heavy],
+                available_mib=4096,
+                running_containers=("oe-dev-webapp", "site-bridge"),
+            )
         message = str(caught.exception)
         self.assertIn("8192 MiB", message)
         self.assertIn("OpenELIS dev/site/proof stacks", message)
+        self.assertIn("oe-dev-webapp", message)
+        self.assertIn("site-bridge", message)
         self.assertIn("never stops containers", message)
 
 
