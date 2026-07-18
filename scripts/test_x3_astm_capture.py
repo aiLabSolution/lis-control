@@ -13,6 +13,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -263,6 +264,153 @@ class TestSocketHandshake(unittest.TestCase):
             log = f.read()
         self.assertIn("CAPTURE SUMMARY", log)
         self.assertIn("Framing: SIMPLIFIED", log)
+
+
+class TestConcurrentConnections(unittest.TestCase):
+    """Regression for the bench-observed failure (LIS-75, 2026-07-17): the X3
+    operation software holds one idle status connection open (the green LIS dot)
+    and opens a SEPARATE, parallel connection to deliver a message. A
+    serve-one-connection-at-a-time loop blocks the delivery connection behind the
+    idle one until the software's ~3s timeout fires ("Communication timeout
+    between software and LIS!"). ``serve()`` must handle each connection on its
+    own thread so a lingering idle connection never starves a delivery."""
+
+    def test_idle_connection_does_not_block_a_parallel_delivery(self):
+        outdir = tempfile.mkdtemp()
+        server = xc.CaptureServer(host="127.0.0.1", port=0, outdir=outdir, mode="simplified", once=False)
+
+        # Run the REAL serve() (its actual accept loop, not a re-implementation):
+        # port=0 binds an ephemeral port, published via server.bound_port once
+        # listening; server.close() unblocks accept() and serve() returns.
+        loop = threading.Thread(target=server.serve, daemon=True)
+        loop.start()
+        deadline = time.monotonic() + 5
+        while server.bound_port is None:
+            if time.monotonic() > deadline:
+                self.fail("serve() never started listening")
+            time.sleep(0.01)
+        port = server.bound_port
+        try:
+            # 1) An idle status connection that sends nothing and stays open.
+            idle = socket.create_connection(("127.0.0.1", port), timeout=5)
+
+            # 2) A parallel delivery connection completes the full handshake while
+            #    the idle one is still open. Each control token must be ACKed
+            #    promptly (well under the analyzer's ~3s timeout).
+            data = socket.create_connection(("127.0.0.1", port), timeout=5)
+            data.settimeout(3)
+            body = "".join(rec + CR for rec in KB_6_4_RECORDS).encode("latin-1")
+            data.sendall(ENQ)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(STX)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(body)
+            data.sendall(ETX)
+            self.assertEqual(data.recv(1), ACK)
+            data.sendall(EOT)
+            self.assertEqual(data.recv(1), ACK)
+            data.close()
+            idle.close()
+        finally:
+            server.close()
+            loop.join(timeout=5)
+            self.assertFalse(loop.is_alive(), "serve() did not return after close()")
+
+        # The delivery was archived byte-for-byte despite the idle connection.
+        raw_files = [f for f in os.listdir(outdir) if f.startswith("raw-")]
+        delivered = [f for f in raw_files if os.path.getsize(os.path.join(outdir, f)) > 0]
+        self.assertEqual(len(delivered), 1)
+        with open(os.path.join(outdir, delivered[0]), "rb") as f:
+            self.assertEqual(f.read(), ENQ + STX + body + ETX + EOT)
+
+
+def _start_capture_server(outdir, mode="simplified"):
+    """Run the real serve() on an ephemeral port; returns (server, thread)."""
+    server = xc.CaptureServer(host="127.0.0.1", port=0, outdir=outdir, mode=mode, once=False)
+    loop = threading.Thread(target=server.serve, daemon=True)
+    loop.start()
+    deadline = time.monotonic() + 5
+    while server.bound_port is None:
+        if time.monotonic() > deadline:
+            raise AssertionError("serve() never started listening")
+        time.sleep(0.01)
+    return server, loop
+
+
+def _wait_for_archive(outdir, expected, timeout=5):
+    """Poll until some raw-* archive in outdir equals `expected` bytes."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for f in os.listdir(outdir):
+            if f.startswith("raw-"):
+                with open(os.path.join(outdir, f), "rb") as fh:
+                    if fh.read() == expected:
+                        return True
+        time.sleep(0.05)
+    return False
+
+
+EVIDENCE_X3 = os.path.join(
+    os.path.dirname(__file__), os.pardir, "evidence", "bench", "maglumi-x3"
+)
+
+
+class TestWireReplay(unittest.TestCase):
+    """replay_send() plays the analyzer side of an archived capture against a
+    live host with the X3's simplified per-token ACK pacing — so every
+    committed evidence .bin doubles as a live test vector for a receive path
+    (bridge bring-up, LIS-265 repro via --gap)."""
+
+    def _round_trip(self, wire):
+        outdir = tempfile.mkdtemp()
+        server, loop = _start_capture_server(outdir)
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+                f.write(wire)
+                path = f.name
+            try:
+                envelopes = xc.replay_send(path, "127.0.0.1", server.bound_port)
+            finally:
+                os.unlink(path)
+            self.assertTrue(
+                _wait_for_archive(outdir, wire),
+                "capture server never archived the replayed bytes verbatim",
+            )
+            return envelopes
+        finally:
+            server.close()
+            loop.join(timeout=5)
+
+    def test_round_trip_synthetic_wire(self):
+        self.assertEqual(self._round_trip(simplified_wire(KB_6_1_RECORDS)), 1)
+
+    def test_replays_the_committed_bench_evidence(self):
+        # Anchor to source: the first real X3 capture must remain replayable
+        # byte-for-byte, not just parseable.
+        path = os.path.join(
+            EVIDENCE_X3, "20260717-0101010034012301113", "raw-20260717-133451-004.bin"
+        )
+        with open(path, "rb") as f:
+            wire = f.read()
+        self.assertEqual(self._round_trip(wire), 1)
+
+    def test_multi_envelope_evidence_counts_envelopes(self):
+        # AC6 session 002: six envelopes on one reused connection.
+        path = os.path.join(
+            EVIDENCE_X3, "20260717-ac6-hostid-mismatch", "raw-20260717-151920-002.bin"
+        )
+        with open(path, "rb") as f:
+            wire = f.read()
+        self.assertEqual(self._round_trip(wire), 6)
+
+    def test_zero_byte_capture_is_refused(self):
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+            path = f.name
+        try:
+            with self.assertRaises(xc.ReplayError):
+                xc.replay_send(path, "127.0.0.1", 1)
+        finally:
+            os.unlink(path)
 
 
 class TestReplay(unittest.TestCase):

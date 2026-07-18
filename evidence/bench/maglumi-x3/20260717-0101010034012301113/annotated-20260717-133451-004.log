@@ -1,0 +1,22 @@
+# X3 ASTM capture session 20260717-133451-004 from ('172.21.208.1', 63906), ACK mode=simplified
+# REDACTED 2026-07-17: the O-record sample-id field carried a real personal name
+#   (PHI) and was replaced with the bench placeholder 'BENCH-SAMPLE-001'. The
+#   pristine capture is retained in the offline validation evidence store, NOT in
+#   this repo. All other bytes are verbatim as received from the analyzer.
+
+Wire (redacted, records CR-separated):
+  <ENQ><STX>H|\^&||PSWD|Maglumi X3|||||Lis||P|E1394-97|20260717<CR>
+  P|1<CR>
+  O|1|BENCH-SAMPLE-001||^^^FT3<CR>
+  R|1|^^^FT3|5.43|pmol/L|3.08 - 6.468|N||||||20250320153245<CR>
+  L|1|N<CR>
+  <ETX><EOT>
+
+================= CAPTURE SUMMARY (redacted) =================
+Framing: SIMPLIFIED  (bare STX (no frame number), no checksum, no LF)
+  signals: ENQ=True STX=True ETX/ETB=True LF=False frame#=False checksum=False
+Identity (H): sender/Analyzer-ID='Maglumi X3'  receiver/Host-ID='Lis'  version='E1394-97'  delimiters='\\^&'
+Order (O): sample_id='BENCH-SAMPLE-001'  assays=['FT3']
+Result (R): FT3=5.43 pmol/L  range='3.08 - 6.468'  flag='N'  ts='20250320153245' @ field 13
+R-timestamp field position(s) observed: [13]  (AC4 — KB §6.6 off-by-one)
+=============================================================
