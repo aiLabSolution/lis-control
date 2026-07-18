@@ -155,7 +155,7 @@ class RegistryTests(unittest.TestCase):
 
 
 class CommittedRegistryTests(unittest.TestCase):
-    def test_committed_registry_is_hosted_and_wires_tracer_plus_five_fast_checks(self):
+    def test_committed_registry_is_hosted_and_wires_fast_plus_core_heavy_checks(self):
         parsed = local_ci.load_registry(REPO_ROOT / "local_ci.json")
         self.assertEqual(parsed.mode, "hosted")
         self.assertEqual(
@@ -167,6 +167,8 @@ class CommittedRegistryTests(unittest.TestCase):
                 "kit-lint",
                 "core-i18n",
                 "bridge-tests",
+                "core-backend",
+                "core-frontend",
             ],
         )
         self.assertEqual(
@@ -182,6 +184,13 @@ class CommittedRegistryTests(unittest.TestCase):
                 "test_*.py",
                 "-v",
             ),
+        )
+        backend, frontend = parsed.checks[-2:]
+        self.assertEqual(
+            (backend.check_class, backend.min_memory_mib), ("heavy", 6144)
+        )
+        self.assertEqual(
+            (frontend.check_class, frontend.min_memory_mib), ("heavy", 4096)
         )
 
     def test_committed_filters_cover_hosted_paths_and_umbrella_gitlinks(self):
@@ -207,8 +216,24 @@ class CommittedRegistryTests(unittest.TestCase):
             (
                 "aiLabSolution/OpenELIS-Global-2",
                 "frontend/src/languages/en.json",
-                {"core-i18n"},
+                {"core-i18n", "core-frontend"},
             ),
+            (
+                "aiLabSolution/OpenELIS-Global-2",
+                "src/main/java/org/openelisglobal/App.java",
+                {"core-backend"},
+            ),
+            (
+                "aiLabSolution/OpenELIS-Global-2",
+                "frontend/src/App.jsx",
+                {"core-frontend"},
+            ),
+            (
+                "aiLabSolution/OpenELIS-Global-2",
+                "build.docker-compose.yml",
+                {"core-backend", "core-frontend"},
+            ),
+            ("aiLabSolution/OpenELIS-Global-2", "README.md", set()),
             (
                 "aiLabSolution/openelis-analyzer-bridge",
                 "pom.xml",
@@ -441,6 +466,47 @@ class CheckExecutionTests(unittest.TestCase):
         self.assertEqual(final.args[6], 2.5)
         self.assertEqual(final.args[8], "https://gist/secret")
         self.assertIn("OK", gist.call_args.args[3])
+
+    @mock.patch("local_ci.time.monotonic", side_effect=[10.0, 12.5])
+    @mock.patch("local_ci.subprocess.run")
+    @mock.patch("local_ci.publish_gist", return_value="https://gist/secret")
+    @mock.patch("local_ci.post_status")
+    def test_check_uses_valid_command_status_detail_in_status_and_log(
+        self, post, gist, run, _clock
+    ):
+        def write_detail(*_args, **kwargs):
+            detail_path = Path(kwargs["env"][local_ci.STATUS_DETAIL_ENV])
+            detail_path.write_text(
+                "passed; absorbed 3 baseline flakes\n", encoding="utf-8"
+            )
+            return completed(returncode=0, stdout="ALLOWLIST BANNER\n")
+
+        run.side_effect = write_detail
+        result = local_ci.run_check(Path("/checkout"), check(), PR, "ci-host")
+        self.assertEqual(result.detail, "passed; absorbed 3 baseline flakes")
+        self.assertEqual(post.call_args_list[-1].args[7], result.detail)
+        self.assertIn(
+            "result: passed; absorbed 3 baseline flakes", gist.call_args.args[3]
+        )
+
+    @mock.patch("local_ci.time.monotonic", side_effect=[10.0, 12.5])
+    @mock.patch("local_ci.subprocess.run")
+    @mock.patch("local_ci.publish_gist", return_value="https://gist/secret")
+    @mock.patch("local_ci.post_status")
+    def test_invalid_command_status_detail_fails_closed(
+        self, post, gist, run, _clock
+    ):
+        def write_detail(*_args, **kwargs):
+            detail_path = Path(kwargs["env"][local_ci.STATUS_DETAIL_ENV])
+            detail_path.write_text("first line\nsecond line\n", encoding="utf-8")
+            return completed(returncode=0, stdout="command passed\n")
+
+        run.side_effect = write_detail
+        result = local_ci.run_check(Path("/checkout"), check(), PR, "ci-host")
+        self.assertFalse(result.passed)
+        self.assertEqual(result.detail, "failed (exit 2)")
+        self.assertEqual(post.call_args_list[-1].args[4], "failure")
+        self.assertIn("INVALID STATUS DETAIL", gist.call_args.args[3])
 
     @mock.patch("local_ci.time.monotonic", side_effect=[10.0, 15.0])
     @mock.patch("local_ci.subprocess.run")
