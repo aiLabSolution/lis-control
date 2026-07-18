@@ -1,0 +1,127 @@
+# Runbook — X3 QC/calibration guarded go-live (LIS-269 / LIS-173)
+
+**Posture: GUARDED GO-LIVE (Pinote, QA/regulatory owner, 2026-07-19).** Patient results on the
+MAGLUMI X3 native-ASTM path are **allowed to go live**. QC/calibration classification on that
+path is **not wire-proven** — a real chassis-attached QC/calibration capture (LIS-266) has not
+yet run. Go-live is conditioned on two things both being true at the same time:
+
+1. **QC-provisioning config is present** — the analyzer profile that seeds `analyzer_qc_rule`
+   rows and the calibration rule type it can express both exist (this runbook's companion
+   changes: LIS-173 core PR, `deploy/kit/configs/analyzer-profiles/astm/snibe-maglumi-x3.json`).
+2. **The operator QC-review SOP below is followed** — the compensating control for the fact that
+   the provisioned discriminator is a best-guess, not a proven one.
+
+Do **not** read "QC-provisioning config exists" as "QC routing works." It makes QC routing
+*possible* and, via the profile-seed path, *the default* — it does not make it *proven*. That
+proof is LIS-266's job, still open.
+
+## Why this is guarded, not green
+
+Chain verified by adversarial review 2026-07-19 (LIS-269):
+
+- The bridge's in-repo `configuration.yml` X3 `qcRule` (`FIELD_EQUALS(O.12, Q)`) is keyed at
+  `192.0.2.10` — TEST-NET-1, "never routable" by its own comment — so it has never matched real
+  analyzer traffic.
+- OpenELIS's registry sync **fully replaces** the bridge's analyzer registry on every sync
+  (`attachQcRules`), and until this slice no MAGLUMI/SNIBE analyzer profile existed anywhere, so
+  the sync pushed `qcRules: []` — the live entry the bridge actually matches carried **no** QC
+  rules at all. That gap is what this slice's profile (§ Provisioning below) closes.
+- With empty rules, `ASTMResultParser` falls back to the hardcoded `O.12 == "Q"` check — the same
+  guess now encoded (as the active default rule) in the new profile. **No bench capture confirms
+  the X3 emits `O.12 = Q`.** Every captured patient O-record to date is
+  `O|1|<id>||^^^CODE` — about five fields, shorter than the field this rule targets. If the real
+  X3 never populates `O.12`, the rule silently never fires and a QC row falls straight into the
+  patient stream, unflagged.
+- Calibration is worse: before LIS-173, `AnalyzerQcRule.RuleType` could not even express a
+  `CALIBRATION_*` value — `RuleType.valueOf(...)` rejected it at the REST boundary and the
+  `chk_qc_rule_type` CHECK constraint rejected it at the DB. LIS-173 makes the type expressible
+  and ships one placeholder rule (`CALIBRATION_SPECIMEN_ID_PREFIX`, operand `"CAL-"`) —
+  **deliberately inactive** (`isActive: false`). No calibration upload or Sample-ID convention has
+  ever been observed from a real X3; `"CAL-"` is an invented placeholder, not a vendor- or
+  bench-confirmed value. Shipping it active risked silently reclassifying a real patient specimen
+  whose accession happened to start with `CAL-` out of the patient stream — worse than the current
+  gap. It stays inactive until an operator confirms the real convention (LIS-266) and flips it on.
+- Downstream of classification is sound: a QC-tagged row is staged read-only and never accepted
+  into the patient result set (Westgard pipeline wired; see ADR-0019 for the acceptance-gate
+  allocation across edge/bridge, edge/sim, and OpenELIS-core). The gap this runbook is about is
+  entirely upstream, at classification + provisioning.
+
+## Provisioning (what this slice lands)
+
+- **LIS-173 (core):** `AnalyzerQcRule.RuleType` gains `CALIBRATION_FIELD_EQUALS`,
+  `CALIBRATION_FIELD_CONTAINS`, `CALIBRATION_SPECIMEN_ID_PREFIX`,
+  `CALIBRATION_SPECIMEN_ID_PATTERN`; liquibase `004-014` widens
+  `analyzer_qc_rule.rule_type` and the `chk_qc_rule_type` CHECK constraint;
+  `AnalyzerQcRuleServiceImpl.validateRule` accepts the new types.
+- **X3 analyzer profile:** `deploy/kit/configs/analyzer-profiles/astm/snibe-maglumi-x3.json`
+  (mirrored at `core/openelis/projects/analyzer-profiles/astm/snibe-maglumi-x3.json` per the
+  mirror convention in `projects/analyzer-profiles/README.md` — the `deploy/kit` copy, mounted at
+  `/data/analyzer-profiles`, is authoritative for deployed environments). Creating the analyzer
+  from this profile seeds `configDefaults.qcRules` into `analyzer_qc_rule` via
+  `AnalyzerServiceImpl.createQcRulesFromProfile`, so the bridge push-sync
+  (`AnalyzerBridgeStartupRegistrar` / `BridgeRegistrationService.attachQcRules`) now has a
+  non-empty rule set keyed at the analyzer's real registered IP — the previous "sync wipes it to
+  empty" failure mode is closed for whatever rules are provisioned, though the rules' *correctness*
+  remains unproven (see above).
+- Every value in the profile that claims to discriminate QC/calibration traffic carries the label
+  **"PROVISIONAL — pending LIS-266 chassis-attached QC capture to confirm the real X3
+  QC/calibration discriminator; do not treat as wire-proven."** verbatim in its `description`.
+
+## Required operator QC-review SOP (compensating control)
+
+This SOP is **required**, not optional, for any site running the X3 native-ASTM path before
+LIS-266 lands. It exists because the provisioned QC rule is a best-guess default, and the
+calibration rule does not fire at all (shipped inactive).
+
+1. **Before go-live at a site:** confirm the `snibe-maglumi-x3` analyzer profile was used to
+   create the X3's analyzer record in OpenELIS (Admin → Analyzers), and that
+   `GET /rest/analyzer/analyzers/{id}/qc-rules` shows the `FIELD_EQUALS O.12=Q` rule active. This
+   is the "QC-provisioning config is present" precondition for go-live.
+2. **Daily, for every result batch ingested from the X3:** a lab engineer reviews the *patient*
+   result queue (not just the QC queue) for any result that looks like it could be a
+   QC/calibrator value that was missed by classification — e.g. a specimen ID matching a QC/lot
+   naming convention used at that site, an implausible value for the ordered test, or a result
+   landing with no matching patient order. Treat any such finding as a suspected classification
+   miss, not a data-entry error.
+3. **On any suspected miss:** hold the result (do not release), capture the raw ASTM bytes if
+   still available (bridge raw-message archive, ADR-0012), and file it against LIS-266/LIS-269
+   with the captured bytes attached. Do not silently correct and move on — a repeatable miss means
+   the discriminator is wrong and the profile needs to change.
+4. **Calibration:** because the calibration rule ships inactive, no host-side calibration
+   classification happens at all yet. Any calibration run must be recognized and handled by the
+   operator manually (per existing pre-X3-integration lab procedure) until LIS-266/LIS-38 confirm
+   a real convention and the profile's calibration rule is activated with a confirmed operand.
+5. **Never auto-accept QC** — unchanged baseline from ADR-0019. Even a correctly-classified QC row
+   is staged read-only; acceptance/rejection is an engineer sign-off in OpenELIS-core's QC module,
+   never automatic.
+6. **When LIS-266 lands:** re-derive the QC discriminator (and, if observed, the calibration
+   convention) from the real capture, update `snibe-maglumi-x3.json` accordingly, re-provision, and
+   retire step 2's heightened manual review to the normal QC-review cadence.
+
+## Residual risk (explicit)
+
+- **QC misclassification into the patient stream is possible and not ruled out.** The active
+  default rule (`O.12 == "Q"`) is unconfirmed against real X3 wire traffic; if wrong, QC results
+  are not tagged and are not held read-only — they behave exactly like patient results.
+- **Calibration classification does not happen at all yet** (rule ships inactive by design, see
+  above) — this is a known, accepted gap under the guarded-go-live posture, not a silent one.
+- **LOINC/UCUM mappings in the profile (TSH, FT4) are synthetic seeds**, the same ones already
+  carried in the bridge's `configuration.yml` ("real dictionary = LIS-38"), not a validated vendor
+  dictionary.
+- This runbook's SOP is the accepted compensating control for the above, per QA/regulatory
+  sign-off (Pinote, 2026-07-19). It does not eliminate the risk; it bounds it to "caught by daily
+  human review" instead of "undetected."
+
+## Traceability
+
+- LIS-269 — X3 QC/calibration provisioning gap (this runbook's parent slice).
+- LIS-173 — OE control-plane: `CALIBRATION_*` rule types, liquibase, validation.
+- LIS-266 — chassis-attached QC/calibration capture (the still-open proof this runbook stands in
+  for).
+- LIS-33 — [S3.2] X3 QC results classified host-side, kept out of the patient stream. Its "Done"
+  label predates this slice's finding that the discriminator was never wire-verified; disposition
+  (reopen or supersede) is tracked separately and not resolved by this runbook.
+- LIS-38 — MAGLUMI X3 bench-conformance sign-off (LOINC/UCUM dictionary, framing confirmation).
+- LIS-75 — SNIBE MAGLUMI X3 native-ASTM bench capture (`docs/runbooks/snibe-maglumi-x3-bench.md`).
+- ADR-0019 — QC-acceptance responsibility allocation (never auto-accept; engineer sign-off owned
+  by OpenELIS core) — the downstream acceptance gate this runbook's upstream classification feeds.
