@@ -35,6 +35,15 @@ Usage:
   # Post-bench: re-run the analysis over an archived raw capture (no socket):
   python3 scripts/x3_astm_capture.py --replay ./x3-capture/raw-*.bin
 
+  # Wire-replay an archived capture against a live host, playing the analyzer
+  # side byte-for-byte with the X3's per-token ACK pacing (bridge bring-up
+  # verification without the bench). --gap idles between envelopes on the SAME
+  # connection — a gap longer than the host's idle timeout reproduces the
+  # LIS-265 teardown:
+  python3 scripts/x3_astm_capture.py \
+      --replay evidence/bench/maglumi-x3/.../raw-20260717-133451-004.bin \
+      --to 127.0.0.1:12020 --gap 15
+
 Safety: capture-only. This tool never accepts QC as valid, never writes to the
 analyzer, and does not answer order-download (Q) queries — order-download is
 LIS-177 scope, out of scope for the LIS-75 capture.
@@ -49,6 +58,7 @@ import re
 import socket
 import sys
 import threading
+import time
 
 # --- ASTM E1394 / E1381 control bytes ---------------------------------------
 ENQ = 0x05
@@ -376,20 +386,36 @@ class CaptureServer:
         self.ack_on = _FRAMED_ACK_ON if mode == "framed" else _SIMPLIFIED_ACK_ON
         self._seq = 0  # monotonic per-connection counter for unique archive names
         self._seq_lock = threading.Lock()
+        self.bound_port: int | None = None  # actual port once listening (port=0 → ephemeral)
+        self._closing = False
         os.makedirs(outdir, exist_ok=True)
+
+    def close(self) -> None:
+        """Ask serve() to stop; its accept loop notices within ~0.25 s and returns.
+
+        (Closing the listening fd from another thread does NOT unblock a
+        thread already parked in accept() on Linux — hence flag + poll.)"""
+        self._closing = True
 
     def serve(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
             srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             srv.bind((self.host, self.port))
             srv.listen(16)
+            srv.settimeout(0.25)  # bounds how long close() waits, nothing else
+            self.bound_port = srv.getsockname()[1]
             print(
-                f"[{_now_iso()}] X3 ASTM capture listening on {self.host}:{self.port} "
+                f"[{_now_iso()}] X3 ASTM capture listening on {self.host}:{self.bound_port} "
                 f"(ACK mode={self.mode}); archiving to {self.outdir}. Ctrl-C to stop.",
                 flush=True,
             )
-            while True:
-                conn, peer = srv.accept()
+            while not self._closing:
+                try:
+                    conn, peer = srv.accept()
+                except socket.timeout:
+                    continue
+                except OSError:
+                    return  # listening socket died out from under us
                 if self.once:
                     try:
                         self._handle_safely(conn, peer)
@@ -499,6 +525,61 @@ def _replay(path: str) -> int:
     return 0
 
 
+class ReplayError(Exception):
+    """Wire replay aborted: the host broke the expected ACK cadence."""
+
+
+def replay_send(path: str, host: str, port: int, gap: float = 0.0, ack_timeout: float = 3.0) -> int:
+    """Wire-replay an archived raw capture, playing the ANALYZER side.
+
+    Sends the captured analyzer->host bytes verbatim on one connection, pacing
+    as the X3 does in simplified mode: after each control token in
+    _SIMPLIFIED_ACK_ON, block until the host ACKs (ack_timeout defaults to 3 s,
+    the analyzer's own Communicate Timeout). Record bytes between tokens are
+    sent unpaced, exactly as captured. After each envelope's EOT the connection
+    idles `gap` seconds — still open, like the bench-observed reuse pattern —
+    so a gap longer than the host's idle timeout reproduces LIS-265.
+
+    Returns the number of envelopes delivered; raises ReplayError on any
+    missing/wrong ACK. Framed (checksummed) pacing is deliberately not
+    implemented: no framed capture exists, and its ACK anchors trail the
+    checksum bytes, not the ETX itself.
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+    if not raw:
+        raise ReplayError(f"{path} is a 0-byte status-connect capture — nothing to send")
+    envelopes = 0
+    with socket.create_connection((host, port), timeout=ack_timeout) as sock:
+        sock.settimeout(ack_timeout)
+        pending = bytearray()
+        for b in raw:
+            if b not in _SIMPLIFIED_ACK_ON:
+                pending.append(b)
+                continue
+            if pending:
+                sock.sendall(bytes(pending))
+                pending.clear()
+            sock.sendall(bytes([b]))
+            name = _CTRL_NAME.get(b, f"0x{b:02x}")
+            try:
+                resp = sock.recv(1)
+            except socket.timeout:
+                raise ReplayError(f"sent <{name}>, no ACK within {ack_timeout:g}s")
+            if resp != bytes([ACK]):
+                raise ReplayError(f"sent <{name}>, expected <ACK>, got {resp!r}")
+            print(f"[{_now_iso()}] <{name}> -> <ACK>", flush=True)
+            if b == EOT:
+                envelopes += 1
+                if gap:
+                    print(f"[{_now_iso()}] envelope {envelopes} delivered; holding the connection idle {gap:g}s", flush=True)
+                    time.sleep(gap)
+        if pending:  # trailing bytes after the last EOT — a truncated capture
+            sock.sendall(bytes(pending))
+    print(f"[{_now_iso()}] replayed {len(raw)}B, {envelopes} envelope(s), from {path}", flush=True)
+    return envelopes
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")
@@ -514,11 +595,52 @@ def main(argv: list[str] | None = None) -> int:
         "summary reports checksummed framing, restart with --mode framed.",
     )
     p.add_argument("--once", action="store_true", help="handle a single connection then exit")
-    p.add_argument("--replay", metavar="RAWFILE", help="analyze an archived raw capture and exit (no socket)")
+    p.add_argument(
+        "--replay",
+        metavar="RAWFILE",
+        help="analyze an archived raw capture and exit (no socket); with --to, "
+        "wire-replay it against a live host instead",
+    )
+    p.add_argument(
+        "--to",
+        metavar="HOST:PORT",
+        help="with --replay: send the capture to this host, playing the analyzer "
+        "side with simplified per-token ACK pacing",
+    )
+    p.add_argument(
+        "--gap",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="with --replay --to: idle this long between envelopes on the same "
+        "connection (a gap above the host's idle timeout reproduces LIS-265)",
+    )
+    p.add_argument(
+        "--ack-timeout",
+        type=float,
+        default=3.0,
+        metavar="SECONDS",
+        help="with --replay --to: how long to wait for each ACK "
+        "(default 3, the analyzer's own Communicate Timeout)",
+    )
     args = p.parse_args(argv)
 
+    if args.to and not args.replay:
+        p.error("--to requires --replay")
     if args.replay:
-        return _replay(args.replay)
+        if not args.to:
+            return _replay(args.replay)
+        if args.mode == "framed":
+            p.error("wire replay implements simplified pacing only (no framed capture exists)")
+        host, sep, port_s = args.to.rpartition(":")
+        if not sep or not host or not port_s.isdigit():
+            p.error(f"--to must be HOST:PORT, got {args.to!r}")
+        try:
+            replay_send(args.replay, host, int(port_s), gap=args.gap, ack_timeout=args.ack_timeout)
+        except ReplayError as exc:
+            print(f"[{_now_iso()}] replay FAILED: {exc}", file=sys.stderr, flush=True)
+            return 1
+        return 0
 
     server = CaptureServer(args.host, args.port, args.outdir, args.mode, args.once)
     try:

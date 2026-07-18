@@ -68,7 +68,10 @@ operation PC's second Ethernet port; analyzer chassis still NOT connected
 - Listener observed the connect: sessions `raw-20260717-114829-003` (held open)
   and `raw-20260717-115031-004` (opened 11:50:31, closed 11:51:20) — **both
   0 bytes**. The software opens a bare TCP connection and sends nothing until
-  it has a message to deliver.
+  it has a message to deliver. (These two 0-byte session files were not retained
+  in the repo — superseded during the same session; the observation survives
+  only as this log note. Equivalent 0-byte status connects ARE archived in
+  `../20260717-ac6-hostid-mismatch/`.)
 
 Wire-facts established (software-only, chassis absent):
 
@@ -124,15 +127,20 @@ individually). No NAK, no checksum, no frame number, no LF.
    still only inferable — the connect succeeded with our arbitrary host; a
    deliberate mismatch test was not run.)
 
-**Concurrent-connection behavior (new wire-fact, feeds LIS-174):** the software
-does NOT reuse the idle status connection to deliver. It opens a fresh TCP
-connection per upload attempt (observed ports 58973/58974/63906…) while the
-green-LIS status connection stays open in parallel. A serve-one-at-a-time host
-leaves the delivery connection queued until the software's ~3s timeout fires
-(that was the "Communication timeout between software and LIS!" error seen
-before the fix). `scripts/x3_astm_capture.py` was patched to accept each
-connection on its own thread (24 self-tests still green); the receive path
-LIS-174 must be concurrent for the same reason.
+**Concurrent-connection behavior (new wire-fact, feeds LIS-174):** in this
+session the software did NOT reuse the idle status connection to deliver. It
+opened a fresh TCP connection per upload attempt (observed ports
+58973/58974/63906…) while the green-LIS status connection stayed open in
+parallel. A serve-one-at-a-time host leaves the delivery connection queued
+until the software's ~3s timeout fires (that was the "Communication timeout
+between software and LIS!" error seen before the fix).
+`scripts/x3_astm_capture.py` was patched to accept each connection on its own
+thread (24 self-tests still green); the receive path LIS-174 must be
+concurrent for the same reason. *(Update, ~15:19 run: with the concurrent
+listener up, the software also does the opposite — session 002 in
+`../20260717-ac6-hostid-mismatch/` carried six envelopes from two upload
+actions ~90s apart over ONE reused connection. Both patterns are real; a
+host must support concurrent connections AND long-idle multi-envelope reuse.)*
 
 **PHI note:** the O-record sample-id field carried a real personal name. Per the
 runbook, the pristine capture is kept ONLY in the offline validation evidence
@@ -141,7 +149,28 @@ field replaced with `BENCH-SAMPLE-001`. Every other byte is verbatim. The
 measurement itself (FT3 5.43) is a real historical patient result — treat the
 values as illustrative of *format*, not as a bench control.
 
-## AC status after the 13:35 capture
+## UPDATE 2026-07-17 ~15:17 — AC6 host-id mismatch run (settles the match question)
+
+Sixteen further sessions captured in `../20260717-ac6-hostid-mismatch/`
+(15:17–15:48). The two carrying bytes:
+
+- **Session 002** (`raw-20260717-151920-002.bin`, 942 B): `Host ID` still `Lis`
+  — six envelopes (FT3 / FT4 II / TSH II, twice) from **two operator upload
+  actions ~90 s apart, all on one reused connection**. Baseline for the
+  mismatch comparison, and the reuse evidence cited above.
+- **Session 006** (`raw-20260717-152842-006.bin`, 480 B): `Host ID` deliberately
+  set to **`NOTLIS`** on the Online screen. The software stamped `NOTLIS` into
+  the H-record **receiver-ID field (H-10)** — sender (H-5) stayed `Maglumi X3` —
+  and **delivered the full 3-envelope batch anyway**, every token ACKed, LIS
+  green throughout.
+
+**Conclusion (AC6 → MET):** the X3 side enforces **no host-name match** — unlike
+SnibeLis, no particular receiver identity is required for upload. The H-record
+identity fields are operator-editable free text; the bridge must treat them as
+informational only (never route or validate on them). The remaining 0-byte
+sessions are status connects, archived for completeness.
+
+## AC status after the 13:35 capture + 15:17 AC6 run
 
 | AC | Status | Evidence |
 |---|---|---|
@@ -150,7 +179,7 @@ values as illustrative of *format*, not as a bench control.
 | AC3 framing classified + checksum state | **MET** | SIMPLIFIED, checksum off |
 | AC4 R-timestamp field position | **MET** | field 13 |
 | AC5 real Lis-ID / units / range | **MET** | `^^^FT3`, `pmol/L`, `3.08 - 6.468` |
-| AC6 peer identity | **PARTIAL** | H-record values pinned; name-match enforcement not tested |
+| AC6 peer identity | **MET** | H-record values pinned; no name-match enforced (`../20260717-ac6-hostid-mismatch/`, session 006) |
 
 ## Residual / nice-to-have (not blocking)
 
@@ -159,10 +188,8 @@ values as illustrative of *format*, not as a bench control.
    but the analyzer chassis was disconnected (PLC red). A fresh run with the
    chassis on the table would upgrade AC1 from "software-level" to full and
    confirm auto-upload (vs. manual `→LIS Online`) frames identically.
-2. **Settle AC6's match question** by deliberately varying `Analyzer ID` /
-   `Host ID` and observing whether the software still uploads or refuses.
-3. **QC path (runbook §9):** capture a QC upload and check for a wire
+2. **QC path (runbook §9):** capture a QC upload and check for a wire
    discriminator (feeds LIS-33).
-4. **Fixture graduation (LIS-38):** the redacted payload can seed a
+3. **Fixture graduation (LIS-38):** the redacted payload can seed a
    `synthetic: false` `edge/sim` fixture — but note `^^^FT3` here vs. the
    existing `FT3 II` synthetic seeds; reconcile the assay-code strings there.

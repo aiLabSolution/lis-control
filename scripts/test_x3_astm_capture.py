@@ -13,6 +13,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -277,27 +278,18 @@ class TestConcurrentConnections(unittest.TestCase):
     def test_idle_connection_does_not_block_a_parallel_delivery(self):
         outdir = tempfile.mkdtemp()
         server = xc.CaptureServer(host="127.0.0.1", port=0, outdir=outdir, mode="simplified", once=False)
-        srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv_sock.bind(("127.0.0.1", 0))
-        srv_sock.listen(16)
-        port = srv_sock.getsockname()[1]
 
-        # Drive the accept loop by hand (serve() blocks forever); this exercises
-        # the same per-connection threading serve() uses.
-        stop = threading.Event()
-
-        def accept_loop():
-            srv_sock.settimeout(0.25)
-            while not stop.is_set():
-                try:
-                    conn, peer = srv_sock.accept()
-                except socket.timeout:
-                    continue
-                threading.Thread(target=server._serve_conn, args=(conn, peer), daemon=True).start()
-
-        loop = threading.Thread(target=accept_loop, daemon=True)
+        # Run the REAL serve() (its actual accept loop, not a re-implementation):
+        # port=0 binds an ephemeral port, published via server.bound_port once
+        # listening; server.close() unblocks accept() and serve() returns.
+        loop = threading.Thread(target=server.serve, daemon=True)
         loop.start()
+        deadline = time.monotonic() + 5
+        while server.bound_port is None:
+            if time.monotonic() > deadline:
+                self.fail("serve() never started listening")
+            time.sleep(0.01)
+        port = server.bound_port
         try:
             # 1) An idle status connection that sends nothing and stays open.
             idle = socket.create_connection(("127.0.0.1", port), timeout=5)
@@ -320,9 +312,9 @@ class TestConcurrentConnections(unittest.TestCase):
             data.close()
             idle.close()
         finally:
-            stop.set()
+            server.close()
             loop.join(timeout=5)
-            srv_sock.close()
+            self.assertFalse(loop.is_alive(), "serve() did not return after close()")
 
         # The delivery was archived byte-for-byte despite the idle connection.
         raw_files = [f for f in os.listdir(outdir) if f.startswith("raw-")]
@@ -330,6 +322,95 @@ class TestConcurrentConnections(unittest.TestCase):
         self.assertEqual(len(delivered), 1)
         with open(os.path.join(outdir, delivered[0]), "rb") as f:
             self.assertEqual(f.read(), ENQ + STX + body + ETX + EOT)
+
+
+def _start_capture_server(outdir, mode="simplified"):
+    """Run the real serve() on an ephemeral port; returns (server, thread)."""
+    server = xc.CaptureServer(host="127.0.0.1", port=0, outdir=outdir, mode=mode, once=False)
+    loop = threading.Thread(target=server.serve, daemon=True)
+    loop.start()
+    deadline = time.monotonic() + 5
+    while server.bound_port is None:
+        if time.monotonic() > deadline:
+            raise AssertionError("serve() never started listening")
+        time.sleep(0.01)
+    return server, loop
+
+
+def _wait_for_archive(outdir, expected, timeout=5):
+    """Poll until some raw-* archive in outdir equals `expected` bytes."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for f in os.listdir(outdir):
+            if f.startswith("raw-"):
+                with open(os.path.join(outdir, f), "rb") as fh:
+                    if fh.read() == expected:
+                        return True
+        time.sleep(0.05)
+    return False
+
+
+EVIDENCE_X3 = os.path.join(
+    os.path.dirname(__file__), os.pardir, "evidence", "bench", "maglumi-x3"
+)
+
+
+class TestWireReplay(unittest.TestCase):
+    """replay_send() plays the analyzer side of an archived capture against a
+    live host with the X3's simplified per-token ACK pacing — so every
+    committed evidence .bin doubles as a live test vector for a receive path
+    (bridge bring-up, LIS-265 repro via --gap)."""
+
+    def _round_trip(self, wire):
+        outdir = tempfile.mkdtemp()
+        server, loop = _start_capture_server(outdir)
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+                f.write(wire)
+                path = f.name
+            try:
+                envelopes = xc.replay_send(path, "127.0.0.1", server.bound_port)
+            finally:
+                os.unlink(path)
+            self.assertTrue(
+                _wait_for_archive(outdir, wire),
+                "capture server never archived the replayed bytes verbatim",
+            )
+            return envelopes
+        finally:
+            server.close()
+            loop.join(timeout=5)
+
+    def test_round_trip_synthetic_wire(self):
+        self.assertEqual(self._round_trip(simplified_wire(KB_6_1_RECORDS)), 1)
+
+    def test_replays_the_committed_bench_evidence(self):
+        # Anchor to source: the first real X3 capture must remain replayable
+        # byte-for-byte, not just parseable.
+        path = os.path.join(
+            EVIDENCE_X3, "20260717-0101010034012301113", "raw-20260717-133451-004.bin"
+        )
+        with open(path, "rb") as f:
+            wire = f.read()
+        self.assertEqual(self._round_trip(wire), 1)
+
+    def test_multi_envelope_evidence_counts_envelopes(self):
+        # AC6 session 002: six envelopes on one reused connection.
+        path = os.path.join(
+            EVIDENCE_X3, "20260717-ac6-hostid-mismatch", "raw-20260717-151920-002.bin"
+        )
+        with open(path, "rb") as f:
+            wire = f.read()
+        self.assertEqual(self._round_trip(wire), 6)
+
+    def test_zero_byte_capture_is_refused(self):
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+            path = f.name
+        try:
+            with self.assertRaises(xc.ReplayError):
+                xc.replay_send(path, "127.0.0.1", 1)
+        finally:
+            os.unlink(path)
 
 
 class TestReplay(unittest.TestCase):
