@@ -90,7 +90,7 @@ edge/sim/
     edan-h60s-oru-r01/           # EDAN H60S ORU^R01 — real EDANLAB wire (2026-07-06 bench), representative values; held back (no OBX-11 finality)
     edan-h60s-host-query-qry-r02/ # synthetic EDAN H60S QRY^R02 host-query (QRD/QRF) (S1.6)
     diasys-r920-astm-result/     # synthetic ASTM E1394 records framed over E1381 (S2.1)
-    snibelis-maglumi-x3-result-upload/ # synthetic SnibeLis H/P/O/R/L result upload (S3.0a)
+    snibelis-maglumi-x3-result-upload/ # real ASTM E1394 H/P/O/R/L wire (LIS-75 bench 2026-07-17), FT3/FT4 II/TSH II (LIS-38)
     snibelis-maglumi-x3-query-request/ # synthetic SnibeLis Q -> H/P/O/L query exchange (S3.0a)
     lifotronic-h9-synthetic/     # Manual-A0 hex frame; shared Java/Python digest anchor (bench pending)
 ```
