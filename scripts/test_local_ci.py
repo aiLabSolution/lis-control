@@ -21,6 +21,8 @@ PR = local_ci.PullRequest(
     url="https://github.com/aiLabSolution/lis-control/pull/281",
     repository="aiLabSolution/lis-control",
     changed_paths=("scripts/local_ci.py",),
+    base_sha="b" * 40,
+    head_branch="lis-281-local-ci-engine-tracer",
 )
 
 
@@ -34,15 +36,18 @@ def check(
     check_class="fast",
     timeout=300,
     memory=None,
+    repository="aiLabSolution/lis-control",
+    additional=(),
 ):
     return local_ci.CheckConfig(
         name=name,
-        repository="aiLabSolution/lis-control",
+        repository=repository,
         paths=tuple(paths),
         command=("python3", "-m", "unittest"),
         check_class=check_class,
         timeout_seconds=timeout,
         min_memory_mib=memory,
+        additional_triggers=tuple(additional),
     )
 
 
@@ -54,7 +59,16 @@ def registry(*checks):
         repositories={
             "ailabsolution/lis-control": local_ci.RepositoryConfig(
                 "aiLabSolution/lis-control", True
-            )
+            ),
+            "ailabsolution/openelis-global-2": local_ci.RepositoryConfig(
+                "aiLabSolution/OpenELIS-Global-2", True
+            ),
+            "ailabsolution/openelis-analyzer-bridge": local_ci.RepositoryConfig(
+                "aiLabSolution/openelis-analyzer-bridge", True
+            ),
+            "ailabsolution/lis-deploy-kit": local_ci.RepositoryConfig(
+                "aiLabSolution/lis-deploy-kit", True
+            ),
         },
         checks=configured,
     )
@@ -125,12 +139,36 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(local_ci.RegistryError, "duplicate check"):
             self.write()
 
+    def test_additional_trigger_requires_a_registered_distinct_repository(self):
+        check_value = self.value["checks"][0]
+        check_value["additional_triggers"] = {
+            "aiLabSolution/lis-control": ["edge/drivers"]
+        }
+        with self.assertRaisesRegex(local_ci.RegistryError, "repeats primary"):
+            self.write()
+
+        check_value["additional_triggers"] = {
+            "aiLabSolution/not-registered": ["edge/drivers"]
+        }
+        with self.assertRaisesRegex(local_ci.RegistryError, "must name an entry"):
+            self.write()
+
 
 class CommittedRegistryTests(unittest.TestCase):
-    def test_committed_registry_is_hosted_and_wires_exactly_one_tracer(self):
+    def test_committed_registry_is_hosted_and_wires_tracer_plus_five_fast_checks(self):
         parsed = local_ci.load_registry(REPO_ROOT / "local_ci.json")
         self.assertEqual(parsed.mode, "hosted")
-        self.assertEqual([item.name for item in parsed.checks], ["scripts-tests"])
+        self.assertEqual(
+            [item.name for item in parsed.checks],
+            [
+                "scripts-tests",
+                "edge-sim",
+                "deploy-kit-config",
+                "kit-lint",
+                "core-i18n",
+                "bridge-tests",
+            ],
+        )
         self.assertEqual(
             parsed.checks[0].command,
             (
@@ -146,6 +184,47 @@ class CommittedRegistryTests(unittest.TestCase):
             ),
         )
 
+    def test_committed_filters_cover_hosted_paths_and_umbrella_gitlinks(self):
+        parsed = local_ci.load_registry(REPO_ROOT / "local_ci.json")
+        cases = (
+            ("aiLabSolution/lis-control", "edge/sim/test_replay.py", {"edge-sim"}),
+            (
+                "aiLabSolution/lis-control",
+                ".github/workflows/edge-sim.yml",
+                {"edge-sim"},
+            ),
+            (
+                "aiLabSolution/lis-control",
+                "core/openelis",
+                {"deploy-kit-config"},
+            ),
+            (
+                "aiLabSolution/lis-control",
+                "deploy/kit",
+                {"deploy-kit-config", "kit-lint"},
+            ),
+            ("aiLabSolution/lis-control", "edge/drivers", {"bridge-tests"}),
+            (
+                "aiLabSolution/OpenELIS-Global-2",
+                "frontend/src/languages/en.json",
+                {"core-i18n"},
+            ),
+            (
+                "aiLabSolution/openelis-analyzer-bridge",
+                "pom.xml",
+                {"bridge-tests"},
+            ),
+            (
+                "aiLabSolution/lis-deploy-kit",
+                "scripts/compose-site.sh",
+                {"kit-lint"},
+            ),
+        )
+        for repository, path, expected in cases:
+            with self.subTest(repository=repository, path=path):
+                selected = local_ci.select_checks(parsed, repository, (path,))
+                self.assertEqual({item.name for item in selected}, expected)
+
 
 class SelectionTests(unittest.TestCase):
     def test_regular_recursive_pattern_matches(self):
@@ -158,11 +237,32 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(local_ci.path_matches("edge/drivers/**", "edge/sim"))
 
     def test_gitlink_change_selects_mapped_check(self):
-        bridge = check("bridge-tests", paths=("edge/drivers/**",))
+        bridge = check(
+            "bridge-tests",
+            paths=("**",),
+            repository="aiLabSolution/openelis-analyzer-bridge",
+            additional=(("aiLabSolution/lis-control", ("edge/drivers",)),),
+        )
         selected = local_ci.select_checks(
             registry(bridge), "aiLabSolution/lis-control", ("edge/drivers",)
         )
         self.assertEqual([item.name for item in selected], ["bridge-tests"])
+
+    def test_primary_component_and_umbrella_pin_share_one_check_context(self):
+        bridge = check(
+            "bridge-tests",
+            paths=("**",),
+            repository="aiLabSolution/openelis-analyzer-bridge",
+            additional=(("aiLabSolution/lis-control", ("edge/drivers",)),),
+        )
+        component = local_ci.select_checks(
+            registry(bridge), "aiLabSolution/openelis-analyzer-bridge", ("pom.xml",)
+        )
+        umbrella = local_ci.select_checks(
+            registry(bridge), "aiLabSolution/lis-control", ("edge/drivers",)
+        )
+        self.assertEqual(component, (bridge,))
+        self.assertEqual(umbrella, (bridge,))
 
     def test_repository_is_part_of_selection(self):
         selected = local_ci.select_checks(
@@ -186,6 +286,8 @@ class PullRequestTests(unittest.TestCase):
         run.return_value = completed(
             stdout=json.dumps(
                 {
+                    "baseRefOid": "b" * 40,
+                    "headRefName": "lis-281-local-ci-engine-tracer",
                     "headRefOid": SHA,
                     "url": PR.url,
                     "files": [{"path": "edge/drivers"}, {"path": "README.md"}],
@@ -196,8 +298,10 @@ class PullRequestTests(unittest.TestCase):
         self.assertEqual(value.sha, SHA)
         self.assertEqual(value.repository, "aiLabSolution/lis-control")
         self.assertEqual(value.changed_paths, ("edge/drivers", "README.md"))
+        self.assertEqual(value.base_sha, "b" * 40)
+        self.assertEqual(value.head_branch, "lis-281-local-ci-engine-tracer")
         argv = run.call_args.args[0]
-        self.assertIn("headRefOid,url,files", argv)
+        self.assertIn("baseRefOid,headRefName,headRefOid,url,files", argv)
         self.assertEqual(argv[-2:], ["--repo", "aiLabSolution/lis-control"])
 
 
@@ -318,6 +422,17 @@ class CheckExecutionTests(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.duration_seconds, 2.5)
         self.assertEqual(run.call_args.kwargs["timeout"], 300)
+        environment = run.call_args.kwargs["env"]
+        self.assertEqual(environment["LIS_LOCAL_CI_BASE_SHA"], PR.base_sha)
+        self.assertEqual(environment["LIS_LOCAL_CI_HEAD_SHA"], PR.sha)
+        self.assertEqual(environment["LIS_LOCAL_CI_HEAD_BRANCH"], PR.head_branch)
+        self.assertEqual(
+            json.loads(environment["LIS_LOCAL_CI_CHANGED_PATHS_JSON"]),
+            list(PR.changed_paths),
+        )
+        self.assertEqual(environment["LIS_LOCAL_CI_REPOSITORY"], PR.repository)
+        self.assertEqual(environment["LIS_LOCAL_CI_CONTROL_ROOT"], "/checkout")
+        self.assertEqual(environment["LIS_LOCAL_CI_CHECKOUT"], "/checkout")
         self.assertEqual(post.call_args_list[0].args[4], "pending")
         final = post.call_args_list[1]
         self.assertEqual(final.args[3], "local-ci/scripts-tests")
@@ -341,6 +456,33 @@ class CheckExecutionTests(unittest.TestCase):
         self.assertEqual(final.args[4], "failure")
         self.assertIn("timed out", final.args[7])
         self.assertIsNone(final.args[8])
+
+    def test_each_fast_check_nonzero_posts_its_red_status(self):
+        names = (
+            "edge-sim",
+            "deploy-kit-config",
+            "kit-lint",
+            "core-i18n",
+            "bridge-tests",
+        )
+        for name in names:
+            with self.subTest(check=name), mock.patch(
+                "local_ci.subprocess.run",
+                return_value=completed(returncode=1, stdout="deliberate failure\n"),
+            ), mock.patch(
+                "local_ci.time.monotonic", side_effect=[10.0, 11.0]
+            ), mock.patch(
+                "local_ci.publish_gist", return_value=None
+            ), mock.patch(
+                "local_ci.post_status"
+            ) as post:
+                result = local_ci.run_check(
+                    Path("/checkout"), check(name), PR, "ci-host"
+                )
+            self.assertFalse(result.passed)
+            final = post.call_args_list[-1]
+            self.assertEqual(final.args[3], f"local-ci/{name}")
+            self.assertEqual(final.args[4], "failure")
 
 
 class EngineTests(unittest.TestCase):
@@ -367,7 +509,7 @@ class EngineTests(unittest.TestCase):
             yield
             events.append("lock-exit")
 
-        def record_run(_root, selected, _pr, _host):
+        def record_run(_root, selected, _pr, _host, _control_root):
             events.append(selected.name)
             return queued_results.pop(0)
 
@@ -391,6 +533,57 @@ class EngineTests(unittest.TestCase):
         self.assertEqual([call.args[4] for call in summary_calls], ["pending", "success"])
         self.assertEqual(summary_calls[-1].args[5], "ci-host")
         self.assertEqual(summary_calls[-1].args[6], 3.0)
+
+    @mock.patch("local_ci.publish_gist", return_value=None)
+    @mock.patch("local_ci.post_status")
+    @mock.patch("local_ci.preflight_memory")
+    @mock.patch("local_ci.verify_checkout")
+    @mock.patch("local_ci.resolve_pr", return_value=PR)
+    def test_explicit_component_checkout_uses_umbrella_registry_and_status_root(
+        self, _resolve, verify, _memory, post, _gist
+    ):
+        component = Path("/component-checkout")
+        seen = []
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        def record_run(checkout, selected, pr, host, control_root):
+            seen.append((checkout, selected.name, pr, host, control_root))
+            return local_ci.CheckResult(selected.name, True, 1.0, "passed", None)
+
+        with mock.patch("local_ci.global_lock", side_effect=locked), mock.patch(
+            "local_ci.run_check", side_effect=record_run
+        ), mock.patch("local_ci.socket.gethostname", return_value="ci-host"), mock.patch(
+            "local_ci.time.monotonic", side_effect=[1.0, 2.0]
+        ):
+            result = local_ci.run_engine(
+                Path("/control"),
+                registry(),
+                "281",
+                PR.repository,
+                Path("/tmp/lock"),
+                ("scripts-tests",),
+                component,
+            )
+
+        self.assertEqual(result, 0)
+        verify.assert_called_once_with(component, PR.sha)
+        self.assertEqual(
+            seen,
+            [(component, "scripts-tests", PR, "ci-host", Path("/control"))],
+        )
+        self.assertTrue(all(call.args[0] == Path("/control") for call in post.call_args_list))
+
+
+class ParserTests(unittest.TestCase):
+    def test_checkout_is_explicit_and_registry_stays_umbrella_relative(self):
+        args = local_ci.build_parser().parse_args(
+            ["42", "--repo", "owner/component", "--checkout", "/tmp/component"]
+        )
+        self.assertEqual(args.checkout, "/tmp/component")
+        self.assertEqual(args.registry, "local_ci.json")
 
 
 if __name__ == "__main__":
