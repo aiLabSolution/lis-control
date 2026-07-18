@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run registered local CI checks against an exact, clean GitHub PR head.
+"""Run registered local CI checks against an exact, clean GitHub revision.
 
 The runner is intentionally stdlib-only.  GitHub access goes through the
 already-authenticated ``gh`` CLI; check commands are argv arrays from the
@@ -42,6 +42,7 @@ _CHECK_FIELDS = {
     "name",
     "repository",
     "paths",
+    "additional_triggers",
     "command",
     "class",
     "timeout_seconds",
@@ -74,6 +75,16 @@ class CheckConfig:
     check_class: str
     timeout_seconds: int
     min_memory_mib: int | None = None
+    additional_triggers: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    def paths_for_repository(self, repository: str) -> tuple[str, ...] | None:
+        repository_lower = repository.lower()
+        if self.repository.lower() == repository_lower:
+            return self.paths
+        for name, paths in self.additional_triggers:
+            if name.lower() == repository_lower:
+                return paths
+        return None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -90,6 +101,8 @@ class PullRequest:
     url: str
     repository: str
     changed_paths: tuple[str, ...]
+    base_sha: str = ""
+    head_branch: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -179,6 +192,38 @@ def load_registry(path: Path) -> Registry:
             raise RegistryError(
                 f"{where}.paths must contain repository-relative POSIX patterns"
             )
+        additional_raw = value.get("additional_triggers", {})
+        if not isinstance(additional_raw, dict):
+            raise RegistryError(f"{where}.additional_triggers must be an object")
+        additional_triggers: list[tuple[str, tuple[str, ...]]] = []
+        for trigger_repository, trigger_paths_raw in additional_raw.items():
+            trigger_repository_lower = (
+                trigger_repository.lower()
+                if isinstance(trigger_repository, str)
+                else ""
+            )
+            if trigger_repository_lower not in repositories:
+                raise RegistryError(
+                    f"{where}.additional_triggers repository {trigger_repository!r} "
+                    "must name an entry in registry.repositories"
+                )
+            if trigger_repository_lower == repository.lower():
+                raise RegistryError(
+                    f"{where}.additional_triggers repeats primary repository "
+                    f"{trigger_repository!r}"
+                )
+            trigger_paths = _require_string_list(
+                trigger_paths_raw,
+                f"{where}.additional_triggers[{trigger_repository!r}]",
+            )
+            if any(path.startswith("/") or "\\" in path for path in trigger_paths):
+                raise RegistryError(
+                    f"{where}.additional_triggers paths must be repository-relative "
+                    "POSIX patterns"
+                )
+            additional_triggers.append(
+                (repositories[trigger_repository_lower].name, trigger_paths)
+            )
         command = _require_string_list(value.get("command"), f"{where}.command")
         check_class = value.get("class", "fast")
         if check_class not in {"fast", "heavy"}:
@@ -204,6 +249,7 @@ def load_registry(path: Path) -> Registry:
                 check_class=check_class,
                 timeout_seconds=timeout_seconds,
                 min_memory_mib=min_memory_mib,
+                additional_triggers=tuple(additional_triggers),
             )
         )
     return Registry(version, mode, repositories, tuple(checks))
@@ -256,7 +302,7 @@ def resolve_pr(selector: str, repo: str | None, root: Path) -> PullRequest:
         "view",
         selector,
         "--json",
-        "headRefOid,url,files",
+        "baseRefOid,headRefName,headRefOid,url,files",
     ]
     if repo:
         argv += ["--repo", repo]
@@ -265,6 +311,8 @@ def resolve_pr(selector: str, repo: str | None, root: Path) -> PullRequest:
         raise LocalCIError(f"gh could not resolve PR {selector!r}: {_failure_tail(proc)}")
     try:
         data = json.loads(proc.stdout)
+        base_sha = data["baseRefOid"]
+        head_branch = data["headRefName"]
         sha = data["headRefOid"]
         url = data["url"]
         file_items = data["files"]
@@ -273,6 +321,12 @@ def resolve_pr(selector: str, repo: str | None, root: Path) -> PullRequest:
         raise LocalCIError("gh returned malformed PR metadata") from exc
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
         raise LocalCIError("gh returned an invalid PR head SHA")
+    if not isinstance(base_sha, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40}", base_sha
+    ):
+        raise LocalCIError("gh returned an invalid PR base SHA")
+    if not isinstance(head_branch, str) or not head_branch:
+        raise LocalCIError("gh returned an invalid PR head branch")
     if not isinstance(url, str) or not isinstance(file_items, list):
         raise LocalCIError("gh returned malformed PR metadata")
     if any(not isinstance(path, str) or not path for path in changed_paths):
@@ -282,6 +336,8 @@ def resolve_pr(selector: str, repo: str | None, root: Path) -> PullRequest:
         url=url,
         repository=_repository_from_pr_url(url),
         changed_paths=changed_paths,
+        base_sha=base_sha.lower(),
+        head_branch=head_branch,
     )
 
 
@@ -342,13 +398,14 @@ def select_checks(
         raise LocalCIError(f"unknown requested check(s): {', '.join(missing)}")
     selected = []
     for check in registry.checks:
-        if check.repository.lower() != repository_lower:
+        trigger_paths = check.paths_for_repository(repository_lower)
+        if trigger_paths is None:
             continue
         if requested_set:
             if check.name in requested_set:
                 selected.append(check)
             continue
-        if any(path_matches(pattern, path) for pattern in check.paths for path in paths):
+        if any(path_matches(pattern, path) for pattern in trigger_paths for path in paths):
             selected.append(check)
     return tuple(selected)
 
@@ -490,15 +547,43 @@ def run_check(
     check: CheckConfig,
     pr: PullRequest,
     host: str,
+    control_root: Path | None = None,
 ) -> CheckResult:
+    control_root = (control_root or root).resolve()
+    checkout = root.resolve()
     context = STATUS_PREFIX + check.name
-    post_status(root, pr.repository, pr.sha, context, "pending", host, 0.0, "running")
+    post_status(
+        control_root,
+        pr.repository,
+        pr.sha,
+        context,
+        "pending",
+        host,
+        0.0,
+        "running",
+    )
     start = time.monotonic()
     timed_out = False
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "LIS_LOCAL_CI_BASE_SHA": pr.base_sha,
+            "LIS_LOCAL_CI_HEAD_SHA": pr.sha,
+            "LIS_LOCAL_CI_HEAD_BRANCH": pr.head_branch,
+            "LIS_LOCAL_CI_CHANGED_PATHS_JSON": json.dumps(list(pr.changed_paths)),
+            "LIS_LOCAL_CI_REPOSITORY": pr.repository,
+            "LIS_LOCAL_CI_CONTROL_ROOT": str(control_root),
+            "LIS_LOCAL_CI_CHECKOUT": str(checkout),
+        }
+    )
     try:
         proc = subprocess.run(
             list(check.command),
-            cwd=str(root),
+            # Registry commands live in the umbrella. Component checks receive
+            # their exact checkout through LIS_LOCAL_CI_CHECKOUT and must use
+            # it explicitly rather than assuming the process working directory.
+            cwd=str(control_root),
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -526,15 +611,20 @@ def run_check(
         f"local_ci check: {check.name}\n"
         f"repository: {pr.repository}\n"
         f"PR: {pr.url}\n"
+        f"base: {pr.base_sha}\n"
         f"head: {pr.sha}\n"
+        f"head_branch: {pr.head_branch}\n"
+        f"changed_paths: {json.dumps(pr.changed_paths)}\n"
+        f"control_root: {control_root}\n"
+        f"checkout: {checkout}\n"
         f"host: {host}\n"
         f"duration_seconds: {duration:.3f}\n"
         f"command: {json.dumps(check.command)}\n"
         f"result: {detail}\n\n{output}"
     )
-    log_url = publish_gist(root, check.name, pr.sha, log)
+    log_url = publish_gist(control_root, check.name, pr.sha, log)
     post_status(
-        root,
+        control_root,
         pr.repository,
         pr.sha,
         context,
@@ -550,19 +640,51 @@ def run_check(
 def run_engine(
     root: Path,
     registry: Registry,
-    selector: str,
+    selector: str | None,
     repo: str | None,
     lock_path: Path,
     requested_checks: Iterable[str] = (),
+    checkout: Path | None = None,
+    commit_sha: str | None = None,
+    head_branch: str | None = None,
 ) -> int:
-    pr = resolve_pr(selector, repo, root)
+    root = root.resolve()
+    checkout = (checkout or root).resolve()
+    requested_checks = tuple(requested_checks)
+    if commit_sha is not None:
+        if selector is not None:
+            raise LocalCIError("provide a PR selector or --commit, not both")
+        if not repo:
+            raise LocalCIError("--commit requires --repo OWNER/REPO")
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise LocalCIError("--commit must be an exact 40-character Git SHA")
+        if not head_branch:
+            raise LocalCIError("--commit requires --head-branch")
+        if not requested_checks:
+            raise LocalCIError(
+                "--commit requires at least one explicit --check because no PR "
+                "changed-file list is available"
+            )
+        exact_sha = commit_sha.lower()
+        pr = PullRequest(
+            sha=exact_sha,
+            url=f"https://github.com/{repo}/commit/{exact_sha}",
+            repository=repo,
+            changed_paths=(),
+            base_sha=exact_sha,
+            head_branch=head_branch,
+        )
+    else:
+        if selector is None:
+            raise LocalCIError("provide a PR selector or --commit")
+        pr = resolve_pr(selector, repo, root)
     repository_key = pr.repository.lower()
     if repository_key not in registry.repositories:
         raise LocalCIError(
             f"PR repository {pr.repository} is not registered in {DEFAULT_REGISTRY}"
         )
     # This validation deliberately precedes every status/gist call.
-    verify_checkout(root, pr.sha)
+    verify_checkout(checkout, pr.sha)
     checks = select_checks(registry, pr.repository, pr.changed_paths, requested_checks)
     preflight_memory(checks)
     host = socket.gethostname()
@@ -581,7 +703,7 @@ def run_engine(
         )
         for check in checks:
             print(f"local_ci: running {check.name}: {' '.join(check.command)}")
-            results.append(run_check(root, check, pr, host))
+            results.append(run_check(checkout, check, pr, host, root))
         duration = time.monotonic() - run_start
         passed = all(result.passed for result in results)
         summary_detail = (
@@ -619,8 +741,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run registered local CI checks against an exact, clean PR head"
     )
-    parser.add_argument("pr", help="PR number, URL, or branch understood by `gh pr view`")
+    parser.add_argument(
+        "pr",
+        nargs="?",
+        help="PR number, URL, or branch understood by `gh pr view`",
+    )
     parser.add_argument("--repo", help="GitHub OWNER/REPO when the PR is not inferred here")
+    parser.add_argument(
+        "--commit",
+        help="exact 40-character default-branch SHA for immutable current-main proof",
+    )
+    parser.add_argument(
+        "--head-branch",
+        help="branch name recorded in exact-commit evidence (required with --commit)",
+    )
+    parser.add_argument(
+        "--checkout",
+        help=(
+            "exact clean checkout of the PR repository (default: the lis-control "
+            "checkout containing this runner)"
+        ),
+    )
     parser.add_argument(
         "--registry",
         default=DEFAULT_REGISTRY,
@@ -655,6 +796,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.repo,
             Path(args.lock_file),
             args.check,
+            Path(args.checkout) if args.checkout else None,
+            args.commit,
+            args.head_branch,
         )
     except LocalCIError as exc:
         print(f"local_ci: REFUSED: {exc}", file=sys.stderr)

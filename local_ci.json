@@ -4,6 +4,15 @@
   "repositories": {
     "aiLabSolution/lis-control": {
       "gate_required": true
+    },
+    "aiLabSolution/OpenELIS-Global-2": {
+      "gate_required": true
+    },
+    "aiLabSolution/openelis-analyzer-bridge": {
+      "gate_required": true
+    },
+    "aiLabSolution/lis-deploy-kit": {
+      "gate_required": true
     }
   },
   "checks": [
@@ -28,6 +37,93 @@
         "-p",
         "test_*.py",
         "-v"
+      ]
+    },
+    {
+      "name": "edge-sim",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        "edge/sim/**",
+        ".github/workflows/edge-sim.yml"
+      ],
+      "class": "fast",
+      "timeout_seconds": 600,
+      "command": [
+        "python3",
+        "scripts/local_ci_fast_checks.py",
+        "edge-sim"
+      ]
+    },
+    {
+      "name": "deploy-kit-config",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        "core/openelis",
+        "deploy/kit",
+        "deploy/ci/**",
+        ".github/workflows/deploy-kit-config.yml"
+      ],
+      "class": "fast",
+      "timeout_seconds": 600,
+      "command": [
+        "python3",
+        "scripts/local_ci_fast_checks.py",
+        "deploy-kit-config"
+      ]
+    },
+    {
+      "name": "kit-lint",
+      "repository": "aiLabSolution/lis-deploy-kit",
+      "paths": [
+        "scripts/**",
+        "tests/**",
+        "configs/analyzer-profiles/**",
+        "configs/plugins/**"
+      ],
+      "additional_triggers": {
+        "aiLabSolution/lis-control": [
+          "deploy/kit"
+        ]
+      },
+      "class": "fast",
+      "timeout_seconds": 300,
+      "command": [
+        "python3",
+        "scripts/local_ci_fast_checks.py",
+        "kit-lint"
+      ]
+    },
+    {
+      "name": "core-i18n",
+      "repository": "aiLabSolution/OpenELIS-Global-2",
+      "paths": [
+        "frontend/src/languages/**"
+      ],
+      "class": "fast",
+      "timeout_seconds": 300,
+      "command": [
+        "python3",
+        "scripts/local_ci_fast_checks.py",
+        "core-i18n"
+      ]
+    },
+    {
+      "name": "bridge-tests",
+      "repository": "aiLabSolution/openelis-analyzer-bridge",
+      "paths": [
+        "**"
+      ],
+      "additional_triggers": {
+        "aiLabSolution/lis-control": [
+          "edge/drivers"
+        ]
+      },
+      "class": "fast",
+      "timeout_seconds": 900,
+      "command": [
+        "python3",
+        "scripts/local_ci_fast_checks.py",
+        "bridge-tests"
       ]
     }
   ]
