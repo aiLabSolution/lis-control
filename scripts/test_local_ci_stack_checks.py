@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Contract tests for the Docker-backed local compose-stack checks."""
 
-import os
-import io
 import contextlib
+import io
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
-from pathlib import Path
 from contextlib import redirect_stderr
+from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -125,6 +126,44 @@ class ComposeRecipeTests(unittest.TestCase):
 
 
 class TeardownTests(unittest.TestCase):
+    def test_deadline_terminates_nested_command_process_group(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            pid_file = Path(temporary) / "child.pid"
+            command = (
+                sys.executable,
+                "-c",
+                (
+                    "import pathlib, subprocess, sys; "
+                    "child = subprocess.Popen(['sleep', '30']); "
+                    "pathlib.Path(sys.argv[1]).write_text(str(child.pid)); "
+                    "child.wait()"
+                ),
+                str(pid_file),
+            )
+            with mock.patch.object(stacks, "TIMEOUT_CLEANUP_RESERVE_SECONDS", 0):
+                with self.assertRaisesRegex(
+                    stacks.StackCheckError, "beginning teardown"
+                ):
+                    with stacks.graceful_deadline(1):
+                        stacks.run_logged(command, Path(temporary), quiet=True)
+
+            child_pid = int(pid_file.read_text(encoding="utf-8"))
+            deadline = time.monotonic() + 2
+            while self._process_is_running(child_pid) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertFalse(
+                self._process_is_running(child_pid),
+                f"nested process {child_pid} survived the command deadline",
+            )
+
+    @staticmethod
+    def _process_is_running(pid: int) -> bool:
+        try:
+            state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()[2]
+        except FileNotFoundError:
+            return False
+        return state != "Z"
+
     def test_cleanup_trap_runs_lifo_on_red_check(self):
         events = []
         with self.assertRaisesRegex(RuntimeError, "deliberate"):

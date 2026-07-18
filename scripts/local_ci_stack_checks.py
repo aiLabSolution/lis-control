@@ -22,6 +22,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -41,6 +42,7 @@ DEFAULT_TIMEOUT_SECONDS = {
     "stage4-smoke": 3600,
     "site-stack-smoke": 7200,
 }
+PROCESS_TERMINATION_GRACE_SECONDS = 5
 
 PROOF_CONTAINERS = (
     "lis-proof-oe-certs",
@@ -107,7 +109,7 @@ def run_logged(
     if not quiet:
         print(f"+ ({cwd}) {shlex.join(tuple(argv))}")
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             list(argv),
             cwd=str(cwd),
             env=merged_environment(environment),
@@ -117,12 +119,53 @@ def run_logged(
             text=True,
             encoding="utf-8",
             errors="replace",
+            start_new_session=True,
         )
     except OSError as exc:
         raise StackCheckError(f"could not run {argv[0]!r}: {exc}") from exc
+    try:
+        stdout, _ = process.communicate()
+    except BaseException:
+        terminate_process_group(process)
+        raise
+    result = subprocess.CompletedProcess(
+        list(argv), process.returncode, stdout, None
+    )
     if result.stdout and not quiet:
         print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
     return result
+
+
+def terminate_process_group(process: subprocess.Popen[str]) -> None:
+    """Stop and reap a command plus every descendant in its process group."""
+    process_group = process.pid
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+    deadline = time.monotonic() + PROCESS_TERMINATION_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            process.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    try:
+        process.communicate(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
 
 
 def require_success(
