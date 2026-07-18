@@ -96,7 +96,9 @@ calibration rule does not fire at all (shipped inactive).
    never automatic.
 6. **When LIS-266 lands:** re-derive the QC discriminator (and, if observed, the calibration
    convention) from the real capture, update `snibe-maglumi-x3.json` accordingly, re-provision, and
-   retire step 2's heightened manual review to the normal QC-review cadence.
+   retire step 2's heightened manual review to the normal QC-review cadence. The concrete
+   capture-to-proof procedure (replay the captured QC bin through the deployed stack and verify
+   read-only QC staging) is `docs/runbooks/snibe-maglumi-x3-bench.md` §9a.
 
 ## Residual risk (explicit)
 
