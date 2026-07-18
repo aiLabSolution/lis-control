@@ -10,12 +10,17 @@ from edge_sim.fixtures import FixtureError, load_fixture, load_fixtures
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 EXAMPLE = FIXTURES_ROOT / "_example"
 ERBA = FIXTURES_ROOT / "erba-ec90-astm-panel"
+# result-upload is graduated to the LIS-75 bench capture (LIS-38 AC1): its
+# channel.identity.analyzer_id is the real H-record sender "Maglumi X3",
+# mirroring the bridge's configuration.yml `name:` change. The other three
+# ASTM fixtures remain the synthetic "Maglumi User" vendor-doc placeholder
+# pending their own graduation (LIS-276), so they are checked separately below.
 SNIBELIS_MAGLUMI_X3_FIXTURES = (
-    FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload",
     FIXTURES_ROOT / "snibelis-maglumi-x3-result-unmapped",
     FIXTURES_ROOT / "snibelis-maglumi-x3-query-request",
     FIXTURES_ROOT / "snibelis-maglumi-x3-calibration",
 )
+SNIBELIS_MAGLUMI_X3_RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
 SNIBE_MAGLUMI_X3_HL7_FIXTURES = (
     FIXTURES_ROOT / "snibelis-maglumi-x3-oul-r22-result",
     FIXTURES_ROOT / "snibelis-maglumi-x3-oul-r22-qc",
@@ -79,6 +84,18 @@ def test_snibelis_maglumi_x3_fixtures_carry_bridge_channel_settings(directory):
     # under bridge.analyzers, so the two sides don't drift apart silently.
     assert fx.channel["tcp"]["port"] == 12021
     assert fx.channel["identity"]["analyzer_id"] == "Maglumi User"
+    assert fx.channel["identity"]["host_id"] == "Lis"
+    assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
+
+
+def test_snibelis_maglumi_x3_result_upload_carries_bench_verified_channel_settings():
+    """result-upload's channel.identity mirrors the LIS-75 bench-verified bridge
+    configuration.yml entry (real H-record sender "Maglumi X3"), not the synthetic
+    "Maglumi User" placeholder the other X3 ASTM fixtures still carry (LIS-276)."""
+    fx = load_fixture(SNIBELIS_MAGLUMI_X3_RESULT_UPLOAD)
+
+    assert fx.channel["tcp"]["port"] == 12021
+    assert fx.channel["identity"]["analyzer_id"] == "Maglumi X3"
     assert fx.channel["identity"]["host_id"] == "Lis"
     assert fx.channel["identity"]["bridge_registry_id"] == "SNIBE-MAGLUMI-X3-001"
 
