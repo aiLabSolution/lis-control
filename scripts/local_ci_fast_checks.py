@@ -312,6 +312,13 @@ def verify_plugin_checksums(plugin_dir: Path) -> None:
     if not checksum_files:
         raise FastCheckError(f"no plugin .sha256 files found under {plugin_dir}")
     failures: list[str] = []
+    jars = tuple(sorted(plugin_dir.glob("*.jar")))
+    for jar in jars:
+        sidecar = plugin_dir / f"{jar.name}.sha256"
+        if not sidecar.is_file():
+            failures.append(
+                f"{jar.name}: missing required checksum sidecar {sidecar.name}"
+            )
     for checksum_file in checksum_files:
         try:
             lines = checksum_file.read_text(encoding="utf-8").splitlines()

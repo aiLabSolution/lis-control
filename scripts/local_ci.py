@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run registered local CI checks against an exact, clean GitHub PR head.
+"""Run registered local CI checks against an exact, clean GitHub revision.
 
 The runner is intentionally stdlib-only.  GitHub access goes through the
 already-authenticated ``gh`` CLI; check commands are argv arrays from the
@@ -640,15 +640,44 @@ def run_check(
 def run_engine(
     root: Path,
     registry: Registry,
-    selector: str,
+    selector: str | None,
     repo: str | None,
     lock_path: Path,
     requested_checks: Iterable[str] = (),
     checkout: Path | None = None,
+    commit_sha: str | None = None,
+    head_branch: str | None = None,
 ) -> int:
     root = root.resolve()
     checkout = (checkout or root).resolve()
-    pr = resolve_pr(selector, repo, root)
+    requested_checks = tuple(requested_checks)
+    if commit_sha is not None:
+        if selector is not None:
+            raise LocalCIError("provide a PR selector or --commit, not both")
+        if not repo:
+            raise LocalCIError("--commit requires --repo OWNER/REPO")
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise LocalCIError("--commit must be an exact 40-character Git SHA")
+        if not head_branch:
+            raise LocalCIError("--commit requires --head-branch")
+        if not requested_checks:
+            raise LocalCIError(
+                "--commit requires at least one explicit --check because no PR "
+                "changed-file list is available"
+            )
+        exact_sha = commit_sha.lower()
+        pr = PullRequest(
+            sha=exact_sha,
+            url=f"https://github.com/{repo}/commit/{exact_sha}",
+            repository=repo,
+            changed_paths=(),
+            base_sha=exact_sha,
+            head_branch=head_branch,
+        )
+    else:
+        if selector is None:
+            raise LocalCIError("provide a PR selector or --commit")
+        pr = resolve_pr(selector, repo, root)
     repository_key = pr.repository.lower()
     if repository_key not in registry.repositories:
         raise LocalCIError(
@@ -712,8 +741,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run registered local CI checks against an exact, clean PR head"
     )
-    parser.add_argument("pr", help="PR number, URL, or branch understood by `gh pr view`")
+    parser.add_argument(
+        "pr",
+        nargs="?",
+        help="PR number, URL, or branch understood by `gh pr view`",
+    )
     parser.add_argument("--repo", help="GitHub OWNER/REPO when the PR is not inferred here")
+    parser.add_argument(
+        "--commit",
+        help="exact 40-character default-branch SHA for immutable current-main proof",
+    )
+    parser.add_argument(
+        "--head-branch",
+        help="branch name recorded in exact-commit evidence (required with --commit)",
+    )
     parser.add_argument(
         "--checkout",
         help=(
@@ -756,6 +797,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             Path(args.lock_file),
             args.check,
             Path(args.checkout) if args.checkout else None,
+            args.commit,
+            args.head_branch,
         )
     except LocalCIError as exc:
         print(f"local_ci: REFUSED: {exc}", file=sys.stderr)

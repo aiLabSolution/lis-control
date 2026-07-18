@@ -149,6 +149,22 @@ class KitLintPrimitiveTests(unittest.TestCase):
         with self.assertRaisesRegex(fast.FastCheckError, "plugin.jar sha256 mismatch"):
             fast.verify_plugin_checksums(plugins)
 
+    def test_plugin_jar_without_own_sidecar_fails(self):
+        plugins = self.root / "plugins"
+        plugins.mkdir()
+        checked_payload = b"checked"
+        (plugins / "checked.jar").write_bytes(checked_payload)
+        (plugins / "checked.jar.sha256").write_text(
+            f"{hashlib.sha256(checked_payload).hexdigest()}  checked.jar\n",
+            encoding="utf-8",
+        )
+        (plugins / "orphan.jar").write_bytes(b"not pinned")
+        with self.assertRaisesRegex(
+            fast.FastCheckError,
+            "orphan[.]jar: missing required checksum sidecar orphan[.]jar[.]sha256",
+        ):
+            fast.verify_plugin_checksums(plugins)
+
     def test_kit_lint_runs_shellcheck_syntax_json_and_checksum(self):
         for directory in ("scripts", "tests"):
             (self.root / directory).mkdir()

@@ -576,6 +576,87 @@ class EngineTests(unittest.TestCase):
         )
         self.assertTrue(all(call.args[0] == Path("/control") for call in post.call_args_list))
 
+    @mock.patch("local_ci.resolve_pr")
+    @mock.patch("local_ci.publish_gist", return_value=None)
+    @mock.patch("local_ci.post_status")
+    @mock.patch("local_ci.preflight_memory")
+    @mock.patch("local_ci.verify_checkout")
+    def test_exact_commit_mode_verifies_and_publishes_without_pr_resolution(
+        self, verify, _memory, post, _gist, resolve
+    ):
+        component = Path("/component-main")
+        core_check = check(
+            "core-i18n",
+            paths=("frontend/src/languages/**",),
+            repository="aiLabSolution/OpenELIS-Global-2",
+        )
+        seen = []
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        def record_run(checkout, selected, revision, host, control_root):
+            seen.append((checkout, selected, revision, host, control_root))
+            return local_ci.CheckResult(selected.name, True, 0.1, "passed", None)
+
+        with mock.patch("local_ci.global_lock", side_effect=locked), mock.patch(
+            "local_ci.run_check", side_effect=record_run
+        ), mock.patch("local_ci.socket.gethostname", return_value="ci-host"), mock.patch(
+            "local_ci.time.monotonic", side_effect=[1.0, 2.0]
+        ):
+            result = local_ci.run_engine(
+                Path("/control"),
+                registry(core_check),
+                None,
+                "aiLabSolution/OpenELIS-Global-2",
+                Path("/tmp/lock"),
+                ("core-i18n",),
+                component,
+                SHA,
+                "main",
+            )
+
+        self.assertEqual(result, 0)
+        resolve.assert_not_called()
+        verify.assert_called_once_with(component, SHA)
+        revision = seen[0][2]
+        self.assertEqual(revision.sha, SHA)
+        self.assertEqual(revision.base_sha, SHA)
+        self.assertEqual(revision.head_branch, "main")
+        self.assertEqual(revision.changed_paths, ())
+        self.assertEqual(
+            revision.url,
+            f"https://github.com/aiLabSolution/OpenELIS-Global-2/commit/{SHA}",
+        )
+        self.assertTrue(
+            all(
+                call.args[1] == "aiLabSolution/OpenELIS-Global-2"
+                for call in post.call_args_list
+            )
+        )
+
+    def test_exact_commit_mode_requires_repo_branch_and_explicit_check(self):
+        arguments = {
+            "root": Path("/control"),
+            "registry": registry(),
+            "selector": None,
+            "repo": "aiLabSolution/lis-control",
+            "lock_path": Path("/tmp/lock"),
+            "commit_sha": SHA,
+            "head_branch": "main",
+        }
+        with self.assertRaisesRegex(local_ci.LocalCIError, "explicit --check"):
+            local_ci.run_engine(**arguments)
+        arguments["requested_checks"] = ("scripts-tests",)
+        arguments["repo"] = None
+        with self.assertRaisesRegex(local_ci.LocalCIError, "requires --repo"):
+            local_ci.run_engine(**arguments)
+        arguments["repo"] = "aiLabSolution/lis-control"
+        arguments["head_branch"] = None
+        with self.assertRaisesRegex(local_ci.LocalCIError, "requires --head-branch"):
+            local_ci.run_engine(**arguments)
+
 
 class ParserTests(unittest.TestCase):
     def test_checkout_is_explicit_and_registry_stays_umbrella_relative(self):
@@ -584,6 +665,23 @@ class ParserTests(unittest.TestCase):
         )
         self.assertEqual(args.checkout, "/tmp/component")
         self.assertEqual(args.registry, "local_ci.json")
+
+    def test_exact_commit_arguments_need_no_pr_positional(self):
+        args = local_ci.build_parser().parse_args(
+            [
+                "--repo",
+                "owner/component",
+                "--commit",
+                SHA,
+                "--head-branch",
+                "main",
+                "--check",
+                "component-tests",
+            ]
+        )
+        self.assertIsNone(args.pr)
+        self.assertEqual(args.commit, SHA)
+        self.assertEqual(args.head_branch, "main")
 
 
 if __name__ == "__main__":
