@@ -5,7 +5,7 @@
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Scope:** `edge/sim` (the umbrella-side analyzer harness; CONTEXT-MAP marks the `edge/drivers` submodule "planned")
 - **Relates to:** ADR-0004 (analyzer simulator harness + conformance fixtures, LIS-9 — the `replay()` byte-round-trip primitive this extends); ADR-0005 (MLLP framing, LIS-13); ADR-0011 (tolerant ORU^R01 parse + LOINC/UCUM normalization, LIS-14 — the pipeline this re-derives a Result through); core ADR-0001 (result raw+normalized shape + append-only `result_version`, LIS-7 / S0.5 — the persistence analog); core ADR-0003 (result ingest contract, LIS-15 / S1.3 — the persistence seam); LIS-11 (Stage 1 PRD); plan §1 ("Normalization service … persist raw + normalized"; verification pyramid L2); forward to LIS-17 / S1.5 (milestone E2E — replay → ingest → Result + ACK on staging)
-- **Promoted to production by:** ADR-0022 (production inbound raw-message archive) — carries this archive's content-addressed `archive()`/`load()` contract into the `edge/drivers` Java bridge and takes up the deployment concerns this ADR deferred (encryption, retention/GC, access audit, provenance metadata)
+- **Promoted to production by:** ADR-0022 (production inbound raw-message archive) — carries this archive's content-addressed `archive()`/`load()` contract into the `edge/drivers` Java bridge, takes up the deployment concerns this ADR deferred (retention/GC, per-receipt provenance metadata, concurrent-writer durability), and adds the PHI-at-rest concerns a sim-scoped harness never had (encryption, access control, access audit)
 
 ## Context
 

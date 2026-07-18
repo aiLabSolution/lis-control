@@ -11,9 +11,12 @@
 
 ADR-0012 defined a durable, **content-addressed, append-only, tamper-evident** `RawMessageArchive`
 (SHA-256 key, immutable entries, `ArchiveIntegrityError` on reload mismatch) — but it is **Proposed**
-and scoped to the **`edge/sim` Python harness**. In the production Java bridge, the persisted record
-today is **rejected outbound bundles only** (SQLite `rejected_bundles`), **not** every inbound raw
-message (verified against `edge/drivers@55eaf04`; KB §14.7).
+and scoped to the **`edge/sim` Python harness**. The production Java bridge durably persists only
+**outbound-side and transport-bookkeeping** state — rejected outbound bundles (SQLite
+`rejected_bundles`), the outbound HIS delivery queue (`his_result_queue`, LIS-45 — itself
+PHI-bearing), and file-transport ingest state — but **no inbound raw-message archive**: nothing
+retains the exact wire bytes an accepted result came from (verified against the pinned
+`edge/drivers@9292566`; KB §14.7).
 
 The Lifotronic H9 is the first analyzer that structurally **requires** a production inbound archive:
 
@@ -24,14 +27,17 @@ The Lifotronic H9 is the first analyzer that structurally **requires** a product
 - ISO 15189 evidence: the wire bytes behind a released HbA1c result must be retained, integrity-
   verifiable, and **deterministically replayable** to reproduce the normalized result.
 
-ADR-0012 explicitly deferred the concerns a production archive must answer: **retention/GC,
-per-receipt metadata, concurrent-writer durability, encryption/access control** — all "a real
-deployment concern, not a harness one."
+ADR-0012 explicitly deferred **retention/GC** ("a real deployment concern, not a harness one"),
+**per-receipt provenance metadata**, and **concurrent-writer durability / remote storage**.
+**Encryption and access control it never addressed at all** — a sim-scoped harness holds no PHI at
+rest; a production archive does, which is precisely the scope of the pending QA/regulatory sign-off.
 
 ## Decision
 
 Implement a production **inbound** raw-byte archive in the bridge, reusing ADR-0012's
-`archive()`/`load()` content-addressed contract and adding the production concerns it deferred:
+`archive()`/`load()` content-addressed contract and adding the production concerns it deferred
+(retention, provenance metadata, writer durability) or never addressed (encryption, access
+control):
 
 1. **Capture exact inbound bytes before decode/parse**, keyed by **SHA-256** (idempotent; a digest
    both names and verifies its message). Immutable — first archival's provenance wins.
