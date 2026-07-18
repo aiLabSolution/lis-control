@@ -313,6 +313,7 @@ def verify_plugin_checksums(plugin_dir: Path) -> None:
         raise FastCheckError(f"no plugin .sha256 files found under {plugin_dir}")
     failures: list[str] = []
     jars = tuple(sorted(plugin_dir.glob("*.jar")))
+    sidecar_targets: dict[Path, set[str]] = {}
     for jar in jars:
         sidecar = plugin_dir / f"{jar.name}.sha256"
         if not sidecar.is_file():
@@ -338,6 +339,7 @@ def verify_plugin_checksums(plugin_dir: Path) -> None:
             if relative.is_absolute() or ".." in relative.parts:
                 failures.append(f"{checksum_file.name}:{number}: unsafe filename {filename!r}")
                 continue
+            sidecar_targets.setdefault(checksum_file, set()).add(filename)
             artifact = plugin_dir / relative
             try:
                 actual = hashlib.sha256(artifact.read_bytes()).hexdigest()
@@ -351,6 +353,13 @@ def verify_plugin_checksums(plugin_dir: Path) -> None:
                 )
             else:
                 print(f"OK plugin sha256: {filename}")
+    for jar in jars:
+        sidecar = plugin_dir / f"{jar.name}.sha256"
+        if sidecar.is_file() and jar.name not in sidecar_targets.get(sidecar, set()):
+            failures.append(
+                f"{sidecar.name}: must contain a sha256 entry for its own artifact "
+                f"{jar.name}"
+            )
     if failures:
         raise FastCheckError(
             "plugin checksum verification failed:\n  - " + "\n  - ".join(failures)

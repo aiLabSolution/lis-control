@@ -165,6 +165,24 @@ class KitLintPrimitiveTests(unittest.TestCase):
         ):
             fast.verify_plugin_checksums(plugins)
 
+    def test_plugin_sidecar_targeting_different_jar_fails(self):
+        plugins = self.root / "plugins"
+        plugins.mkdir()
+        checked_payload = b"checked"
+        checked_digest = hashlib.sha256(checked_payload).hexdigest()
+        (plugins / "checked.jar").write_bytes(checked_payload)
+        (plugins / "orphan.jar").write_bytes(b"not pinned")
+        for sidecar in ("checked.jar.sha256", "orphan.jar.sha256"):
+            (plugins / sidecar).write_text(
+                f"{checked_digest}  checked.jar\n", encoding="utf-8"
+            )
+        with self.assertRaisesRegex(
+            fast.FastCheckError,
+            "orphan[.]jar[.]sha256: must contain a sha256 entry for its own "
+            "artifact orphan[.]jar",
+        ):
+            fast.verify_plugin_checksums(plugins)
+
     def test_kit_lint_runs_shellcheck_syntax_json_and_checksum(self):
         for directory in ("scripts", "tests"):
             (self.root / directory).mkdir()
