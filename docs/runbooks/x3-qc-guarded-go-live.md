@@ -1,20 +1,25 @@
 # Runbook — X3 QC/calibration guarded go-live (LIS-269 / LIS-173)
 
-**Posture: PROPOSED guarded go-live — PENDING verifiable QA sign-off (Pinote, QA/regulatory
-owner).** The drafting session recorded a 2026-07-19 sign-off, but no verifiable artifact of it
-exists in the repo, the compliance ledger, or a Pinote-authored tracker comment (adversarial
-review, PR #159). Until the sign-off is recorded — a `docs/compliance/sign-off/` entry or a
-Pinote-authored comment on LIS-269, following the ADR-0019 precedent — this posture is a
-**proposal**, not an authorization.
+**Posture: guarded go-live — TECHNICAL-OWNER AUTHORIZED, PENDING independent QA/regulatory
+sign-off before patient go-live.** The system/technical owner + validation lead (Marloe Uy,
+DEC-01/DEC-07) has authorized this guarded go-live and accepted the documented residual risk
+(recorded 2026-07-19, `docs/compliance/sign-off/LIS-269-x3-guarded-go-live-authorization.md`,
+LIS-COMP-SIGNOFF-003). That is **one of two required signatures**. The accountable
+QA/regulatory approval is **Artis Lindy Pinote (independent QA approver, DEC-01)** — a distinct
+person from the technical owner — and is **not yet recorded**; a technical-owner authorization
+does not substitute for it. **Patient go-live is not cleared until Pinote's independent sign-off
+lands** (her countersignature on LIS-COMP-SIGNOFF-003 §5, or an attributable comment on LIS-269
+in her own name, following the ADR-0019 precedent). Until then this posture is **conditional**,
+not effective.
 
 Scope: this runbook governs **only the QC/calibration-misroute residual** on the MAGLUMI X3
 native-ASTM path. It does not waive the other verified open go-live gates from the 2026-07-19
 X3 production-readiness review (tracked as LIS-267..279 — notably LIS-265 idle-sever silent
 loss, LIS-272 missing core X3 seed: the real wire codes FT3 / "FT4 II" / "TSH II" are unmapped,
 so real results stage read-only "configuration needed" and QC processing fails on a null testId
-until that seed lands, and LIS-38/39 sign-off artifacts). Under the proposed posture, patient
-results on this path may go live **for the QC/calibration axis** once conditioned on two things
-both being true at the same time:
+until that seed lands, and LIS-38/39 sign-off artifacts). Under this conditional posture — once
+Pinote's independent QA sign-off lands (see Posture) — patient results on this path may go live
+**for the QC/calibration axis**, conditioned on two things both being true at the same time:
 
 1. **QC-provisioning config is present** — the analyzer profile that seeds `analyzer_qc_rule`
    rows and the calibration rule type it can express both exist (this runbook's companion
@@ -129,10 +134,10 @@ calibration rule does not fire at all (shipped inactive).
 - **LOINC/UCUM mappings in the profile (TSH, FT4) are synthetic seeds**, the same ones already
   carried in the bridge's `configuration.yml` ("real dictionary = LIS-38"), not a validated vendor
   dictionary.
-- This runbook's SOP is the proposed compensating control for the above; it becomes the
-  *accepted* control only when the QA/regulatory sign-off (Pinote) is verifiably recorded (see
-  Posture). It does not eliminate the risk; it bounds it to "caught by daily human review"
-  instead of "undetected."
+- This runbook's SOP is the compensating control for the above. The technical owner has accepted
+  it as such (LIS-COMP-SIGNOFF-003); it becomes the *QA-accepted* control only when Pinote's
+  independent QA/regulatory sign-off is verifiably recorded (see Posture). It does not eliminate
+  the risk; it bounds it to "caught by daily human review" instead of "undetected."
 
 ## Traceability
 
