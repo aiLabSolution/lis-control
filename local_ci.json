@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "mode": "hosted",
+  "repositories": {
+    "aiLabSolution/lis-control": {
+      "gate_required": true
+    }
+  },
+  "checks": [
+    {
+      "name": "scripts-tests",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        ".github/workflows/scripts-tests.yml",
+        ".githooks/**",
+        "local_ci.json",
+        "scripts/**"
+      ],
+      "class": "fast",
+      "timeout_seconds": 300,
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*.py",
+        "-v"
+      ]
+    }
+  ]
+}
