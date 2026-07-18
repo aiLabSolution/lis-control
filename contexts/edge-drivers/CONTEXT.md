@@ -165,7 +165,12 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 - **Parser** = protocol-specific, not transport-specific.
 - **Normalization** = analyzer-code → LOINC/UCUM, carried on the **OpenELIS analyzer registry**
   entry (`AnalyzerEntry.codeToLoinc`); the bridge pulls `/rest/analyzer/analyzers` on startup.
-  Adding/re-mapping an analyzer on an enabled transport is **config, not redeploy**.
+  Adding/re-mapping an analyzer on an enabled transport is **config, not redeploy**. LIS-268
+  adds one explicit deploy-liveness exception: a complete deploy-kit source binding marked
+  `LOCAL_BOOTSTRAP` survives unrelated OE snapshots until OE claims that exact source key;
+  an analyzer-ID collision at a different source rejects the sync loudly. Unmarked entries
+  remain OE-owned and stale-removable, and the entire local entry (including `qcRules` and
+  code/unit maps) is preserved.
 - **Ingest contract** = a FHIR R4 transaction Bundle POSTed to `/analyzer/fhir` (ADR-0015 §5;
   the production serialization of core ADR-0003's `NormalizedObservation` DTO, which the Python
   `edge/sim` simulator speaks).
