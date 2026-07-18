@@ -355,6 +355,22 @@ class MainTests(unittest.TestCase):
             self.assertEqual(fast.main(["core-i18n"]), 0)
         core_i18n.assert_called_once_with(Path(tmp), SHA_A, SHA_B, "feature")
 
+    @mock.patch("local_ci_fast_checks.deploy_kit_config")
+    def test_umbrella_config_uses_verified_checkout_not_runner_root(self, config):
+        self.assertEqual(
+            fast.main(
+                [
+                    "deploy-kit-config",
+                    "--checkout",
+                    "/exact-umbrella",
+                    "--control-root",
+                    "/runner",
+                ]
+            ),
+            0,
+        )
+        config.assert_called_once_with(Path("/exact-umbrella"))
+
     @mock.patch("local_ci_fast_checks.kit_lint")
     @mock.patch("local_ci_fast_checks.assert_gitlink")
     def test_umbrella_kit_pin_runs_lint_in_exact_gitlink(self, gitlink, lint):
@@ -366,7 +382,16 @@ class MainTests(unittest.TestCase):
             clear=False,
         ):
             self.assertEqual(
-                fast.main(["kit-lint", "--control-root", "/control"]), 0
+                fast.main(
+                    [
+                        "kit-lint",
+                        "--checkout",
+                        "/control",
+                        "--control-root",
+                        "/runner",
+                    ]
+                ),
+                0,
             )
         gitlink.assert_called_once_with(Path("/control"), "deploy/kit")
         lint.assert_called_once_with(kit)
@@ -382,7 +407,16 @@ class MainTests(unittest.TestCase):
             clear=False,
         ):
             self.assertEqual(
-                fast.main(["bridge-tests", "--control-root", "/control"]), 0
+                fast.main(
+                    [
+                        "bridge-tests",
+                        "--checkout",
+                        "/control",
+                        "--control-root",
+                        "/runner",
+                    ]
+                ),
+                0,
             )
         gitlink.assert_called_once_with(Path("/control"), "edge/drivers")
         tests.assert_called_once_with(bridge)

@@ -558,10 +558,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print("OK edge-sim")
         elif args.check == "deploy-kit-config":
-            deploy_kit_config(control_root)
+            deploy_kit_config(checkout)
         elif args.check == "kit-lint":
             if is_umbrella:
-                checkout = assert_gitlink(control_root, "deploy/kit")
+                checkout = assert_gitlink(checkout, "deploy/kit")
             kit_lint(checkout)
         elif args.check == "core-i18n":
             core_i18n(
@@ -572,7 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif args.check == "bridge-tests":
             if is_umbrella:
-                checkout = assert_gitlink(control_root, "edge/drivers")
+                checkout = assert_gitlink(checkout, "edge/drivers")
             bridge_tests(checkout)
     except FastCheckError as exc:
         print(f"local_ci_fast_checks: FAILED: {exc}", file=sys.stderr)
