@@ -72,13 +72,14 @@ Result data model (post-S0.5 — see component ADR-0001):
   `result` row as `loinc` (a snapshot of `TEST.LOINC`, not a new authority) + `ucum_value`,
   with `status` (`RAW` / `NORMALIZED` / `RECONCILED`) tracking normalization state. Distinct
   from `result_type` (the legacy value-type discriminator: Dictionary / titer / number / date).
-- **Result version** — an append-only snapshot of a result's `value` + the five
-  normalization columns, one row per change in `clinlims.result_version` (`version_number`
-  per `result_id`). Written automatically by an `AFTER INSERT OR UPDATE` trigger on
-  `result`; made immutable by a `BEFORE UPDATE OR DELETE` trigger (rejects mutation with an
-  `append-only` error). `result_id` is a **soft reference** (no FK), mirroring the
-  append-only `clinlims.history` audit spine. This is the no-last-writer-wins foundation
-  Stage-4 site↔central reconciliation builds on.
+- **Result version** — an append-only snapshot of a result's `value`, the five
+  normalization columns, and the analyzer-reported `reference_range` and `abnormal_flag`,
+  one row per change in `clinlims.result_version` (`version_number` per `result_id`). Written
+  automatically by an `AFTER INSERT OR UPDATE` trigger on `result`; made immutable by a
+  `BEFORE UPDATE OR DELETE` trigger (rejects mutation with an `append-only` error).
+  `result_id` is a **soft reference** (no FK), mirroring the append-only
+  `clinlims.history` audit spine. This is the no-last-writer-wins foundation Stage-4
+  site↔central reconciliation builds on.
 - **Append-only spine** — the project's tamper-evident DB-layer pattern: a `BEFORE
   UPDATE OR DELETE` trigger that `RAISE`s, used by `clinlims.history` (S0.4 / changeset 046)
   and `clinlims.result_version` (S0.5 / changeset 047). `UPDATE`/`DELETE` rejected;
