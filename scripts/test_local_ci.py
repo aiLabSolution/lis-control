@@ -475,6 +475,7 @@ class CheckExecutionTests(unittest.TestCase):
         self.assertEqual(environment["LIS_LOCAL_CI_REPOSITORY"], PR.repository)
         self.assertEqual(environment["LIS_LOCAL_CI_CONTROL_ROOT"], "/checkout")
         self.assertEqual(environment["LIS_LOCAL_CI_CHECKOUT"], "/checkout")
+        self.assertEqual(environment["LIS_LOCAL_CI_TIMEOUT_SECONDS"], "300")
         self.assertEqual(post.call_args_list[0].args[4], "pending")
         final = post.call_args_list[1]
         self.assertEqual(final.args[3], "local-ci/scripts-tests")

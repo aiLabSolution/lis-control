@@ -133,6 +133,7 @@
         "core/openelis",
         "deploy/kit",
         "deploy/ci/**",
+        "scripts/local_ci_docker_shim.py",
         "scripts/local_ci_stack_checks.py",
         ".github/workflows/core-bootstrap-health.yml"
       ],
@@ -152,6 +153,7 @@
         "core/openelis",
         "deploy/kit",
         "deploy/ci/**",
+        "scripts/local_ci_docker_shim.py",
         "scripts/local_ci_stack_checks.py",
         "scripts/test_deploy_smoke.py",
         ".github/workflows/deploy-kit-smoke.yml"
@@ -173,7 +175,9 @@
         "deploy/kit",
         "edge/drivers",
         "edge/sim/fixtures/snibelis-maglumi-x3-result-upload/**",
+        "deploy/ci/compose.local-ci-openelis.yml",
         "deploy/ci/compose.local-ci-bridge.yml",
+        "scripts/local_ci_docker_shim.py",
         "scripts/local_ci_stack_checks.py",
         ".github/workflows/site-stack-smoke.yml"
       ],

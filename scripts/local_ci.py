@@ -615,6 +615,8 @@ def run_check(
             "LIS_LOCAL_CI_REPOSITORY": pr.repository,
             "LIS_LOCAL_CI_CONTROL_ROOT": str(control_root),
             "LIS_LOCAL_CI_CHECKOUT": str(checkout),
+            # Stack checks reserve cleanup time before this hard engine limit.
+            "LIS_LOCAL_CI_TIMEOUT_SECONDS": str(check.timeout_seconds),
         }
     )
     try:

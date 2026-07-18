@@ -21,7 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -35,6 +35,12 @@ SITE_NETWORK = "lis-local-ci-site"
 SITE_BRIDGE_CONTAINER = "lis-local-ci-site-bridge"
 SITE_BRIDGE_VOLUME = "lis-local-ci-site-bridge-data"
 SITE_X3_PORT = "22021"
+TIMEOUT_CLEANUP_RESERVE_SECONDS = 300
+DEFAULT_TIMEOUT_SECONDS = {
+    "stage0-bootstrap": 3600,
+    "stage4-smoke": 3600,
+    "site-stack-smoke": 7200,
+}
 
 PROOF_CONTAINERS = (
     "lis-proof-oe-certs",
@@ -54,6 +60,7 @@ PROOF_VOLUMES = (
     "lis-proof-openelis-tomcat-logs",
     "lis-proof-openelis-branding",
     "lis-proof-openelis-analyzer-imports",
+    "lis-local-ci-openelis-programs",
 )
 PROOF_NETWORK = "lis-proof-openelis-default"
 
@@ -137,14 +144,16 @@ def output(
     ).stdout.strip()
 
 
-def require_docker() -> None:
-    if not shutil.which("docker"):
+def require_docker() -> str:
+    real_docker = shutil.which("docker")
+    if not real_docker:
         raise StackCheckError(
             "Docker CLI with Compose v2 is required for stack heavy checks; "
             "no host-service fallback is supported"
         )
     version = run_logged(("docker", "compose", "version"), Path.cwd())
     require_success(version, "Docker Compose v2 preflight")
+    return str(Path(real_docker).resolve())
 
 
 def git_head(root: Path) -> str:
@@ -276,6 +285,56 @@ class TeardownTrap:
         return False
 
 
+@contextlib.contextmanager
+def graceful_deadline(timeout_seconds: int):
+    """Raise before the engine hard timeout so teardown retains a grace window."""
+    deadline = timeout_seconds - TIMEOUT_CLEANUP_RESERVE_SECONDS
+    if deadline <= 0:
+        raise StackCheckError(
+            f"hard timeout {timeout_seconds}s is too short for the required "
+            f"{TIMEOUT_CLEANUP_RESERVE_SECONDS}s cleanup reserve"
+        )
+    previous = signal.getsignal(signal.SIGALRM)
+
+    def expired(_signum, _frame):
+        raise StackCheckError(
+            f"stack execution exceeded {deadline}s; beginning teardown with "
+            f"{TIMEOUT_CLEANUP_RESERVE_SECONDS}s before the engine hard timeout"
+        )
+
+    signal.signal(signal.SIGALRM, expired)
+    signal.alarm(deadline)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+@contextlib.contextmanager
+def docker_isolation_environment(layout: Layout, real_docker: str):
+    """Put the checked-in Docker pass-through shim first on PATH temporarily."""
+    source = layout.root / "scripts/local_ci_docker_shim.py"
+    if not source.is_file():
+        raise StackCheckError(f"local-CI Docker shim is missing: {source}")
+    with tempfile.TemporaryDirectory(prefix="lis-local-ci-docker-shim-") as temporary:
+        executable = Path(temporary) / "docker"
+        shutil.copy2(source, executable)
+        executable.chmod(0o755)
+        yield {
+            "PATH": temporary + os.pathsep + os.environ.get("PATH", ""),
+            "LIS_LOCAL_CI_REAL_DOCKER": real_docker,
+            "LIS_LOCAL_CI_OPENELIS_ROOT": str(layout.core),
+            "LIS_LOCAL_CI_OPENELIS_OVERLAY": str(
+                layout.root / "deploy/ci/compose.local-ci-openelis.yml"
+            ),
+            "LIS_LOCAL_CI_BRIDGE_ROOT": str(layout.bridge),
+            "LIS_LOCAL_CI_BRIDGE_OVERLAY": str(
+                layout.root / "deploy/ci/compose.local-ci-bridge.yml"
+            ),
+        }
+
+
 def compose_command(
     project: str,
     project_directory: Path,
@@ -302,15 +361,7 @@ def openelis_files(layout: Layout) -> tuple[Path, ...]:
         layout.core / "build.docker-compose.yml",
         layout.core / ".github/ci/ci.memory-limits.yml",
         layout.kit / "compose/openelis-local-proof.yml",
-    )
-
-
-def bridge_files(layout: Layout) -> tuple[Path, ...]:
-    return (
-        layout.bridge / "docker-compose.yml",
-        layout.kit / "compose/bridge-deployed.yml",
-        layout.kit / "compose/bridge-site.yml",
-        layout.root / "deploy/ci/compose.local-ci-bridge.yml",
+        layout.root / "deploy/ci/compose.local-ci-openelis.yml",
     )
 
 
@@ -380,10 +431,6 @@ def direct_openelis_down(layout: Layout, project: str) -> None:
 
 def wrapper_environment(layout: Layout, project: str) -> dict[str, str]:
     return {
-        # compose-site.sh deliberately rejects an ambient project name because
-        # it manages two projects.  Clear a caller's ambient value; the direct
-        # compose calls below always carry an explicit --project-name.
-        "COMPOSE_PROJECT_NAME": "",
         "LIS_CONTROL_ROOT": str(layout.root),
         "OPENELIS_ROOT": str(layout.core),
         "LIS_DEPLOY_USE_LOCAL_PROOF": "true",
@@ -478,71 +525,97 @@ def stage4_smoke(layout: Layout, core_override_sha: str | None = None) -> None:
         ("core/openelis", "deploy/kit"),
         core_override_sha=core_override_sha,
     )
-    require_docker()
-    environment = wrapper_environment(layout, STAGE4_PROJECT)
+    real_docker = require_docker()
     wrapper = openelis_wrapper(layout)
-    with ownership_guard(layout.core), TeardownTrap() as trap:
-        trap.add(
-            "Stage-4 deploy-kit proof stack",
-            lambda: wrapper_openelis_down(
-                layout, STAGE4_PROJECT, environment
-            ),
-        )
-        try:
-            require_success(
-                run_logged((str(wrapper), "config", "-q"), layout.root, environment=environment),
-                "Stage-4 deploy-kit plan validation",
+    with docker_isolation_environment(layout, real_docker) as isolation:
+        environment = {**wrapper_environment(layout, STAGE4_PROJECT), **isolation}
+        with ownership_guard(layout.core), TeardownTrap() as trap:
+            trap.add(
+                "Stage-4 deploy-kit proof stack",
+                lambda: wrapper_openelis_down(
+                    layout, STAGE4_PROJECT, environment
+                ),
             )
-            images = require_success(
+            try:
+                require_success(
+                    run_logged(
+                        (str(wrapper), "config", "-q"),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "Stage-4 deploy-kit plan validation",
+                )
+                images = require_success(
+                    run_logged(
+                        (str(wrapper), "config", "--images"),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "Stage-4 deploy-kit image render",
+                )
+                image_list_sanity(images.stdout)
+                require_success(
+                    run_logged(
+                        (
+                            str(wrapper),
+                            "up",
+                            "-d",
+                            "certs",
+                            "db.openelis.org",
+                            "oe.openelis.org",
+                        ),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "Stage-4 deploy-kit source-build install",
+                )
+                proof_environment = {
+                    **environment,
+                    "HEALTH_URL": "https://localhost:18443/api/OpenELIS-Global/health",
+                    "DB_CONTAINER": "lis-proof-openelisglobal-database",
+                    "WEBAPP_CONTAINER": "lis-proof-openelisglobal-webapp",
+                    "TIMEOUT": "600",
+                }
+                healthcheck(layout, proof_environment)
+                require_success(
+                    run_logged(
+                        (
+                            "bash",
+                            str(layout.root / "deploy/ci/smoke-diagnostic-report.sh"),
+                        ),
+                        layout.root,
+                        environment={
+                            **proof_environment,
+                            "BASE_URL": "https://localhost:18443/api/OpenELIS-Global",
+                        },
+                    ),
+                    "finalized FHIR DiagnosticReport read",
+                )
+            except Exception:
                 run_logged(
-                    (str(wrapper), "config", "--images"),
+                    (str(wrapper), "ps"),
                     layout.root,
                     environment=environment,
-                ),
-                "Stage-4 deploy-kit image render",
-            )
-            image_list_sanity(images.stdout)
-            require_success(
-                run_logged(
-                    (str(wrapper), "up", "-d", "certs", "db.openelis.org", "oe.openelis.org"),
-                    layout.root,
-                    environment=environment,
-                ),
-                "Stage-4 deploy-kit source-build install",
-            )
-            proof_environment = {
-                **environment,
-                "HEALTH_URL": "https://localhost:18443/api/OpenELIS-Global/health",
-                "DB_CONTAINER": "lis-proof-openelisglobal-database",
-                "WEBAPP_CONTAINER": "lis-proof-openelisglobal-webapp",
-                "TIMEOUT": "600",
-            }
-            healthcheck(layout, proof_environment)
-            require_success(
-                run_logged(
-                    ("bash", str(layout.root / "deploy/ci/smoke-diagnostic-report.sh")),
-                    layout.root,
-                    environment={
-                        **proof_environment,
-                        "BASE_URL": "https://localhost:18443/api/OpenELIS-Global",
-                    },
-                ),
-                "finalized FHIR DiagnosticReport read",
-            )
-        except Exception:
-            run_logged((str(wrapper), "ps"), layout.root, environment=environment)
-            for container in (
-                "lis-proof-openelisglobal-webapp",
-                "lis-proof-openelisglobal-database",
-            ):
-                run_logged(("docker", "logs", "--tail", "200", container), layout.root)
-            raise
+                )
+                for container in (
+                    "lis-proof-openelisglobal-webapp",
+                    "lis-proof-openelisglobal-database",
+                ):
+                    run_logged(
+                        ("docker", "logs", "--tail", "200", container),
+                        layout.root,
+                        environment=environment,
+                    )
+                raise
     print("OK stage4-smoke")
 
 
 def site_environment(layout: Layout, password: str) -> dict[str, str]:
     extra_properties = layout.kit / ".state/local-ci-site/extra.properties"
     return {
+        # compose-site.sh rejects an ambient project name because it manages
+        # the independently named OpenELIS and bridge projects below.
+        "COMPOSE_PROJECT_NAME": "",
         "LIS_CONTROL_ROOT": str(layout.root),
         "OPENELIS_ROOT": str(layout.core),
         "BRIDGE_ROOT": str(layout.bridge),
@@ -572,202 +645,60 @@ def site_environment(layout: Layout, password: str) -> dict[str, str]:
     }
 
 
-def render_site_properties(environment: Mapping[str, str]) -> Path:
-    path = Path(environment["LIS_SITE_EXTRA_PROPERTIES"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.parent.chmod(0o700)
-    path.write_text(
-        "# Generated by local_ci_stack_checks.py; never commit.\n"
-        "analyzer.bridge.url=http://bridge.openelis.org:8443\n"
-        "analyzer.bridge.username=bridge\n"
-        f"analyzer.bridge.password={environment['BRIDGE_AUTH_PASSWORD']}\n",
-        encoding="utf-8",
-    )
-    path.chmod(0o644)
-    return path
-
-
-def bridge_compose(
-    layout: Layout,
-    args: Sequence[str],
-    environment: Mapping[str, str],
-) -> subprocess.CompletedProcess[str]:
-    return run_logged(
-        compose_command(
-            SITE_BRIDGE_PROJECT,
-            layout.bridge,
-            bridge_files(layout),
-            args,
-        ),
-        layout.root,
-        environment=environment,
-    )
-
-
-def container_id(layout: Layout, project: str, service: str) -> str:
-    lines = output(
-        (
-            "docker",
-            "ps",
-            "-aq",
-            "--filter",
-            f"label=com.docker.compose.project={project}",
-            "--filter",
-            f"label=com.docker.compose.service={service}",
-        ),
-        layout.root,
-    ).splitlines()
-    return lines[0] if lines else ""
-
-
-def container_health(layout: Layout, project: str, service: str) -> str:
-    identifier = container_id(layout, project, service)
-    if not identifier:
-        return "missing"
-    result = run_logged(
-        (
-            "docker",
-            "inspect",
-            "--format",
-            "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-            identifier,
-        ),
-        layout.root,
-        quiet=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else "missing"
-
-
-def wait_for_health(
-    layout: Layout,
-    project: str,
-    service: str,
-    expected: str,
-    timeout_seconds: int,
-) -> None:
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        state = container_health(layout, project, service)
-        if state == expected:
-            print(f"health: {project}/{service} = {state}")
-            return
-        if time.monotonic() >= deadline:
-            raise StackCheckError(
-                f"{project}/{service} did not become {expected} after "
-                f"{timeout_seconds}s (state {state})"
-            )
-        time.sleep(5)
-
-
 def site_wrapper(layout: Layout) -> Path:
     return layout.kit / "scripts/compose-site.sh"
 
 
-def require_ready(layout: Layout, environment: Mapping[str, str]) -> None:
-    require_success(
-        run_logged(
-            (str(site_wrapper(layout)), "ready"),
-            layout.root,
-            environment=environment,
-        ),
-        "site readiness gate",
-    )
-
-
-def require_not_ready(
-    layout: Layout, environment: Mapping[str, str], marker: str
-) -> None:
-    result = run_logged(
-        (str(site_wrapper(layout)), "ready"),
-        layout.root,
-        environment=environment,
-    )
-    if result.returncode == 0:
-        raise StackCheckError("site readiness gate passed despite injected failure")
-    if marker not in result.stdout:
-        raise StackCheckError(
-            f"site readiness failed without expected diagnosis {marker!r}"
-        )
-
-
-def recreate_bridge(
-    layout: Layout, environment: Mapping[str, str]
-) -> None:
-    require_success(
-        bridge_compose(
-            layout,
-            ("up", "-d", "--build", "--force-recreate"),
-            environment,
-        ),
-        "site bridge recreation",
-    )
-
-
-def site_failure_proofs(layout: Layout, environment: Mapping[str, str]) -> None:
-    require_ready(layout, environment)
-    oe_id = container_id(layout, SITE_OE_PROJECT, "oe.openelis.org")
-    if not oe_id:
-        raise StackCheckError("site OpenELIS webapp container is missing")
-
-    require_success(run_logged(("docker", "stop", oe_id), layout.root), "stop fault")
-    require_not_ready(layout, environment, "OpenELIS webapp container is not healthy")
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "unhealthy", 300
-    )
-    require_success(run_logged(("docker", "start", oe_id), layout.root), "core repair")
-    wait_for_health(layout, SITE_OE_PROJECT, "oe.openelis.org", "healthy", 600)
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "healthy", 300
-    )
-    require_ready(layout, environment)
-
-    bad_auth = dict(environment)
-    bad_auth["LIS_SITE_OE_PASSWORD"] = "definitely-wrong-local-ci"
-    recreate_bridge(layout, bad_auth)
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "unhealthy", 420
-    )
-    require_not_ready(layout, bad_auth, "bridge container is not healthy")
-    recreate_bridge(layout, environment)
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "healthy", 420
-    )
-    require_ready(layout, environment)
-
-    listener_drift = dict(environment)
-    listener_drift["LIS_SITE_X3_CONTAINER_PORT"] = "12099"
-    recreate_bridge(layout, listener_drift)
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "healthy", 420
-    )
-    require_not_ready(
-        layout, listener_drift, "no live X3 ASTM listener on container port"
-    )
-    recreate_bridge(layout, environment)
-    wait_for_health(
-        layout, SITE_BRIDGE_PROJECT, "openelis-analyzer-bridge", "healthy", 420
-    )
-    require_ready(layout, environment)
-    print("PASS: site stopped-core, bad-auth, and listener-drift failure proofs")
-
-
 def site_down(layout: Layout, environment: Mapping[str, str]) -> None:
-    bridge_result = bridge_compose(
-        layout, ("down", "-v", "--remove-orphans"), environment
-    )
-    require_success(bridge_result, "site bridge teardown")
-    oe_environment = {
+    cleanup_environment = {
         **environment,
-        "COMPOSE_PROJECT_NAME": SITE_OE_PROJECT,
+        "LIS_DEPLOY_CONFIRM_DESTROY": "true",
     }
-    wrapper_openelis_down(layout, SITE_OE_PROJECT, oe_environment)
-    run_logged(("docker", "network", "rm", SITE_NETWORK), layout.root, quiet=True)
-    assert_project_empty(layout.root, SITE_BRIDGE_PROJECT)
-    assert_objects_missing(layout.root, "container", (SITE_BRIDGE_CONTAINER,))
-    assert_objects_missing(layout.root, "volume", (SITE_BRIDGE_VOLUME,))
-    assert_objects_missing(layout.root, "network", (SITE_NETWORK,))
-    extra = Path(environment["LIS_SITE_EXTRA_PROPERTIES"])
-    extra.unlink(missing_ok=True)
+    failures: list[str] = []
+
+    def attempt(label: str, callback: Callable[[], None]) -> None:
+        try:
+            callback()
+        except Exception as exc:
+            failures.append(f"{label}: {exc}")
+
+    def wrapper_down() -> None:
+        result = run_logged(
+            (str(site_wrapper(layout)), "down", "-v"),
+            layout.root,
+            environment=cleanup_environment,
+        )
+        require_success(result, "site wrapper teardown")
+
+    attempt("canonical site wrapper down", wrapper_down)
+    attempt(
+        "OpenELIS proof-state assertion",
+        lambda: assert_openelis_proof_clean(layout.root, SITE_OE_PROJECT),
+    )
+    attempt(
+        "bridge project assertion",
+        lambda: assert_project_empty(layout.root, SITE_BRIDGE_PROJECT),
+    )
+    attempt(
+        "bridge container assertion",
+        lambda: assert_objects_missing(
+            layout.root, "container", (SITE_BRIDGE_CONTAINER,)
+        ),
+    )
+    attempt(
+        "bridge volume assertion",
+        lambda: assert_objects_missing(layout.root, "volume", (SITE_BRIDGE_VOLUME,)),
+    )
+    attempt(
+        "site network assertion",
+        lambda: assert_objects_missing(layout.root, "network", (SITE_NETWORK,)),
+    )
+    attempt(
+        "rendered site-secret removal",
+        lambda: Path(environment["LIS_SITE_EXTRA_PROPERTIES"]).unlink(missing_ok=True),
+    )
+    if failures:
+        raise StackCheckError("; ".join(failures))
 
 
 def diagnose_site(layout: Layout, environment: Mapping[str, str]) -> None:
@@ -782,64 +713,75 @@ def diagnose_site(layout: Layout, environment: Mapping[str, str]) -> None:
 
 def site_stack_smoke(layout: Layout) -> None:
     initialize_pins(layout, ("core/openelis", "deploy/kit", "edge/drivers"))
-    require_docker()
+    real_docker = require_docker()
     password = secrets.token_hex(24)
-    environment = site_environment(layout, password)
-    render_site_properties(environment)
-    oe_environment = {**environment, "COMPOSE_PROJECT_NAME": SITE_OE_PROJECT}
-    with ownership_guard(layout.core), ownership_guard(layout.bridge), TeardownTrap() as trap:
-        trap.add(
-            "isolated site stack",
-            lambda: site_down(layout, environment),
-        )
-        try:
-            require_success(
-                run_logged(("bash", str(layout.kit / "tests/compose-site.sh")), layout.root),
-                "deploy-kit site wrapper regression tests",
+    with docker_isolation_environment(layout, real_docker) as isolation:
+        environment = {**site_environment(layout, password), **isolation}
+        with ownership_guard(layout.core), ownership_guard(
+            layout.bridge
+        ), TeardownTrap() as trap:
+            trap.add(
+                "isolated site stack",
+                lambda: site_down(layout, environment),
             )
-            require_success(
-                run_logged(("docker", "network", "create", SITE_NETWORK), layout.root),
-                "site proof network creation",
-            )
-            require_success(
-                run_logged(
-                    (
-                        str(openelis_wrapper(layout)),
-                        "up",
-                        "-d",
-                        "certs",
-                        "db.openelis.org",
-                        "oe.openelis.org",
+            try:
+                require_success(
+                    run_logged(
+                        ("bash", str(layout.kit / "tests/compose-site.sh")),
+                        layout.root,
+                        environment=environment,
                     ),
-                    layout.root,
-                    environment=oe_environment,
-                ),
-                "site OpenELIS source-build up",
-            )
-            wait_for_health(layout, SITE_OE_PROJECT, "db.openelis.org", "healthy", 900)
-            wait_for_health(layout, SITE_OE_PROJECT, "oe.openelis.org", "healthy", 900)
-            recreate_bridge(layout, environment)
-            wait_for_health(
-                layout,
-                SITE_BRIDGE_PROJECT,
-                "openelis-analyzer-bridge",
-                "healthy",
-                420,
-            )
-            require_ready(layout, environment)
-            require_success(
-                run_logged(
-                    ("bash", str(layout.kit / "scripts/prove-site-x3-e2e.sh")),
-                    layout.root,
-                    environment=environment,
-                ),
-                "synthetic X3 ASTM end-to-end proof",
-            )
-            site_failure_proofs(layout, environment)
-            require_ready(layout, environment)
-        except Exception:
-            diagnose_site(layout, environment)
-            raise
+                    "deploy-kit site wrapper regression tests",
+                )
+                require_success(
+                    run_logged(
+                        (str(site_wrapper(layout)), "config", "-q"),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "canonical site install-plan render",
+                )
+                require_success(
+                    run_logged(
+                        (str(site_wrapper(layout)), "up"),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "canonical site stack up/readiness gate",
+                )
+                require_success(
+                    run_logged(
+                        (
+                            "bash",
+                            str(layout.kit / "scripts/prove-site-x3-e2e.sh"),
+                        ),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "synthetic X3 ASTM end-to-end proof",
+                )
+                require_success(
+                    run_logged(
+                        (
+                            "bash",
+                            str(layout.kit / "scripts/prove-site-failure-modes.sh"),
+                        ),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "canonical site failure-mode proofs",
+                )
+                require_success(
+                    run_logged(
+                        (str(site_wrapper(layout)), "ready"),
+                        layout.root,
+                        environment=environment,
+                    ),
+                    "final site readiness re-assertion",
+                )
+            except Exception:
+                diagnose_site(layout, environment)
+                raise
     print("OK site-stack-smoke")
 
 
@@ -884,13 +826,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     layout = Layout.from_root(
         Path(root_value), Path(args.core_checkout) if args.core_checkout else None
     )
+    timeout_value = os.environ.get(
+        "LIS_LOCAL_CI_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS[args.check])
+    )
     try:
-        if args.check == "stage0-bootstrap":
-            stage0_bootstrap(layout)
-        elif args.check == "stage4-smoke":
-            stage4_smoke(layout, args.expected_core_sha)
-        else:
-            site_stack_smoke(layout)
+        try:
+            timeout_seconds = int(timeout_value)
+        except ValueError as exc:
+            raise StackCheckError(
+                f"LIS_LOCAL_CI_TIMEOUT_SECONDS must be an integer, got {timeout_value!r}"
+            ) from exc
+        with graceful_deadline(timeout_seconds):
+            if args.check == "stage0-bootstrap":
+                stage0_bootstrap(layout)
+            elif args.check == "stage4-smoke":
+                stage4_smoke(layout, args.expected_core_sha)
+            else:
+                site_stack_smoke(layout)
     except StackCheckError as exc:
         print(f"ERROR {args.check}: {exc}", file=sys.stderr)
         return 1
