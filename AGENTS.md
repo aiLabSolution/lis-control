@@ -71,9 +71,9 @@ the agent use the model and reasoning settings in its TOML definition.
   `LIS-NN` keys are accepted; priorities are the API's string enum.
 - Coordinate through the Plane issue and branch. Fetch/rebase before commits,
   push after commits, and never force-push a shared slice branch.
-- A bug fix is only verified by an end-to-end test that exercises the real flow
-  the bug lives in; unit tests alone are never sufficient. Reproduce the bug
-  with an e2e test first when practical, confirm it passes with the fix, and
+- A bug fix is only verified when an end-to-end test reproduces the bug and
+  passes with the fix; unit tests alone are never sufficient. The e2e test must
+  exercise the real flow the bug lives in — reproduce first, then fix — and
   cite that run when closing the bug. Use the flow-appropriate harness from the
   command map: Playwright (`npm run pw:test`) for the OpenELIS frontend, the
   Docker compose boot plus `deploy/ci/healthcheck.sh` for bootstrap/integration
