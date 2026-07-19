@@ -46,6 +46,15 @@ SPOTLESS_BACKEND_FILES_REGEX = (
 # These failures are pre-existing on a clean core-main full-suite baseline and
 # are order-dependent.  Matching is deliberately exact and fail-closed: any
 # other failure leaves the check red.
+#
+# Admission criterion — every entry must have all three proofs, recorded in the
+# slice evidence before it is added here:
+#   1. fails in a full-suite run on a clean core-main checkout,
+#   2. passes in isolation (targeted -Dtest= run) on the same checkout+image,
+#   3. hosted backend CI is green at that same SHA.
+# First three: baseline established pre-LIS-283.  Last three: full-suite run on
+# core main 670644335 (2026-07-19) failed exactly these and both classes passed
+# 6/6 and 12/12 in isolation on the identical checkout.
 BASELINE_FLAKES = frozenset(
     {
         "ObservationFacadeTest.createObservation_shouldCreateNewResult",
@@ -53,6 +62,12 @@ BASELINE_FLAKES = frozenset(
         "ac13_columnOrdering_systemFirstThenCustomAlphabetical",
         "OrderEntryLabelRequestServiceAggregationTest."
         "determinism_sameInputsProduceSameOutput",
+        "OrderEntryLabelRequestServiceAggregationTest."
+        "fr014a_seededSpecimenLabel_isSampleColumn_onNoLinkOrder",
+        "AnalyzerResultsAcceptUnmatchedGateTest."
+        "acceptNoSampleGroup_withConfirmation_persistsUnderUnknownPatientWithAuditNote",
+        "AnalyzerResultsAcceptUnmatchedGateTest."
+        "secondArrivalOnAnalyzerCreatedSample_stillRequiresConfirmation",
     }
 )
 

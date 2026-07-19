@@ -119,7 +119,23 @@ class BaselineAllowlistTests(unittest.TestCase):
             "<testsuite>" + "".join(rows) + "</testsuite>", encoding="utf-8"
         )
 
-    def test_only_the_three_exact_known_tests_are_allowlisted(self):
+    def test_only_the_exact_known_baseline_tests_are_allowlisted(self):
+        self.assertEqual(
+            heavy.BASELINE_FLAKES,
+            {
+                "ObservationFacadeTest.createObservation_shouldCreateNewResult",
+                "OrderEntryLabelRequestServiceAggregationTest."
+                "ac13_columnOrdering_systemFirstThenCustomAlphabetical",
+                "OrderEntryLabelRequestServiceAggregationTest."
+                "determinism_sameInputsProduceSameOutput",
+                "OrderEntryLabelRequestServiceAggregationTest."
+                "fr014a_seededSpecimenLabel_isSampleColumn_onNoLinkOrder",
+                "AnalyzerResultsAcceptUnmatchedGateTest."
+                "acceptNoSampleGroup_withConfirmation_persistsUnderUnknownPatientWithAuditNote",
+                "AnalyzerResultsAcceptUnmatchedGateTest."
+                "secondArrivalOnAnalyzerCreatedSample_stillRequiresConfirmation",
+            },
+        )
         cases = []
         for test_id in sorted(heavy.BASELINE_FLAKES):
             classname, name = test_id.rsplit(".", 1)
@@ -142,7 +158,7 @@ class BaselineAllowlistTests(unittest.TestCase):
             self.assertIn(test_id, output.getvalue())
         self.assertEqual(
             detail.read_text(encoding="utf-8").strip(),
-            "passed; absorbed 3 baseline flakes",
+            "passed; absorbed 6 baseline flakes",
         )
 
 
@@ -223,7 +239,7 @@ class MainTests(unittest.TestCase):
         self.assertEqual(run.call_count, 3)
         self.assertEqual(
             detail.read_text(encoding="utf-8").strip(),
-            "passed; absorbed 3 baseline flakes",
+            "passed; absorbed 6 baseline flakes",
         )
 
 
