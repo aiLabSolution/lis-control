@@ -47,6 +47,16 @@ open a PR. Non-negotiables:
 Full protocol (loop steps, multi-session coordination, two-level submodule sync, PR
 conventions): `docs/agents/slice-loop.md`.
 
+### Verifying bug fixes
+
+**A bug is not verified until an end-to-end test reproduces it and passes with the fix.
+Unit tests are not enough.** Write or run a test that exercises the real flow the bug
+lives in — Playwright (`npm run pw:test`) for the OpenELIS frontend, the full Docker
+boot + `deploy/ci/healthcheck.sh` for bootstrap/integration issues, the `edge/sim`
+harness for analyzer flows. Unit tests confirm the changed unit, not that the bug is
+gone from the system; cite the e2e run (or the reproducing test) in the PR / slice
+comment when closing a bug.
+
 ### Model routing
 
 Route subagents and workflow stages by task type: **opus** for orchestration/planning,
