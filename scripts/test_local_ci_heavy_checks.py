@@ -123,15 +123,21 @@ class BaselineAllowlistTests(unittest.TestCase):
         self.assertEqual(
             heavy.BASELINE_FLAKES,
             {
-                "ObservationFacadeTest.createObservation_shouldCreateNewResult",
+                "org.openelisglobal.fhir.ObservationFacadeTest."
+                "createObservation_shouldCreateNewResult",
+                "org.openelisglobal.labelpreset.service."
                 "OrderEntryLabelRequestServiceAggregationTest."
                 "ac13_columnOrdering_systemFirstThenCustomAlphabetical",
+                "org.openelisglobal.labelpreset.service."
                 "OrderEntryLabelRequestServiceAggregationTest."
                 "determinism_sameInputsProduceSameOutput",
+                "org.openelisglobal.labelpreset.service."
                 "OrderEntryLabelRequestServiceAggregationTest."
                 "fr014a_seededSpecimenLabel_isSampleColumn_onNoLinkOrder",
+                "org.openelisglobal.analyzerresults.service."
                 "AnalyzerResultsAcceptUnmatchedGateTest."
                 "acceptNoSampleGroup_withConfirmation_persistsUnderUnknownPatientWithAuditNote",
+                "org.openelisglobal.analyzerresults.service."
                 "AnalyzerResultsAcceptUnmatchedGateTest."
                 "secondArrivalOnAnalyzerCreatedSample_stillRequiresConfirmation",
             },
@@ -139,7 +145,7 @@ class BaselineAllowlistTests(unittest.TestCase):
         cases = []
         for test_id in sorted(heavy.BASELINE_FLAKES):
             classname, name = test_id.rsplit(".", 1)
-            cases.append(("org.openelisglobal." + classname, name, "failure"))
+            cases.append((classname, name, "failure"))
         self.write_report(cases)
         self.assertEqual(heavy.failed_test_ids(self.core), heavy.BASELINE_FLAKES)
         self.assertTrue(heavy.can_absorb(heavy.failed_test_ids(self.core)))
@@ -147,6 +153,66 @@ class BaselineAllowlistTests(unittest.TestCase):
     def test_unknown_failure_cannot_be_absorbed(self):
         self.write_report([("org.openelisglobal.OtherTest", "broken", "error")])
         self.assertFalse(heavy.can_absorb(heavy.failed_test_ids(self.core)))
+
+    def test_same_simple_name_in_another_package_is_not_absorbable(self):
+        self.write_report(
+            [
+                (
+                    "com.evil.other.AnalyzerResultsAcceptUnmatchedGateTest",
+                    "secondArrivalOnAnalyzerCreatedSample_stillRequiresConfirmation",
+                    "failure",
+                )
+            ]
+        )
+        self.assertFalse(heavy.can_absorb(heavy.failed_test_ids(self.core)))
+
+    def test_parameterized_run_of_a_baseline_flake_still_matches(self):
+        self.write_report(
+            [
+                (
+                    "org.openelisglobal.fhir.ObservationFacadeTest",
+                    "createObservation_shouldCreateNewResult[2]",
+                    "failure",
+                )
+            ]
+        )
+        self.assertTrue(heavy.can_absorb(heavy.failed_test_ids(self.core)))
+
+    def test_reported_total_counts_suite_level_and_unnameable_failures(self):
+        flake = sorted(heavy.BASELINE_FLAKES)[0]
+        classname, name = flake.rsplit(".", 1)
+        (self.reports / "TEST-suite.xml").write_text(
+            "<testsuite failures='1' errors='2'>"
+            f"<testcase classname='{classname}' name='{name}'>"
+            "<failure message='flaky'/></testcase>"
+            "<testcase classname='' name=''><error message='unnameable'/></testcase>"
+            "<error message='The forked VM terminated'/>"
+            "</testsuite>",
+            encoding="utf-8",
+        )
+        self.assertEqual(heavy.failed_test_ids(self.core), frozenset({flake}))
+        self.assertEqual(heavy.reported_failure_total(self.core), 3)
+
+    def test_fork_crash_markers_are_detected(self):
+        self.assertTrue(
+            heavy.fork_crash_detected(
+                "[ERROR] The forked VM terminated without properly saying goodbye"
+            )
+        )
+        self.assertTrue(heavy.fork_crash_detected("[ERROR] Crashed tests:"))
+        self.assertFalse(heavy.fork_crash_detected("ordinary test failures"))
+
+    def test_nested_module_reports_are_found(self):
+        nested = self.core / "somemodule/target/surefire-reports"
+        nested.mkdir(parents=True)
+        (nested / "TEST-nested.xml").write_text(
+            "<testsuite failures='1'>"
+            "<testcase classname='org.x.NestedTest' name='broken'>"
+            "<failure message='boom'/></testcase></testsuite>",
+            encoding="utf-8",
+        )
+        self.assertIn("org.x.NestedTest.broken", heavy.failed_test_ids(self.core))
+        self.assertEqual(heavy.reported_failure_total(self.core), 1)
 
     def test_absorption_is_loud_and_writes_status_detail(self):
         detail = self.core / "detail.txt"
@@ -234,6 +300,9 @@ class MainTests(unittest.TestCase):
         ) as run, mock.patch(
             "local_ci_heavy_checks.failed_test_ids",
             return_value=heavy.BASELINE_FLAKES,
+        ), mock.patch(
+            "local_ci_heavy_checks.reported_failure_total",
+            return_value=len(heavy.BASELINE_FLAKES),
         ):
             heavy.core_backend(core)
         self.assertEqual(run.call_count, 3)
@@ -241,6 +310,62 @@ class MainTests(unittest.TestCase):
             detail.read_text(encoding="utf-8").strip(),
             "passed; absorbed 6 baseline flakes",
         )
+
+    def _red_path_context(self, build_output, failed_ids, reported_total):
+        socket = mock.Mock(stat=mock.Mock(return_value=mock.Mock(st_gid=967)))
+        return (
+            mock.patch("local_ci_heavy_checks.require_docker"),
+            mock.patch("local_ci_heavy_checks.DOCKER_SOCKET", socket),
+            mock.patch("local_ci_heavy_checks.ensure_maven_cache"),
+            mock.patch("local_ci_heavy_checks._settings_file", return_value=None),
+            mock.patch(
+                "local_ci_heavy_checks.run_spotless_with_retry",
+                return_value=completed(),
+            ),
+            mock.patch(
+                "local_ci_heavy_checks.run_logged",
+                side_effect=[completed(), completed(1, build_output)],
+            ),
+            mock.patch(
+                "local_ci_heavy_checks.failed_test_ids", return_value=failed_ids
+            ),
+            mock.patch(
+                "local_ci_heavy_checks.reported_failure_total",
+                return_value=reported_total,
+            ),
+        )
+
+    def test_fork_crash_with_only_flake_failures_stays_red(self):
+        # The refuted-P1 scenario: routine baseline flakes visible AND the
+        # fork crashed — absorption must refuse before trusting any report.
+        core = self.core_checkout()
+        patches = self._red_path_context(
+            "[ERROR] The forked VM terminated without properly saying goodbye",
+            heavy.BASELINE_FLAKES,
+            len(heavy.BASELINE_FLAKES),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[
+            5
+        ], patches[6], patches[7]:
+            with self.assertRaisesRegex(heavy.HeavyCheckError, "fork-crash"):
+                heavy.core_backend(core)
+
+    def test_unreconciled_failure_totals_stay_red(self):
+        # Suite-level or unnameable failures inflate the counters past the
+        # parsed testcases; absorption must refuse on the mismatch.
+        core = self.core_checkout()
+        patches = self._red_path_context(
+            "test failures",
+            heavy.BASELINE_FLAKES,
+            len(heavy.BASELINE_FLAKES) + 1,
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[
+            5
+        ], patches[6], patches[7]:
+            with self.assertRaisesRegex(
+                heavy.HeavyCheckError, "not every failure is attributable"
+            ):
+                heavy.core_backend(core)
 
 
 if __name__ == "__main__":

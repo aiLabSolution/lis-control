@@ -38,9 +38,11 @@ docker run --rm --network host --user "$(id -u):$(id -g)" --group-add 967 \
   postgres:14.4 + ryuk images are already cached.
 - Prefer CI for the full ~4500-test suite; use local Docker mainly for spotless and
   targeted `-Dtest=` subsets.
-- **3 pre-existing flaky full-suite failures on core main** (don't chase; diff against a
-  clean-main baseline): `ObservationFacadeTest.createObservation_shouldCreateNewResult`
-  plus 2 `OrderEntryLabelRequestServiceAggregationTest` label-ordering tests.
+- **6 pre-existing order-dependent flaky full-suite failures on core main** (don't
+  chase; each passes in isolation): the canonical exact-name list is
+  `BASELINE_FLAKES` in `scripts/local_ci_heavy_checks.py` (ObservationFacadeTest,
+  3 OrderEntryLabelRequestServiceAggregationTest label tests, 2
+  AnalyzerResultsAcceptUnmatchedGateTest). Core-side fix tracked as LIS-306.
 
 ## Core spotless (CI's only fast-fail — always apply before pushing)
 

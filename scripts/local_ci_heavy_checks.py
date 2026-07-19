@@ -29,11 +29,14 @@ STATUS_DETAIL_ENV = "LIS_LOCAL_CI_STATUS_DETAIL_FILE"
 MAVEN_REPOSITORY = "/mvnhome/.m2/repository"
 MAVEN_OPTS = "-Xmx700m -Djava.net.preferIPv6Addresses=true"
 SUREFIRE_ARGLINE = "-Xmx1300m -Djava.net.preferIPv6Addresses=true"
-# Deliberate, visible parity gap: the pinned Maven image ships no npm, so the
-# pom's `**/*.md` prettier format cannot run locally (proved on core main
-# 670644335: spotless dies on src/test/resources/FIXTURE_LOADER_README.md).
-# The leading lookahead removes exactly the Markdown files from scope; hosted
-# spotless remains the authority for Markdown formatting.
+# Deliberate, visible parity gaps — hosted spotless remains the authority:
+# 1. The pinned Maven image ships no npm, so the pom's `**/*.md` prettier
+#    format cannot run locally (proved on core main 670644335: spotless dies
+#    on src/test/resources/FIXTURE_LOADER_README.md).  The leading lookahead
+#    removes the Markdown files from scope.
+# 2. The alternation scopes to backend-trigger-shaped paths, so hosted-checked
+#    files outside them (root *.sh, .gitignore, tools/** xml) are locally
+#    unchecked as well.
 SPOTLESS_BACKEND_FILES_REGEX = (
     "(?!.*[.]md$)"
     ".*(pom[.]xml|src/.*|fhir/.*|Dockerfile|build[.]docker-compose[.]yml|"
@@ -44,8 +47,9 @@ SPOTLESS_BACKEND_FILES_REGEX = (
 )
 
 # These failures are pre-existing on a clean core-main full-suite baseline and
-# are order-dependent.  Matching is deliberately exact and fail-closed: any
-# other failure leaves the check red.
+# are order-dependent.  Matching is deliberately exact (package-qualified
+# class + method, parameter suffix stripped) and fail-closed: any other
+# failure leaves the check red.
 #
 # Admission criterion — every entry must have all three proofs, recorded in the
 # slice evidence before it is added here:
@@ -57,18 +61,38 @@ SPOTLESS_BACKEND_FILES_REGEX = (
 # 6/6 and 12/12 in isolation on the identical checkout.
 BASELINE_FLAKES = frozenset(
     {
-        "ObservationFacadeTest.createObservation_shouldCreateNewResult",
+        "org.openelisglobal.fhir.ObservationFacadeTest."
+        "createObservation_shouldCreateNewResult",
+        "org.openelisglobal.labelpreset.service."
         "OrderEntryLabelRequestServiceAggregationTest."
         "ac13_columnOrdering_systemFirstThenCustomAlphabetical",
+        "org.openelisglobal.labelpreset.service."
         "OrderEntryLabelRequestServiceAggregationTest."
         "determinism_sameInputsProduceSameOutput",
+        "org.openelisglobal.labelpreset.service."
         "OrderEntryLabelRequestServiceAggregationTest."
         "fr014a_seededSpecimenLabel_isSampleColumn_onNoLinkOrder",
+        "org.openelisglobal.analyzerresults.service."
         "AnalyzerResultsAcceptUnmatchedGateTest."
         "acceptNoSampleGroup_withConfirmation_persistsUnderUnknownPatientWithAuditNote",
+        "org.openelisglobal.analyzerresults.service."
         "AnalyzerResultsAcceptUnmatchedGateTest."
         "secondArrivalOnAnalyzerCreatedSample_stillRequiresConfirmation",
     }
+)
+
+# Recursive so a future modularized core (nested */target report dirs) cannot
+# silently fall out of scope; today only the root module exists.
+REPORT_PATTERNS = (
+    "**/target/surefire-reports/TEST-*.xml",
+    "**/target/failsafe-reports/TEST-*.xml",
+)
+
+# When surefire's forked VM dies (OOM kill, crash), per-test XML is truncated
+# or missing entirely and per-testcase parsing cannot be trusted.
+FORK_CRASH_MARKERS = (
+    "The forked VM terminated",
+    "Crashed tests",
 )
 
 
@@ -245,30 +269,56 @@ def _local_tag(element: ET.Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
-def failed_test_ids(checkout: Path) -> frozenset[str]:
-    failures: set[str] = set()
-    report_patterns = (
-        "target/surefire-reports/TEST-*.xml",
-        "target/failsafe-reports/TEST-*.xml",
-    )
-    for pattern in report_patterns:
+def _report_roots(checkout: Path):
+    for pattern in REPORT_PATTERNS:
         for report in sorted(checkout.glob(pattern)):
             try:
-                root = ET.parse(report).getroot()
+                yield report, ET.parse(report).getroot()
             except (OSError, ET.ParseError) as exc:
                 raise HeavyCheckError(f"cannot parse Maven test report {report}: {exc}") from exc
-            for case in root.iter():
-                if _local_tag(case) != "testcase":
-                    continue
-                if not any(
-                    _local_tag(child) in {"failure", "error"} for child in case
-                ):
-                    continue
-                classname = case.attrib.get("classname", "").rsplit(".", 1)[-1]
-                name = case.attrib.get("name", "").split("[", 1)[0]
-                if classname and name:
-                    failures.add(f"{classname}.{name}")
+
+
+def failed_test_ids(checkout: Path) -> frozenset[str]:
+    failures: set[str] = set()
+    for _report, root in _report_roots(checkout):
+        for case in root.iter():
+            if _local_tag(case) != "testcase":
+                continue
+            if not any(
+                _local_tag(child) in {"failure", "error"} for child in case
+            ):
+                continue
+            classname = case.attrib.get("classname", "")
+            name = case.attrib.get("name", "").split("[", 1)[0]
+            if classname and name:
+                failures.add(f"{classname}.{name}")
     return frozenset(failures)
+
+
+def reported_failure_total(checkout: Path) -> int:
+    """Sum the testsuite-level failure+error counters across all reports.
+
+    Surefire counts suite-level errors (crashed setup, unnameable testcases)
+    in these attributes even when no parseable <testcase> child carries the
+    failure, so this is the reconciliation anchor for absorption.
+    """
+    total = 0
+    for report, root in _report_roots(checkout):
+        for element in root.iter():
+            if _local_tag(element) != "testsuite":
+                continue
+            try:
+                total += int(element.attrib.get("failures") or 0)
+                total += int(element.attrib.get("errors") or 0)
+            except ValueError as exc:
+                raise HeavyCheckError(
+                    f"unparseable failure counters in {report}: {exc}"
+                ) from exc
+    return total
+
+
+def fork_crash_detected(output: str) -> bool:
+    return any(marker in output for marker in FORK_CRASH_MARKERS)
 
 
 def can_absorb(failures: frozenset[str]) -> bool:
@@ -362,12 +412,39 @@ def core_backend(checkout: Path) -> None:
         print("OK core-backend")
         return
 
+    # Absorption guards, all fail-closed.  1: a crashed surefire fork leaves
+    # truncated/absent XML, so per-testcase parsing cannot be trusted.  2: the
+    # testsuite counters must reconcile exactly with the parsed testcases, or
+    # some failure (suite-level error, unnameable testcase) is not attributable
+    # to an exact allowlisted test.  3: only the exact baseline set absorbs.
+    if fork_crash_detected(full_build.stdout or ""):
+        raise HeavyCheckError(
+            f"full core build failed with exit {full_build.returncode} and the "
+            "output carries a surefire fork-crash marker; absorption refused "
+            "because per-test reports cannot be trusted after a crashed fork"
+        )
     failures = failed_test_ids(checkout)
+    reported = reported_failure_total(checkout)
+    if reported != len(failures):
+        raise HeavyCheckError(
+            f"full core build failed with exit {full_build.returncode}; test "
+            f"reports count {reported} failure(s)/error(s) but only "
+            f"{len(failures)} exact failing testcase(s) were parsed — "
+            "absorption refused because not every failure is attributable to "
+            "an exact test"
+        )
     if not can_absorb(failures):
-        rendered = ", ".join(sorted(failures)) or "no failing test reports found"
+        unlisted = sorted(failures - BASELINE_FLAKES)
+        rendered = ", ".join(unlisted) or "no failing test reports found"
+        allowlisted_note = (
+            f" ({len(failures) - len(unlisted)} allowlisted baseline flake(s) "
+            "also failed)"
+            if failures and unlisted and len(unlisted) != len(failures)
+            else ""
+        )
         raise HeavyCheckError(
             f"full core build failed with exit {full_build.returncode}; "
-            f"unabsorbed failures: {rendered}"
+            f"unabsorbed failures: {rendered}{allowlisted_note}"
         )
 
     # A test-phase failure stops Maven before packaging/install.  Complete that
@@ -392,6 +469,10 @@ def core_backend(checkout: Path) -> None:
 
 
 def core_frontend(checkout: Path) -> None:
+    # Covers the hosted frontend workflow's Image job only.  Its blocking
+    # static-checks job (prettier --check + ESLint) is a known, documented
+    # local gap: local core-frontend green must never be read as hosted
+    # frontend-workflow green.
     checkout = checkout.resolve()
     require_docker(require_socket=False)
     _require_file(checkout / "frontend/Dockerfile", "not an OpenELIS core checkout")
