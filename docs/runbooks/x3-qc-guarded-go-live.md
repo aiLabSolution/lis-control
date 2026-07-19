@@ -152,8 +152,14 @@ calibration rule does not fire at all (shipped inactive).
   `useSameDayPatientCollision_blankWireHints_substitutesSilently_LIS270Residual`.
   **Scope note:** this residual is *separate* from the QC residuals above. The daily-review SOP in
   this runbook does **not** bound it — that SOP is QC-classification-focused and does not address
-  wrong-patient attachment — and **LIS-COMP-SIGNOFF-003 does not cover it**, having been recorded
-  before this residual was identified (LIS-270). Its own acceptance is the LIS-270 go-live gate.
+  wrong-patient attachment. **LIS-COMP-SIGNOFF-003 does not cover it either**, and not by oversight:
+  [that authorization](../compliance/sign-off/LIS-269-x3-guarded-go-live-authorization.md) is scoped
+  in §1 "to the QC/calibration-misclassification axis only" and expressly does **not** waive the
+  other open X3 go-live gates tracked in the 2026-07-19 production-readiness review (LIS-267..279,
+  a range that includes LIS-270); its §2 residual list is exactly the three residuals above.
+  Acceptance of *this* residual is tracked under LIS-270 (banner + SOP gate; systematic control
+  LIS-296) — **no separate sign-off artifact has been recorded for it**, and patient go-live remains
+  gated on the independent QA/regulatory sign-off that is still open at §4 of that authorization.
 
 ## Traceability
 
