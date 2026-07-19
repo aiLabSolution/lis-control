@@ -1,6 +1,6 @@
 ---
 name: core-verify
-description: Run OpenELIS core (core/openelis) or analyzer-bridge (edge/drivers) Maven builds, tests, and spotless locally via Docker. Use whenever compiling, testing, or formatting Java in either submodule — this box has NO java/mvn on PATH, is IPv6-only, and is RAM-tight, so naive invocations fail in four distinct ways documented here.
+description: Run OpenELIS core (core/openelis) or analyzer-bridge (edge/drivers) Maven builds, tests, and spotless locally via Docker. Use whenever compiling, testing, or formatting Java in either submodule — this box has NO java/mvn on PATH, needs sg-docker wrapping, and is RAM-tight, so naive invocations fail in four distinct ways documented here.
 ---
 
 # core-verify — Docker Maven recipe for this box
@@ -9,12 +9,14 @@ This box has **no `java`/`mvn` on PATH** (no SDKMAN either). All Maven work runs
 cached Docker image `maven:3.9-eclipse-temurin-21`. Do not improvise the invocation —
 four independent blockers were discovered the hard way and ALL are needed together:
 
-1. **IPv6-only box** (no IPv4 default route). Docker's default bridge NAT is v4-only, so
-   bridge-network containers have NO outbound network (DNS resolves, TCP fails).
-   → use `--network host`.
-2. Even on host network, **Java picks the A record first** and dies with
-   `Network is unreachable` (curl hides this by falling back to AAAA).
-   → add `-Djava.net.preferIPv6Addresses=true` to `MAVEN_OPTS` **and** surefire `-DargLine`.
+1. **Network (re-verified 2026-07-19 — the IPv6 story has FLIPPED).** IPv6 to Maven
+   Central is now broken while IPv4 works: do **NOT** add the old
+   `-Djava.net.preferIPv6Addresses=true` flags — they now cause the resolution
+   failures they used to fix. Keep `--network host` (bridge-network containers still
+   lack working outbound).
+2. **The shell is not in the docker group** → wrap every docker invocation in
+   `sg docker -c '…'`. The docker socket group is gid **119** (it was 967 before a
+   rebuild) → `--group-add 119` when testcontainers needs the socket.
 3. With `--user "$(id -u)"` there is no passwd entry in-container, so Maven's `user.home`
    is not `$HOME` and the mounted `.m2` is **silently ignored** (symptom: `dataexport-api`
    "not found" though installed). → pass `-Dmaven.repo.local=/mvnhome/.m2/repository`.
@@ -25,16 +27,16 @@ four independent blockers were discovered the hard way and ALL are needed togeth
 ## Core tests (targeted subsets — full suite is too RAM-heavy, ~2GB free)
 
 ```bash
-docker run --rm --network host --user "$(id -u):$(id -g)" --group-add 967 \
-  -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx700m -Djava.net.preferIPv6Addresses=true" \
+sg docker -c 'docker run --rm --network host --user "$(id -u):$(id -g)" --group-add 119 \
+  -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx700m" \
   -e TESTCONTAINERS_RYUK_DISABLED=true \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v <core-worktree>:/work -v ~/.m2:/mvnhome/.m2 -w /work maven:3.9-eclipse-temurin-21 \
   mvn -B -Dmaven.repo.local=/mvnhome/.m2/repository test -Dtest="<TestClassPattern>" \
-    -DfailIfNoTests=false -DargLine="-Xmx1300m -Djava.net.preferIPv6Addresses=true"
+    -DfailIfNoTests=false -DargLine=-Xmx1300m'
 ```
 
-- `--group-add 967` = docker group (for the testcontainers socket); testcontainers
+- `--group-add 119` = docker group (for the testcontainers socket); testcontainers
   postgres:14.4 + ryuk images are already cached.
 - Prefer CI for the full ~4500-test suite; use local Docker mainly for spotless and
   targeted `-Dtest=` subsets.
@@ -48,10 +50,10 @@ Full-project `spotless:check` fails in the maven image (the `**/*.md` prettier s
 needs npm) — scope with `-DspotlessFiles`:
 
 ```bash
-docker run --rm --user "$(id -u):$(id -g)" -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx1000m" \
+sg docker -c 'docker run --rm --user "$(id -u):$(id -g)" -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx1000m" \
   -v <core-worktree>:/work -v <scratch>/m2:/mvnhome/.m2 -v <scratch>/mvnhome:/mvnhome \
   -w /work maven:3.9-eclipse-temurin-21 \
-  mvn -B spotless:apply -DspotlessFiles='.*Foo(Test)?[.]java'   # regex over changed files
+  mvn -B spotless:apply -DspotlessFiles=".*Foo(Test)?[.]java"'   # regex over changed files
 ```
 
 - **Scope the regex to EVERY changed file, not just `.java`** — spotless also formats
@@ -77,15 +79,15 @@ head, is the gate; local runs are for fast iteration before pushing. The repo ha
 so a bare `mvn test` at the root fails resolution. One Docker invocation:
 
 ```bash
-docker run --rm --network host --user "$(id -u):$(id -g)" \
-  -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx700m -Djava.net.preferIPv6Addresses=true" \
+sg docker -c 'docker run --rm --network host --user "$(id -u):$(id -g)" \
+  -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx700m" \
   -v <bridge-worktree>:/work -v ~/.m2:/mvnhome/.m2 -w /work maven:3.9-eclipse-temurin-21 \
-  bash -c 'mvn -B -Dmaven.repo.local=/mvnhome/.m2/repository -f astm-http-lib/pom.xml install -DskipTests && \
-           mvn -B -Dmaven.repo.local=/mvnhome/.m2/repository test \
-             -DargLine="-Xmx1300m -Djava.net.preferIPv6Addresses=true"'
+  bash -c "mvn -B -Dmaven.repo.local=/mvnhome/.m2/repository -f astm-http-lib/pom.xml install -DskipTests && \
+           mvn -B -Dmaven.repo.local=/mvnhome/.m2/repository test -DargLine=-Xmx1300m"'
 ```
 
-(~1000 tests, ~2 min from a warm `.m2`.)
+(~1041 tests at the LIS-232 pin, ~2 min from a warm `.m2`. Prefer targeted `-Dtest=` —
+the full suite has crashed a surefire fork on this RAM-tight box and passed on retry.)
 
 ## Cleanup gotcha
 

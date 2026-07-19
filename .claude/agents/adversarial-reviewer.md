@@ -49,7 +49,8 @@ check-runs rollup on one head is NOT proof of no CI — path-filtered CI looks i
 4. **Execute, don't just read.** Run the affected test suites yourself:
    - Core (`core/openelis`) and bridge (`edge/drivers`) builds run via Docker maven —
      read `.claude/skills/core-verify/SKILL.md` for the exact working invocations
-     (IPv6-only box, no local JDK; do not improvise the docker command).
+     (no local JDK; the box's network/docker-group quirks drift — trust the skill's
+     latest re-verified recipe, do not improvise the docker command).
    - Bridge repo has NO aggregator pom: `mvn -f astm-http-lib/pom.xml install -DskipTests`
      before `mvn test`.
 5. **Known noise — do not report these as findings:**
