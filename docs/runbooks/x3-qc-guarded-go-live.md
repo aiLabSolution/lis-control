@@ -134,6 +134,11 @@ calibration rule does not fire at all (shipped inactive).
 - **LOINC/UCUM mappings in the profile (TSH, FT4) are synthetic seeds**, the same ones already
   carried in the bridge's `configuration.yml` ("real dictionary = LIS-38"), not a validated vendor
   dictionary.
+- This runbook's SOP is the compensating control for the QC-misclassification, calibration and
+  LOINC/UCUM mapping residuals above. The technical owner has accepted
+  it as such (LIS-COMP-SIGNOFF-003); it becomes the *QA-accepted* control only when Pinote's
+  independent QA/regulatory sign-off is verifiably recorded (see Posture). It does not eliminate
+  the risk; it bounds it to "caught by daily human review" instead of "undetected."
 - **No patient identity on the X3 wire — the same-day wrong-patient guard cannot fire.** The X3
   sends a bare `P|1` patient record (no id, no name), so every X3 result stages with a blank patient
   hint and the LIS-239 same-day patient-mismatch guard is **structurally inert** on this channel. If
@@ -145,10 +150,10 @@ calibration rule does not fire at all (shipped inactive).
   **required go-live gate for this channel, not optional reading**. The systematic control
   (order-side cross-check) is LIS-296 and is **not** in place. The residual is pinned in core by
   `useSameDayPatientCollision_blankWireHints_substitutesSilently_LIS270Residual`.
-- This runbook's SOP is the compensating control for the above. The technical owner has accepted
-  it as such (LIS-COMP-SIGNOFF-003); it becomes the *QA-accepted* control only when Pinote's
-  independent QA/regulatory sign-off is verifiably recorded (see Posture). It does not eliminate
-  the risk; it bounds it to "caught by daily human review" instead of "undetected."
+  **Scope note:** this residual is *separate* from the QC residuals above. The daily-review SOP in
+  this runbook does **not** bound it — that SOP is QC-classification-focused and does not address
+  wrong-patient attachment — and **LIS-COMP-SIGNOFF-003 does not cover it**, having been recorded
+  before this residual was identified (LIS-270). Its own acceptance is the LIS-270 go-live gate.
 
 ## Traceability
 
