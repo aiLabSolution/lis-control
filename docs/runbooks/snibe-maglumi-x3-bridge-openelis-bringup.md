@@ -212,7 +212,7 @@ On the operation PC: **`Set` → `System Setting` → `Online`**
 | Host ID | `Lis` (cosmetic — see AC6) |
 | Enable Checksum | **unchecked** (must match `checksum: false`) |
 | Auto Upload Test Result | checked |
-| Auto Upload QC Data | checked only for a QC run (LIS-33) |
+| Auto Upload QC Data | checked only for a QC run (LIS-266/LIS-269) |
 
 Click **`Save`** → the **`LIS`** indicator should go **green**.
 
@@ -303,8 +303,13 @@ L|1|N<CR>
 
 - **`direction: upload-only`.** Order download (`Q` → host `O`) is LIS-177, not
   implemented. `Auto Download Test Assay` on the Online screen has nothing to answer it.
-- **QC upload uncaptured** (LIS-33). QC is captured and classified only, never
-  auto-accepted — engineer sign-off.
+- **QC upload uncaptured** (LIS-266 capture; LIS-269 classification/provisioning —
+  supersedes LIS-33 on the native path). OE now provisions a provisional `O.12=Q`
+  QC rule via the `snibe-maglumi-x3` analyzer profile — *assumed, not
+  bench-verified* until the LIS-266 QC capture and the bench runbook §9a replay
+  proof. Guarded go-live posture + required operator SOP:
+  `docs/runbooks/x3-qc-guarded-go-live.md`. QC is captured and classified only,
+  never auto-accepted — engineer sign-off.
 - **`codeToLoinc` seeds are synthetic** and do not match the bench codes. LIS-38.
 - **Auto-upload framing unconfirmed.** Every capture to date is a manual `LIS Online`
   replay with the chassis disconnected. A live auto-upload from a real run is expected
