@@ -145,7 +145,7 @@
       ],
       "class": "heavy",
       "timeout_seconds": 3600,
-      "min_memory_mib": 6144,
+      "min_memory_mib": 2048,
       "command": [
         "python3",
         "scripts/local_ci_heavy_checks.py",

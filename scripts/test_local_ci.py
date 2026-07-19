@@ -188,7 +188,7 @@ class CommittedRegistryTests(unittest.TestCase):
         )
         backend, frontend = parsed.checks[-2:]
         self.assertEqual(
-            (backend.check_class, backend.min_memory_mib), ("heavy", 6144)
+            (backend.check_class, backend.min_memory_mib), ("heavy", 2048)
         )
         self.assertEqual(
             (frontend.check_class, frontend.min_memory_mib), ("heavy", 4096)
