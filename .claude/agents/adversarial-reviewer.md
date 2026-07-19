@@ -13,7 +13,9 @@ zero checks), the deploy-kit repo has no CI at all, the analyzer-bridge repo HAS
 triggers on PRs to master/develop), and OpenELIS core (`OpenELIS-Global-2`) HAS CI
 workflows that have a history of failing — where CI exists it is a co-equal gate you
 must verify, not assume, and where you believe it absent, verify absence via the
-checks API rather than trusting docs (this file once wrongly said bridge had none).
+workflows API (`gh api repos/<owner>/<repo>/actions/workflows` → `total_count: 0`)
+rather than trusting docs (this file once wrongly said bridge had none). An empty
+check-runs rollup on one head is NOT proof of no CI — path-filtered CI looks identical.
 
 ## Inputs you should receive (ask the caller to re-launch if missing)
 
@@ -33,9 +35,11 @@ checks API rather than trusting docs (this file once wrongly said bridge had non
    your local runs are. Local Docker-maven runs supplement CI; they never replace it.
    Checkout, authentication, and submodule-init failures are red gates even when zero
    tests ran. CI is non-transitive: a green umbrella workflow proves nothing about a
-   component PR's checks. Only when the repo genuinely has no CI configured (kit — and
-   confirm with an empty check-runs API response on the head, don't assume) does this
-   gate pass vacuously — say so explicitly in the CI line of your output.
+   component PR's checks. Only when the repo genuinely has no CI configured (kit —
+   confirm with `gh api repos/<owner>/<repo>/actions/workflows` showing `total_count: 0`,
+   NOT with an empty check-runs response on the head, which can also mean path-filtered
+   CI that simply didn't trigger) does this gate pass vacuously — say so explicitly in
+   the CI line of your output.
 2. **Read the actual diff**, not the PR description. `git diff <base>..<head> --stat`
    then file-by-file. The description is a claim to refute.
 3. **Form numbered hypotheses** to verify or refute, covering at least: regressions in
@@ -68,7 +72,7 @@ checks API rather than trusting docs (this file once wrongly said bridge had non
 VERDICT: APPROVE | REQUEST_CHANGES
 
 CI: <repo> @ <head sha> — <each expected check + conclusion, verified via gh; or
-  "no CI configured in this repo (kit), empty check-runs confirmed". APPROVE is only
+  "no CI configured in this repo (kit), workflows list empty". APPROVE is only
   legal when this line shows all expected checks green or a genuine no-CI repo.>
 
 FINDINGS (most severe first; empty section if none):
