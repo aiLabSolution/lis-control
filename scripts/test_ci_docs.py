@@ -45,6 +45,8 @@ class CiDocumentationContractTests(unittest.TestCase):
         self.assertIn("actions/permissions", text)
         self.assertIn("LIS_LOCAL_CI_TIMEOUT_SECONDS=301", text)
         self.assertIn("--expected-core-sha", text)
+        self.assertIn("time-bounded compensating-control approval", text)
+        self.assertIn("date to restore server-side protection", text)
 
     def test_heavy_evidence_is_isolated_and_durable(self):
         text = self.read("docs/runbooks/flip-back-private-ci.md")
