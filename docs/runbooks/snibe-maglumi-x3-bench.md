@@ -49,6 +49,14 @@ disk is the deliverable**. A live bridge→OpenELIS parse is out of scope here.
   (`docs/runbooks/edan-h99s-bench-conformance.md`, LIS-149) and H60S
   (`docs/runbooks/edan-h60s-bench-conformance.md`, LIS-20, PR #91) bench captures —
   graduated fixtures, wire-fact write-ups, raw archives.
+- **Patient-safety consequence of the bare `P|1` this capture pinned:** because the X3
+  sends no patient id and no name, every X3 result stages with a blank patient hint and
+  the LIS-239 same-day patient-mismatch guard cannot fire on this channel. The operator
+  procedure that compensates is
+  [`docs/runbooks/x3-patient-identity-verification-sop.md`](x3-patient-identity-verification-sop.md)
+  (LIS-270) — a required go-live gate for this channel; the systematic control is LIS-296.
+  If a future capture shows the X3 populating P-record identity fields, that SOP and the
+  staging banner must be revisited.
 - **Downstream consumers of this capture:** LIS-174 (framing receive-path spec),
   LIS-175 (port/IP/identity/codes for the analyzer channel), LIS-38 (Lis-ID →
   LOINC/UCUM dictionary + fixture graduation), LIS-269 (QC sample-ID pattern;
