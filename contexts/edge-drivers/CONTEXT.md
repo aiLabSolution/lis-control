@@ -25,9 +25,14 @@ cleared under HOLD-001 / LIS-71).
   immutable `byte[] rawBytes` (D2 — H9 sets exact frame + lossless ISO-8859-1 display; all
   other transports unchanged), and `HttpForwardingRouter` grows the `LIFOTRONIC_H9` branch
   (D4 — `H9ResultParser.parse(rawBytes)`; recorded deviation: the slice text's
-  `parse(rawBytes, rules)` signature was not adopted, so LOINC 59261-8 is parser-hardcoded
-  and the registry `codeToLoinc`/`unitToUcum` resolvers cannot influence H9 coding — a
-  S7/LIS-235 terminology-sign-off concern). D8: production inbound raw archive per
+  `parse(rawBytes, rules)` signature was not adopted — the parser itself emits the
+  hardcoded IFCC pair `59261-8`/`mmol/mol`, and the registry `codeToLoinc`/`unitToUcum`
+  resolvers still apply downstream in `FhirBundleBuilder`. Net effect: with no registry
+  mapping for `59261-8` (the shipped state) the bundle carries a **system-less** coding —
+  OE derives UNMAPPED/PARTIAL, not NORMALIZED (ADR-0015 §5) — while a registry mapping
+  keyed on `59261-8`/`mmol/mol` CAN rewrite the H9 coding; the e2e test's substring
+  assert cannot tell the two apart. The S7/LIS-235 terminology-sign-off concern.). D8:
+  production inbound raw archive per
   **ADR-0022** (content-addressed SHA-256, atomic durable write + provenance sidecar,
   first-wins immutability + tamper evidence, encryption-at-rest mode, rejection↔digest
   correlation, orphan-payload heal, `DUPLICATE_SUPPRESSED` once per digest); H9 traffic is
@@ -39,9 +44,12 @@ cleared under HOLD-001 / LIS-71).
   fixed in two passes, the second converting five further throw sites and inverting the
   guard into an allowlist over the parser's real label vocabulary, plus an e2e logback
   assertion). Three review passes (2× REQUEST_CHANGES on real findings); full suite at the
-  pin **1036/0/0/7**. Cross-level fixture anchor `c8941a55…0d98f2` byte-identical with
+  pin **1041/0/0/7** (1036/0/0/7 on the PR #43 branch pre-merge; the pin's `test` check is
+  green — its `build-and-push-dev-image` check fails on missing registry credentials,
+  pre-existing infra). Cross-level fixture anchor `c8941a55…0d98f2` byte-identical with
   `edge/sim` (umbrella #158 + pin-bump #176). Close-out: AC1 automation / OE-staging AC4
-  half re-scoped to **LIS-305**; AC2/AC3 coverage landed as a follow-up test-only PR.
+  half re-scoped to **LIS-305**; AC2/AC3 coverage follows as bridge PR #51 (test-only)
+  plus its pin bump.
 - **Intervening pins (not genealogized here):** `de22890` (LIS-133, PR #38) → `d2b25bc`
   (**LIS-230 H9 codec/framer**, #39) → `0783b53` (LIS-87, #40) → `9292566` (LIS-252, #42) →
   `1426c68` (**LIS-231 H9 parser**, #41) → `7f6e855` (LIS-265, #46) → `6613968` (LIS-38, #45)
