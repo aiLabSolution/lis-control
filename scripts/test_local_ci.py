@@ -191,7 +191,7 @@ class CommittedRegistryTests(unittest.TestCase):
             (backend.check_class, backend.min_memory_mib), ("heavy", 2048)
         )
         self.assertEqual(
-            (frontend.check_class, frontend.min_memory_mib), ("heavy", 4096)
+            (frontend.check_class, frontend.min_memory_mib), ("heavy", 1024)
         )
 
     def test_committed_filters_cover_hosted_paths_and_umbrella_gitlinks(self):
