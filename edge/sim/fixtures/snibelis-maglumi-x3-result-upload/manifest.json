@@ -26,8 +26,8 @@
   "terminology": {
     "note": "LIS-75 bench-verified MAGLUMI X3 wire codes, Pinote QA-approved LOINC/UCUM mapping (LIS-38 AC1) -- FT3, FT4 II and TSH II only (the three assays captured on the bench). Codes come solely from this channel block (bridge contract: codeToLoinc is per-analyzer data, never a shared seed). The remaining panel (AFP, CEA, ...) graduates from synthetic seed to real code/unit as each is captured; see the snibelis-maglumi-x3-result-unmapped fixture for the unmapped-review contract.",
     "codes": {
-      "FT3": "3051-0",
-      "FT4 II": "14920-3",
+      "FT3": "14928-6",
+      "FT4 II": "3024-7",
       "TSH II": "3016-3"
     },
     "units": {
@@ -54,7 +54,7 @@
         "value": "5.43",
         "raw_code": "FT3",
         "raw_unit": "pmol/L",
-        "loinc": "3051-0",
+        "loinc": "14928-6",
         "ucum_value": "pmol/L",
         "status": "NORMALIZED"
       },
@@ -63,7 +63,7 @@
         "value": "1.58",
         "raw_code": "FT4 II",
         "raw_unit": "ng/dL",
-        "loinc": "14920-3",
+        "loinc": "3024-7",
         "ucum_value": "ng/dL",
         "status": "NORMALIZED"
       },

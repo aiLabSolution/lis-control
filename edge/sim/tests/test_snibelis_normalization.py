@@ -58,8 +58,8 @@ def test_result_upload_normalizes_each_assay_to_loinc_and_ucum(tmp_path):
 
     rows = replay.observations
     assert [(r.raw_code, r.loinc, r.ucum_value, r.status) for r in rows] == [
-        ("FT3", "3051-0", "pmol/L", STATUS_NORMALIZED),
-        ("FT4 II", "14920-3", "ng/dL", STATUS_NORMALIZED),
+        ("FT3", "14928-6", "pmol/L", STATUS_NORMALIZED),
+        ("FT4 II", "3024-7", "ng/dL", STATUS_NORMALIZED),
         ("TSH II", "3016-3", "u[IU]/mL", STATUS_NORMALIZED),
     ]
     # raw analyzer value/unit are carried through unchanged beside the normalized form.
