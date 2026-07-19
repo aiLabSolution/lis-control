@@ -23,18 +23,22 @@ Flag values never hide a merge: spaced (`-X PUT`), equals (`--method=PUT`,
 `-X=PUT`), and pflag-glued (`-XPUT`, `-Ro/r`) forms are all parsed. Each PR
 is resolved via `gh pr view --json headRefOid,statusCheckRollup` and blocked
 unless every rollup entry is green (CheckRun concluded SUCCESS/NEUTRAL/
-SKIPPED; StatusContext state SUCCESS). A branch-inferred merge (`gh pr
+SKIPPED; StatusContext state SUCCESS). When the umbrella `local_ci.json` is
+in local mode, a repository marked `gate_required` must additionally have a
+successful StatusContext named `local-ci/summary` on that exact head. A
+branch-inferred merge (`gh pr
 merge` with no selector) after a directory change anywhere earlier in the
 command — including across a wrapper boundary — is blocked outright: the
 hook would resolve the PR from the pre-cd cwd and could gate the wrong PR;
 use an explicit number + --repo.
 
-An EMPTY rollup passes. That covers repos with no CI configured (bridge,
-kit) and path-filtered umbrella PRs, but ALSO a CI repo whose workflows
-never triggered on the head (the LIS-210 "core CI dead" scenario) — the
-hook cannot tell these apart. The doc layer closes that residual hole: the
+An EMPTY rollup passes in hosted mode. That covers repos with no CI configured
+(bridge, kit) and path-filtered umbrella PRs, but ALSO a CI repo whose
+workflows never triggered on the head (the LIS-210 "core CI dead" scenario) —
+the hook cannot tell these apart. The doc layer closes that residual hole: the
 adversarial reviewer treats unrun EXPECTED checks as red and cannot APPROVE
-over them.
+over them. In local mode the required summary above closes that hole for each
+gate-required repository.
 
 Known limitations (deliberate-evasion shapes, out of scope): invocations the
 tokenizer cannot see — gh hidden behind another script or alias, command
@@ -55,6 +59,9 @@ Failure policy — deliberately split
   network/auth error, cwd not a repo): FAIL CLOSED. This diverges from the
   edit-guard convention on purpose: merges are rare, high-stakes, and cheap
   to retry, and the block message says exactly what failed.
+* A missing or invalid umbrella local-CI registry: FAIL OPEN for the additive
+  summary requirement only. The existing non-green rollup gate still fails
+  closed exactly as before.
 
 Escape hatch for a deliberate, reviewed exception: prefix the command itself
 with LIS_MERGE_GATE_OVERRIDE=1 (honored as a token in the command string —
@@ -70,6 +77,7 @@ import re
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 _OVERRIDE = "LIS_MERGE_GATE_OVERRIDE"
 _HATCH = (
@@ -82,6 +90,12 @@ _GH_TIMEOUT = 45  # seconds; one networked gh call per merge target
 # CheckRun conclusions that count as green. Anything else — FAILURE, ERROR,
 # CANCELLED, TIMED_OUT, ACTION_REQUIRED, STALE, or an unfinished run — blocks.
 _PASS_CONCLUSIONS = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+_LOCAL_SUMMARY_CONTEXT = "local-ci/summary"
+_REGISTRY_PATH = Path(__file__).resolve().parents[1] / "local_ci.json"
+_PR_URL_RE = re.compile(
+    r"^https?://[^/]+/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$",
+    re.IGNORECASE,
+)
 
 _PUNCTUATION = "();<>|&"
 # `gh pr merge` flags that consume a value token (so the value is never
@@ -276,6 +290,91 @@ def _not_green(rollup):
     return bad
 
 
+def _resolved_repository(data, target):
+    """Resolve the PR's base repository without trusting the hook cwd."""
+    match = _PR_URL_RE.match(str(data.get("url") or ""))
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+
+    # `url` is part of the gh query and is normally authoritative. This fallback
+    # keeps the direct helper usable with synthetic/older gh payloads while
+    # still refusing ambiguous host/owner/repo shapes.
+    repo = target.get("repo")
+    if isinstance(repo, str) and re.fullmatch(r"[^/\s]+/[^/\s]+", repo):
+        return repo
+    return None
+
+
+def _requires_local_summary(repository):
+    """Whether the umbrella registry enables the local summary gate.
+
+    Registry discovery is anchored to this hook's checkout, never payload cwd.
+    Validation is delegated lazily to the co-located local-CI engine so the
+    additive gate cannot disagree with the authoritative registry schema.
+    Missing, invalid, or unavailable engine/registry data disables only this
+    additive check; the existing rollup gate still runs.
+    """
+    if not repository:
+        return False
+    try:
+        # Lazy import keeps non-merge hook startup independent of the engine.
+        # Normal script execution puts this co-located scripts directory first
+        # on sys.path; refuse a shadowed module if an unusual importer does not.
+        import local_ci
+
+        expected_engine = Path(__file__).resolve().with_name("local_ci.py")
+        if Path(local_ci.__file__).resolve() != expected_engine:
+            return False
+        registry = local_ci.load_registry(_REGISTRY_PATH)
+    except Exception:
+        return False
+    settings = registry.repositories.get(repository.lower())
+    return bool(
+        registry.mode == "local" and settings is not None and settings.gate_required
+    )
+
+
+def _local_summary_problem(rollup):
+    summaries = [
+        item for item in (rollup or [])
+        if item.get("__typename") == "StatusContext"
+        and item.get("context") == _LOCAL_SUMMARY_CONTEXT
+    ]
+    if not summaries:
+        return f"missing successful StatusContext `{_LOCAL_SUMMARY_CONTEXT}`"
+    states = [(item.get("state") or "").upper() for item in summaries]
+    non_green = [state.lower() or "unknown" for state in states if state != "SUCCESS"]
+    if non_green:
+        return f"{_LOCAL_SUMMARY_CONTEXT} is " + ", ".join(non_green)
+    return None
+
+
+def _local_summary_message(data, repository, problem):
+    head = (data.get("headRefOid") or "?")[:12]
+    number = data.get("number", "?")
+    where = data.get("url") or f"PR #{number}"
+    checkout_hint = "/absolute/path/to/%s-pr-%s-checkout" % (
+        repository.lower().replace("/", "-"), number
+    )
+    command = " ".join([
+        "python3",
+        shlex.quote(str(_REGISTRY_PATH.parent / "scripts" / "local_ci.py")),
+        shlex.quote(str(number)),
+        "--repo",
+        shlex.quote(repository),
+        "--checkout",
+        shlex.quote(checkout_hint),
+    ])
+    return (
+        f"BLOCKED: local-CI merge gate — {where} (head {head}) is gate-required "
+        f"in local mode but has {problem} on that exact head.\n"
+        "Run the umbrella local-CI engine against the exact, clean PR checkout "
+        "and wait for its summary status:\n  " + command + "\n"
+        "Replace the checkout placeholder with that PR head's absolute worktree "
+        f"path; do not point it at the umbrella checkout for a component PR. {_HATCH}"
+    )
+
+
 def _infra_message(detail):
     return (
         "BLOCKED: green-CI merge gate could not verify this PR's checks, and it "
@@ -318,7 +417,13 @@ def _gate(target, cwd):
     except ValueError:
         return _infra_message("gh returned unparseable JSON")
 
-    bad = _not_green(data.get("statusCheckRollup"))
+    rollup = data.get("statusCheckRollup")
+    bad = _not_green(rollup)
+    repository = _resolved_repository(data, target)
+    if _requires_local_summary(repository):
+        summary_problem = _local_summary_problem(rollup)
+        if summary_problem:
+            return _local_summary_message(data, repository, summary_problem)
     if not bad:
         return None  # all green, or an empty rollup (see docstring caveat)
     head = (data.get("headRefOid") or "?")[:12]
