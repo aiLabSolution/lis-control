@@ -220,6 +220,37 @@ Click **`Save`** → the **`LIS`** indicator should go **green**.
 > identity, or the bridge parsing anything. `PLC` / `TCP-IP` red is expected while the
 > chassis is disconnected. Do not read green as success.
 
+## Step 7.5 — Verify the analyzer's onboard clock (LIS-271)
+
+**Do this before go-live, and re-check it periodically (each PM visit / quarterly at
+minimum).** The R-record completion timestamp (field 13, Step-6 finding above) is
+read straight off the analyzer's own onboard clock — it is never NTP-synced by the
+bridge or by OpenELIS, and a bench capture on this exact unit (2026-07-17) recorded
+`R|1|^^^FT4 II|1.58|ng/dL|0.9 - 1.75|N||||||20250320152944` (see the wire shape in
+Step 8) — an onboard clock reading **20 March 2025**, ~16 months behind the real
+capture date. Nothing about that timestamp is malformed, so nothing upstream of
+LIS-271 caught it.
+
+1. On the analyzer's operation PC, find the system date/time (OS clock, and — if the
+   `Online`/System Setting menus expose one separately — the analyzer's own
+   instrument clock; some SNIBE firmware keeps its own RTC independent of the PC).
+2. Compare against a trusted reference (an NTP-synced phone/laptop on the bench).
+3. If it's wrong, correct it through the analyzer's own date/time settings before
+   accepting results from it — don't rely on downstream flags to catch every case.
+4. Re-verify at least at every preventive-maintenance visit. Analyzer RTCs drift and
+   battery-backed clocks reset after power loss; a 16-month-wrong clock did not
+   announce itself on the analyzer's own UI.
+
+**What happens if you miss this (safety net, not a substitute for the check above):**
+LIS-271 added a **non-blocking** clock-skew flag — when the analyzer-reported
+completion time and OpenELIS's own receive time differ by more than 24 hours, the
+staged row is flagged `import_issue_reason=clock-skew` (visible on the
+`/rest/analyzer/import-issues` admin dashboard, alongside both timestamps) but is
+**never held or rejected**. The result still stages and can still be accepted — the
+flag exists so a tech notices a bad analyzer clock, not so the accession gets stuck.
+Do not treat "no flag" as proof the clock is right — a 20-hour-wrong clock stages
+silently.
+
 ## Step 8 — End-to-end verification
 
 Trigger an upload — either a live run, or `Result` → tick a row → **`→LIS Online`** to
@@ -293,3 +324,4 @@ L|1|N<CR>
 | Bridge parses, registry misses | Source-IP vs proxy IP (Step 3). |
 | Unit never maps | Missing bracket escape — binds silently as absent, no error. |
 | Garbled records / framing errors | `Enable Checksum` vs `checksum:` mismatch. |
+| Result dates look wrong in OpenELIS / `clock-skew` on the import-issues dashboard | Analyzer onboard clock, not the bridge or OE — go re-run Step 7.5. The flag is non-blocking, so the result still stages; fix the clock before trusting further completion dates from this unit. |

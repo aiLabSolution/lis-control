@@ -13,6 +13,7 @@ SnibeLis-specific receiver mode.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .astm import ACK, CR, ENQ, EOT, ETX, LF, STX
@@ -69,12 +70,13 @@ class SnibeLisReceiver:
     ``ENQ``, so one instance can serve multiple envelopes on the same connection.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, durable_sink: Callable[[bytes], None] | None = None) -> None:
         self.envelopes: list[bytes] = []
         self.state = "AWAIT_ENQ"
         self._buffer = bytearray()
         self._pending: bytes | None = None
         self._last_byte: int | None = None
+        self._durable_sink = durable_sink
 
     @property
     def complete(self) -> bool:
@@ -151,6 +153,12 @@ class SnibeLisReceiver:
             if byte != EOT:
                 raise SnibeLisReceiverError(f"expected EOT, got 0x{byte:02X}")
             assert self._pending is not None  # set when ETX was processed
+            # LIS-267 production parity: a sink exception propagates and no EOT
+            # ACK is returned. The pending payload remains available so the
+            # caller can fail/close the link without pretending persistence
+            # succeeded.
+            if self._durable_sink is not None:
+                self._durable_sink(self._pending)
             self.envelopes.append(self._pending)
             self._pending = None
             self.state = "AWAIT_ENQ"  # ready for the next envelope on this link

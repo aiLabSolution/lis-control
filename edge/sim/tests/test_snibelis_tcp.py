@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -29,15 +30,19 @@ FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
 
 
-def _serve_one_envelope(server_sock: socket.socket, receiver: SnibeLisReceiver) -> None:
+def _serve_envelopes(
+    server_sock: socket.socket,
+    receiver: SnibeLisReceiver,
+    expected_envelopes: int,
+) -> None:
     """The host/receiver side of one TCP session: accept one connection, feed
     it byte-by-byte into ``receiver`` (mirroring how a real socket read loop
-    would), ACK-ing exactly where the state machine says to, until one full
-    envelope completes or the peer closes the link."""
+    would), ACK-ing exactly where the state machine says to, until the expected
+    envelopes complete or the peer closes the link."""
     conn, _ = server_sock.accept()
     with conn:
         conn.settimeout(5.0)
-        while not receiver.complete:
+        while receiver.envelope_count < expected_envelopes:
             chunk = conn.recv(4096)
             if not chunk:
                 return
@@ -46,15 +51,23 @@ def _serve_one_envelope(server_sock: socket.socket, receiver: SnibeLisReceiver) 
                 conn.sendall(ack)
 
 
-def _start_loopback_server(receiver: SnibeLisReceiver | None = None):
-    """Bind an ephemeral localhost port, serve one envelope on a background
+def _start_loopback_server(
+    receiver: SnibeLisReceiver | None = None,
+    *,
+    expected_envelopes: int = 1,
+):
+    """Bind an ephemeral localhost port, serve envelopes on one background
     thread, and return ``(port, receiver, thread)``."""
     receiver = receiver or SnibeLisReceiver()
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.bind(("127.0.0.1", 0))
     server_sock.listen(1)
     port = server_sock.getsockname()[1]
-    thread = threading.Thread(target=_serve_one_envelope, args=(server_sock, receiver), daemon=True)
+    thread = threading.Thread(
+        target=_serve_envelopes,
+        args=(server_sock, receiver, expected_envelopes),
+        daemon=True,
+    )
     thread.start()
     return server_sock, port, receiver, thread
 
@@ -79,6 +92,39 @@ def test_tcp_transport_full_envelope_round_trips_byte_exact_over_real_socket():
         assert receiver.envelope_count == 1
         # the server's byte-exact reconstruction of what actually crossed the wire
         assert receiver.payload == _payload_bytes(fx.message_bytes)
+    finally:
+        server_sock.close()
+
+
+def test_tcp_transport_reuses_connection_after_idle_longer_than_ack_timeout():
+    """The X3 keeps a healthy TCP channel open across uploads. An idle gap is
+    not an in-flight ACK wait, so exceeding the ACK timeout must not reconnect
+    or prevent the next complete envelope from using the same connection."""
+    first_payload = b"H|\\^&\rP|1\rL|1|N\r"
+    second_payload = b"H|\\^&\rP|2\rL|1|N\r"
+    ack_timeout = 0.2
+    idle_gap = 0.25
+    server_sock, port, receiver, thread = _start_loopback_server(expected_envelopes=2)
+    try:
+        client = SnibeLisTcpTransport(host="127.0.0.1", port=port, timeout=ack_timeout)
+        try:
+            assert client.roundtrip(first_payload) == first_payload
+            connected_socket = client._sock
+
+            time.sleep(idle_gap)
+
+            assert idle_gap > ack_timeout
+            assert client.roundtrip(second_payload) == second_payload
+            assert client._sock is connected_socket
+        finally:
+            client.close()
+        thread.join(timeout=5.0)
+
+        assert not thread.is_alive()
+        assert receiver.envelopes == [
+            _payload_bytes(first_payload),
+            _payload_bytes(second_payload),
+        ]
     finally:
         server_sock.close()
 

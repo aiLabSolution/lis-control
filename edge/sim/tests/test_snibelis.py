@@ -37,11 +37,12 @@ QUERY_REQUEST = FIXTURES_ROOT / "snibelis-maglumi-x3-query-request"
 # a test, not just self-consistently agree with itself. The query-request
 # anchor is sim-side only for now -- its bridge-side mirror lands with the
 # simplified-envelope send half (LIS-177), which is what will consume that
-# fixture on the bridge.
+# fixture on the bridge. result-upload's anchor was recomputed when the
+# fixture graduated to the LIS-75 bench capture (LIS-38 AC1).
 _WIRE_PAYLOAD_SHA256 = {
     "snibelis-maglumi-x3-result-upload": (
-        "403a123081c02d26a8270785c0a05270b6cf1abbd36c916bfc636f0a09e572db",
-        241,
+        "baf92a3738bcd4bbed784c57fe8d8241268963e5306c192575c070266eb4adae",
+        335,
     ),
     "snibelis-maglumi-x3-result-unmapped": (
         "006c5b2c55112a8405dcd956b9c2283c84f3a0d732320ac1fde190e30bbe7ad5",
@@ -84,13 +85,16 @@ def test_snibelis_result_upload_acks_each_control_step_and_parses_results():
     assert bytes([STX, ord("1")]) not in result.wire
     assert result.message is not None
     assert result.message.header is not None
-    assert result.message.header.sender_name == "Maglumi User"
-    assert result.message.patients[0].patient_id == "PID-SNB-108-001"
-    order = result.message.patients[0].orders[0]
-    assert order.specimen_id == "SNB-108-001"
-    assert [r.test_code for r in order.results] == ["TSH", "FT4"]
-    assert [r.units for r in order.results] == ["uIU/mL", "pmol/L"]
-    assert [r.abnormal_flags for r in order.results] == ["N", "N"]
+    assert result.message.header.sender_name == "Maglumi X3"
+    # Real X3 wire carries no patient identifier at all (P-record is bare
+    # "P|1") -- only a specimen/sample id, in each O-record's O.3 field.
+    assert result.message.patients[0].patient_id == ""
+    orders = result.message.patients[0].orders
+    assert [o.specimen_id for o in orders] == ["PATIENT-REDACTED-1"] * 3
+    assert [o.assays for o in orders] == [("FT3",), ("FT4 II",), ("TSH II",)]
+    assert [r.test_code for r in result.message.results] == ["FT3", "FT4 II", "TSH II"]
+    assert [r.units for r in result.message.results] == ["pmol/L", "ng/dL", "uIU/mL"]
+    assert [r.abnormal_flags for r in result.message.results] == ["N", "N", "N"]
 
 
 def test_snibelis_result_upload_archives_and_replays_to_astm_result_rows(tmp_path):
@@ -108,8 +112,9 @@ def test_snibelis_result_upload_archives_and_replays_to_astm_result_rows(tmp_pat
     assert result.patient_id == fx.expected["patient_id"]
     assert result.specimen_id == fx.expected["specimen_id"]
     assert [(row.set_id, row.raw_code, row.value, row.raw_unit) for row in result.observations] == [
-        ("1", "TSH", "2.31", "uIU/mL"),
-        ("2", "FT4", "14.8", "pmol/L"),
+        ("1", "FT3", "5.43", "pmol/L"),
+        ("1", "FT4 II", "1.58", "ng/dL"),
+        ("1", "TSH II", "2.78", "uIU/mL"),
     ]
     assert check_against_expected(result, fx.expected) == []
 

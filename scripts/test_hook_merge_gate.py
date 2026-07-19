@@ -7,6 +7,7 @@ faked by a shell stub first on PATH that replays a canned `gh pr view --json`
 payload (or fails, for the fail-closed cases). Parser cases import the module
 directly.
 """
+import contextlib
 import json
 import os
 import subprocess
@@ -14,11 +15,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hook_merge_gate
+import local_ci
 
 GATE = Path(__file__).resolve().parent / "hook_merge_gate.py"
+LOCAL_CI = Path(__file__).resolve().parent / "local_ci.py"
 
 _SHA = "a" * 40
 
@@ -50,8 +54,11 @@ STATUS_RED = _pr([
 EMPTY = _pr([])
 
 
-def _payload(command, tool="Bash"):
-    return json.dumps({"tool_name": tool, "tool_input": {"command": command}})
+def _payload(command, tool="Bash", cwd=None):
+    payload = {"tool_name": tool, "tool_input": {"command": command}}
+    if cwd is not None:
+        payload["cwd"] = cwd
+    return json.dumps(payload)
 
 
 class EndToEnd(unittest.TestCase):
@@ -59,6 +66,14 @@ class EndToEnd(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
+        self.control = root / "control"
+        scripts = self.control / "scripts"
+        scripts.mkdir(parents=True)
+        self.gate = scripts / "hook_merge_gate.py"
+        self.gate.write_text(GATE.read_text())
+        (scripts / "local_ci.py").write_text(LOCAL_CI.read_text())
+        self.registry = self.control / "local_ci.json"
+        self._write_registry("hosted")
         self.bin = root / "bin"
         self.bin.mkdir()
         self.payload_file = root / "gh.json"
@@ -73,6 +88,22 @@ class EndToEnd(unittest.TestCase):
         self.empty = root / "emptybin"
         self.empty.mkdir()
 
+    def _write_registry(self, mode, repositories=None):
+        repositories = repositories or {"o/r": {"gate_required": True}}
+        self.registry.write_text(json.dumps({
+            "version": 1,
+            "mode": mode,
+            "repositories": repositories,
+            "checks": [{
+                "name": "hook-fixture",
+                "repository": next(iter(repositories)),
+                "paths": ["**"],
+                "command": ["true"],
+                "class": "fast",
+                "timeout_seconds": 30,
+            }],
+        }))
+
     def _run(self, stdin_text, pr=None, gh_exit=0, override=False, no_gh=False):
         env = dict(os.environ)
         env.pop("LIS_MERGE_GATE_OVERRIDE", None)
@@ -86,7 +117,7 @@ class EndToEnd(unittest.TestCase):
             env["LIS_MERGE_GATE_OVERRIDE"] = "1"
         self.payload_file.write_text(json.dumps(pr if pr is not None else GREEN))
         return subprocess.run(
-            [sys.executable, str(GATE)],
+            [sys.executable, str(self.gate)],
             input=stdin_text, capture_output=True, text=True, env=env, timeout=60,
         )
 
@@ -121,6 +152,186 @@ class EndToEnd(unittest.TestCase):
         # no-CI repos (bridge/kit) and path-filtered umbrella PRs get zero checks.
         proc = self._run(_payload("gh pr merge 5 --repo o/r --squash"), pr=EMPTY)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    # -- local-ci summary gate -------------------------------------------------
+    def test_local_gate_required_repo_allows_green_summary_status_on_exact_head(self):
+        self._write_registry("local")
+        pr = _pr([
+            {"__typename": "CheckRun", "name": "backend", "status": "COMPLETED",
+             "conclusion": "SUCCESS"},
+            {"__typename": "StatusContext", "context": "local-ci/summary",
+             "state": "SUCCESS"},
+        ])
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=pr)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_local_gate_required_repo_blocks_missing_summary_with_engine_command(self):
+        self._write_registry("local")
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=GREEN)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("local-ci/summary", proc.stderr)
+        self.assertIn(_SHA[:12], proc.stderr)
+        self.assertIn(str(self.control / "scripts" / "local_ci.py"), proc.stderr)
+        self.assertIn("https://github.com/o/r/pull/5", proc.stderr)
+        self.assertIn("local_ci.py 5 --repo o/r", proc.stderr)
+        self.assertIn("--repo o/r", proc.stderr)
+        self.assertIn("--checkout /absolute/path/to/o-r-pr-5-checkout", proc.stderr)
+
+    def test_local_gate_required_repo_blocks_empty_rollup(self):
+        self._write_registry("local")
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("missing successful StatusContext", proc.stderr)
+
+    def test_local_gate_required_repo_blocks_non_green_summary(self):
+        self._write_registry("local")
+        pr = _pr([
+            {"__typename": "CheckRun", "name": "backend", "status": "COMPLETED",
+             "conclusion": "SUCCESS"},
+            {"__typename": "StatusContext", "context": "local-ci/summary",
+             "state": "PENDING"},
+        ])
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=pr)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("local-ci/summary is pending", proc.stderr)
+        self.assertIn("--checkout /absolute/path/to/o-r-pr-5-checkout", proc.stderr)
+
+    def test_local_check_run_named_summary_does_not_satisfy_status_requirement(self):
+        self._write_registry("local")
+        pr = _pr([
+            {"__typename": "CheckRun", "name": "local-ci/summary",
+             "status": "COMPLETED", "conclusion": "SUCCESS"},
+        ])
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=pr)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("missing successful StatusContext", proc.stderr)
+
+    def test_local_not_gate_required_repo_preserves_empty_rollup_pass(self):
+        self._write_registry("local", {"o/r": {"gate_required": False}})
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_pr_url_resolves_repo_independently_of_payload_cwd(self):
+        self._write_registry("local", {
+            "wrong/repo": {"gate_required": False},
+            "O/R": {"gate_required": True},
+        })
+        proc = self._run(
+            _payload("gh pr merge 5 --repo o/r", cwd="/unrelated/component/worktree"),
+            pr=GREEN,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("local-ci/summary", proc.stderr)
+
+    def test_branch_inferred_merge_resolves_repo_from_pr_url(self):
+        self._write_registry("local")
+        proc = self._run(_payload("gh pr merge --squash"), pr=GREEN)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("local-ci/summary", proc.stderr)
+
+    def test_partial_engine_evidence_cannot_unlock_local_merge_gate(self):
+        self._write_registry("local")
+        first = local_ci.CheckConfig(
+            "first", "o/r", ("scripts/**",), ("true",), "fast", 30
+        )
+        second = local_ci.CheckConfig(
+            "second", "o/r", ("scripts/**",), ("true",), "fast", 30
+        )
+        registry = local_ci.Registry(
+            1,
+            "local",
+            {"o/r": local_ci.RepositoryConfig("o/r", True)},
+            (first, second),
+        )
+        pr = local_ci.PullRequest(
+            _SHA,
+            "https://github.com/o/r/pull/5",
+            "o/r",
+            ("scripts/changed.py",),
+            "b" * 40,
+            "lis-285-test",
+        )
+        statuses = []
+
+        @contextlib.contextmanager
+        def locked(_path):
+            yield
+
+        def record_run(_checkout, selected, _pr, _host, _control_root):
+            statuses.append({
+                "__typename": "StatusContext",
+                "context": f"local-ci/{selected.name}",
+                "state": "SUCCESS",
+            })
+            return local_ci.CheckResult(selected.name, True, 0.1, "passed", None)
+
+        with mock.patch("local_ci.resolve_pr", return_value=pr), mock.patch(
+            "local_ci.verify_checkout"
+        ), mock.patch("local_ci.preflight_memory"), mock.patch(
+            "local_ci.global_lock", side_effect=locked
+        ), mock.patch("local_ci.run_check", side_effect=record_run), mock.patch(
+            "local_ci.post_status"
+        ) as post, mock.patch("local_ci.publish_gist") as gist, mock.patch(
+            "local_ci.socket.gethostname", return_value="ci-host"
+        ), mock.patch("local_ci.time.monotonic", side_effect=[1.0, 2.0]):
+            result = local_ci.run_engine(
+                self.control,
+                registry,
+                "5",
+                "o/r",
+                Path(self.tmp.name) / "lock",
+                ("first",),
+                self.control,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertFalse(
+            any(
+                call.args[3] == "local-ci/summary"
+                for call in post.call_args_list
+            )
+        )
+        gist.assert_not_called()
+        proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=_pr(statuses))
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("missing successful StatusContext", proc.stderr)
+
+    def test_missing_registry_fails_open_only_for_summary_check(self):
+        self.registry.unlink()
+        empty = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+        red = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED)
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+        self.assertEqual(red.returncode, 2)
+        self.assertIn("frontend: failure", red.stderr)
+
+    def test_unparseable_registry_fails_open_only_for_summary_check(self):
+        self.registry.write_text("{not-json")
+        empty = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+        red = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED)
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+        self.assertEqual(red.returncode, 2)
+        self.assertIn("frontend: failure", red.stderr)
+
+    def test_schema_invalid_registries_fail_open_only_for_summary_check(self):
+        self._write_registry("local")
+        valid = json.loads(self.registry.read_text())
+        unknown_top_level = dict(valid, surprise=True)
+        empty_checks = dict(valid, checks=[])
+        unknown_check_field = json.loads(json.dumps(valid))
+        unknown_check_field["checks"][0]["surprise"] = True
+
+        for label, value in (
+            ("unknown top-level field", unknown_top_level),
+            ("empty checks", empty_checks),
+            ("unknown check field", unknown_check_field),
+        ):
+            with self.subTest(label=label):
+                self.registry.write_text(json.dumps(value))
+                empty = self._run(_payload("gh pr merge 5 --repo o/r"), pr=EMPTY)
+                red = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED)
+                self.assertEqual(empty.returncode, 0, empty.stderr)
+                self.assertEqual(red.returncode, 2)
+                self.assertIn("frontend: failure", red.stderr)
 
     def test_red_blocks(self):
         proc = self._run(_payload("gh pr merge 5 --repo o/r --squash"), pr=RED)
@@ -210,6 +421,14 @@ class EndToEnd(unittest.TestCase):
         # hook-process env (Claude Code startup env) — secondary path, still honored.
         proc = self._run(_payload("gh pr merge 5 --repo o/r"), pr=RED, override=True)
         self.assertEqual(proc.returncode, 0)
+
+    def test_override_still_allows_missing_local_summary(self):
+        self._write_registry("local")
+        proc = self._run(
+            _payload("LIS_MERGE_GATE_OVERRIDE=1 gh pr merge 5 --repo o/r"),
+            pr=EMPTY,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 class Parser(unittest.TestCase):
