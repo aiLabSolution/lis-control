@@ -3,6 +3,7 @@
 
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,6 +52,22 @@ class DockerRecipeTests(unittest.TestCase):
         self.assertIn("/core:/work", command)
         self.assertIn("/work/dataexport", command)
         self.assertIn("-Dmaven.repo.local=/mvnhome/.m2/repository", command)
+
+    def test_spotless_scope_excludes_npm_prettier_markdown(self):
+        pattern = re.compile(heavy.SPOTLESS_BACKEND_FILES_REGEX)
+        # The Maven image has no npm; any .md in scope re-breaks the check the
+        # way core main 670644335 proved (FIXTURE_LOADER_README.md).
+        self.assertIsNone(
+            pattern.fullmatch("/work/src/test/resources/FIXTURE_LOADER_README.md")
+        )
+        self.assertIsNone(pattern.fullmatch("/work/fhir/README.md"))
+        self.assertIsNotNone(
+            pattern.fullmatch("/work/src/main/java/org/openelisglobal/Foo.java")
+        )
+        self.assertIsNotNone(
+            pattern.fullmatch("/work/src/test/resources/testdata/fixture.xml")
+        )
+        self.assertIsNotNone(pattern.fullmatch("/work/pom.xml"))
 
     def test_frontend_is_a_host_network_production_image_build_without_push(self):
         command = heavy.frontend_docker_command(Path("/core"), "a" * 40)

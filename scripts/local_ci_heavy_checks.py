@@ -29,7 +29,13 @@ STATUS_DETAIL_ENV = "LIS_LOCAL_CI_STATUS_DETAIL_FILE"
 MAVEN_REPOSITORY = "/mvnhome/.m2/repository"
 MAVEN_OPTS = "-Xmx700m -Djava.net.preferIPv6Addresses=true"
 SUREFIRE_ARGLINE = "-Xmx1300m -Djava.net.preferIPv6Addresses=true"
+# Deliberate, visible parity gap: the pinned Maven image ships no npm, so the
+# pom's `**/*.md` prettier format cannot run locally (proved on core main
+# 670644335: spotless dies on src/test/resources/FIXTURE_LOADER_README.md).
+# The leading lookahead removes exactly the Markdown files from scope; hosted
+# spotless remains the authority for Markdown formatting.
 SPOTLESS_BACKEND_FILES_REGEX = (
+    "(?!.*[.]md$)"
     ".*(pom[.]xml|src/.*|fhir/.*|Dockerfile|build[.]docker-compose[.]yml|"
     "docker-compose[.]yml|dev[.]docker-compose[.]yml|"
     "docker-compose[.]letsencrypt[.]yml|"
