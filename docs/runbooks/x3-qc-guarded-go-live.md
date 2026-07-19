@@ -134,10 +134,32 @@ calibration rule does not fire at all (shipped inactive).
 - **LOINC/UCUM mappings in the profile (TSH, FT4) are synthetic seeds**, the same ones already
   carried in the bridge's `configuration.yml` ("real dictionary = LIS-38"), not a validated vendor
   dictionary.
-- This runbook's SOP is the compensating control for the above. The technical owner has accepted
+- This runbook's SOP is the compensating control for the QC-misclassification, calibration and
+  LOINC/UCUM mapping residuals above. The technical owner has accepted
   it as such (LIS-COMP-SIGNOFF-003); it becomes the *QA-accepted* control only when Pinote's
   independent QA/regulatory sign-off is verifiably recorded (see Posture). It does not eliminate
   the risk; it bounds it to "caught by daily human review" instead of "undetected."
+- **No patient identity on the X3 wire — the same-day wrong-patient guard cannot fire.** The X3
+  sends a bare `P|1` patient record (no id, no name), so every X3 result stages with a blank patient
+  hint and the LIS-239 same-day patient-mismatch guard is **structurally inert** on this channel. If
+  an operator mis-keys or mis-scans a sample ID so it collides with another **same-day** patient's
+  accession, the result attaches to the **wrong patient** and no software check on this wire catches
+  it. The compensating control is the staging-UI banner ("No patient identity from analyzer",
+  derived server-side per row) **plus the operator procedure in
+  [`x3-patient-identity-verification-sop.md`](x3-patient-identity-verification-sop.md)** — a
+  **required go-live gate for this channel, not optional reading**. The systematic control
+  (order-side cross-check) is LIS-296 and is **not** in place. The residual is pinned in core by
+  `useSameDayPatientCollision_blankWireHints_substitutesSilently_LIS270Residual`.
+  **Scope note:** this residual is *separate* from the QC residuals above. The daily-review SOP in
+  this runbook does **not** bound it — that SOP is QC-classification-focused and does not address
+  wrong-patient attachment. **LIS-COMP-SIGNOFF-003 does not cover it either**, and not by oversight:
+  [that authorization](../compliance/sign-off/LIS-269-x3-guarded-go-live-authorization.md) is scoped
+  in §1 "to the QC/calibration-misclassification axis only" and expressly does **not** waive the
+  other open X3 go-live gates tracked in the 2026-07-19 production-readiness review (LIS-267..279,
+  a range that includes LIS-270); its §2 residual list is exactly the three residuals above.
+  Acceptance of *this* residual is tracked under LIS-270 (banner + SOP gate; systematic control
+  LIS-296) — **no separate sign-off artifact has been recorded for it**, and patient go-live remains
+  gated on the independent QA/regulatory sign-off that is still open at §4 of that authorization.
 
 ## Traceability
 
@@ -149,6 +171,13 @@ calibration rule does not fire at all (shipped inactive).
   label predates this slice's finding that the discriminator was never wire-verified; the recorded
   disposition (LIS-33 ledger, 2026-07-18) retains it as Done with LIS-269 as the superseding live
   remediation on the native path.
+- LIS-270 — X3 wire carries no patient identity; the LIS-239 same-day mismatch guard is inert on
+  this channel. Go-live gate = staging banner + operator SOP
+  (`docs/runbooks/x3-patient-identity-verification-sop.md`).
+- LIS-296 — order-side cross-check: the *systematic* wrong-patient control deferred by LIS-270.
+  Open; until it lands, the LIS-270 SOP is the primary defence on hint-less channels.
+- LIS-239 / LIS-126 / LIS-128 / LIS-158 — the accept-boundary controls the LIS-270 SOP enumerates
+  (and, for LIS-239, the one that cannot fire here).
 - LIS-38 — MAGLUMI X3 bench-conformance sign-off (LOINC/UCUM dictionary, framing confirmation).
 - LIS-75 — SNIBE MAGLUMI X3 native-ASTM bench capture (`docs/runbooks/snibe-maglumi-x3-bench.md`).
 - ADR-0019 — QC-acceptance responsibility allocation (never auto-accept; engineer sign-off owned
