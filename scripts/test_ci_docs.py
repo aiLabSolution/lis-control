@@ -59,6 +59,8 @@ class CiDocumentationContractTests(unittest.TestCase):
         self.assertIn("allowed_new_volume", text)
         self.assertIn("sixth disposable evidence worker", text)
         self.assertIn("lis-local-ci-scenarios", text)
+        self.assertIn("lis-local-ci-foreign-sentinel", text)
+        self.assertIn("sentinel-content.sha256", text)
 
     def test_actions_inventory_is_replayable_without_dynamic_workflows(self):
         text = self.read("docs/runbooks/flip-back-private-ci.md")

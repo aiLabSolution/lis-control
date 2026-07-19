@@ -89,15 +89,30 @@ row invalidates that row's cold measurement.
 On each worker, export the six literal values from exactly one table row. Define these
 runtime-inventory helpers before the first run. Images are intentionally excluded because
 a successful source build may warm the image cache; containers, volumes, and networks
-must not leak or mutate:
+must not leak. Seed an unrelated stopped container, network, and marker volume so the
+proof also detects mutation of a known pre-existing development resource:
 
 ```bash
+SENTINEL_PREFIX=lis-local-ci-foreign-sentinel
+SENTINEL_CONTAINER=$SENTINEL_PREFIX-container
+SENTINEL_NETWORK=$SENTINEL_PREFIX-network
+SENTINEL_VOLUME=$SENTINEL_PREFIX-volume
+docker network create "$SENTINEL_NETWORK"
+docker volume create "$SENTINEL_VOLUME"
+docker run --name "$SENTINEL_CONTAINER" --network "$SENTINEL_NETWORK" \
+  -v "$SENTINEL_VOLUME:/sentinel" alpine:3.20 \
+  sh -c 'printf %s foreign-development-resource > /sentinel/marker'
+
 snapshot_runtime() {
   label=$1
   docker ps -a --no-trunc --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}' \
     | sort > "$EVIDENCE/$label.containers"
   docker volume ls --format '{{.Name}}' | sort > "$EVIDENCE/$label.volumes"
   docker network ls --format '{{.Name}}' | sort > "$EVIDENCE/$label.networks"
+  docker inspect "$SENTINEL_CONTAINER" "$SENTINEL_NETWORK" "$SENTINEL_VOLUME" \
+    > "$EVIDENCE/$label.sentinel-inspect.json"
+  docker run --rm --network none -v "$SENTINEL_VOLUME:/sentinel:ro" alpine:3.20 \
+    sha256sum /sentinel/marker > "$EVIDENCE/$label.sentinel-content.sha256"
 }
 assert_runtime_unchanged() {
   before=$1
@@ -105,6 +120,10 @@ assert_runtime_unchanged() {
   allowed_new_volume=${3:-}
   diff -u "$EVIDENCE/$before.containers" "$EVIDENCE/$after.containers"
   diff -u "$EVIDENCE/$before.networks" "$EVIDENCE/$after.networks"
+  diff -u "$EVIDENCE/$before.sentinel-inspect.json" \
+    "$EVIDENCE/$after.sentinel-inspect.json"
+  diff -u "$EVIDENCE/$before.sentinel-content.sha256" \
+    "$EVIDENCE/$after.sentinel-content.sha256"
   if [ -n "$allowed_new_volume" ]; then
     ! rg -Fx "$allowed_new_volume" "$EVIDENCE/$before.volumes"
     { cat "$EVIDENCE/$before.volumes"; printf '%s\n' "$allowed_new_volume"; } \
@@ -149,8 +168,9 @@ Pass requires all five checks green in both runs, each per-check `duration_secon
 the ten `/usr/bin/time` totals retained, exact SHAs unchanged, and every runtime diff
 empty except the cold core-backend run's one intentional creation of
 `lis-local-ci-maven-repository-v1`. That volume must then be unchanged by the warm run;
-any other resource creation, deletion, or mutation fails. No baseline-flake absorption
-may be omitted from the core status description. Record the
+any other resource-name creation/deletion, or any sentinel configuration/content mutation,
+fails. The proof does not claim to checksum arbitrary cache-volume contents. No
+baseline-flake absorption may be omitted from the core status description. Record the
 durable evidence directory path and its inventory hashes privately; post only hashes and
 non-sensitive timing/status summaries to Plane.
 
@@ -173,12 +193,26 @@ chmod 700 "$EVIDENCE"
 test -z "$(git status --porcelain=v1)"
 git submodule update --init --recursive
 
+SENTINEL_PREFIX=lis-local-ci-foreign-sentinel
+SENTINEL_CONTAINER=$SENTINEL_PREFIX-container
+SENTINEL_NETWORK=$SENTINEL_PREFIX-network
+SENTINEL_VOLUME=$SENTINEL_PREFIX-volume
+docker network create "$SENTINEL_NETWORK"
+docker volume create "$SENTINEL_VOLUME"
+docker run --name "$SENTINEL_CONTAINER" --network "$SENTINEL_NETWORK" \
+  -v "$SENTINEL_VOLUME:/sentinel" alpine:3.20 \
+  sh -c 'printf %s foreign-development-resource > /sentinel/marker'
+
 snapshot_runtime() {
   label=$1
   docker ps -a --no-trunc --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}' \
     | sort > "$EVIDENCE/$label.containers"
   docker volume ls --format '{{.Name}}' | sort > "$EVIDENCE/$label.volumes"
   docker network ls --format '{{.Name}}' | sort > "$EVIDENCE/$label.networks"
+  docker inspect "$SENTINEL_CONTAINER" "$SENTINEL_NETWORK" "$SENTINEL_VOLUME" \
+    > "$EVIDENCE/$label.sentinel-inspect.json"
+  docker run --rm --network none -v "$SENTINEL_VOLUME:/sentinel:ro" alpine:3.20 \
+    sha256sum /sentinel/marker > "$EVIDENCE/$label.sentinel-content.sha256"
 }
 assert_runtime_unchanged() {
   before=$1
@@ -186,12 +220,17 @@ assert_runtime_unchanged() {
   diff -u "$EVIDENCE/$before.containers" "$EVIDENCE/$after.containers"
   diff -u "$EVIDENCE/$before.volumes" "$EVIDENCE/$after.volumes"
   diff -u "$EVIDENCE/$before.networks" "$EVIDENCE/$after.networks"
+  diff -u "$EVIDENCE/$before.sentinel-inspect.json" \
+    "$EVIDENCE/$after.sentinel-inspect.json"
+  diff -u "$EVIDENCE/$before.sentinel-content.sha256" \
+    "$EVIDENCE/$after.sentinel-content.sha256"
 }
 ```
 
 Images and build caches may warm across these non-timing scenarios, but each
-scenario-specific container/volume/network baseline must remain unchanged. Use clean
-detached core worktrees so the umbrella and its pinned core never move:
+scenario-specific container/volume/network name baseline and the sentinel's configuration
+and marker digest must remain unchanged. Use clean detached core worktrees so the umbrella
+and its pinned core never move:
 
 ```bash
 CORE_REPO="$CONTROL/core/openelis"
