@@ -32,7 +32,9 @@ cleared under HOLD-001 / LIS-71).
   edan branch, `normalize_report` QC re-kind widened to ASTM-or-EDAN; SD1 HL7-QC re-kind
   gap deliberately kept, tracked LIS-95). Adversarial review: pass-1 REQUEST_CHANGES
   (KB-citation P1 + two P2s) → fixed in `21826fe` → pass-2 APPROVE. Full suite at the pin
-  **887/0/0/5**, `edge/sim` **343** (bridge has no CI — local runs are the record).
+  **887/0/0/5**, `edge/sim` **343** (local runs recorded; N.B. the "bridge has no CI"
+  note originally here was wrong — bridge `test.yml` has existed since 2025-12-04;
+  corrected in LIS-304).
   `1=QC` + the §3.2.3 layout are protocol-documented but not yet wire-confirmed (no
   QC-mode bench capture) — deviation recorded in `docs/runbooks/edan-h60s-bench-conformance.md`.
 - **Intervening pins (not genealogized here):** `002210a` → `f051a3c` (LIS-44, PR #32) →
@@ -56,7 +58,8 @@ cleared under HOLD-001 / LIS-71).
   `edanH90=false` (SNIBE) reads `OBX-8` and applies `OBX-7` exactly as LIS-176 intended, with no
   EDAN regression (`git diff a1182b9 002210a` on `FhirBundleBuilder` empty). Landed with
   adversarial APPROVE (no P0/P1; conflict resolution verified faithful); full suite at this
-  merged pin **803/0/0/5**, `edge/sim` **328** (bridge has no CI — local runs are the record).
+  merged pin **803/0/0/5**, `edge/sim` **328** (local runs recorded; stale "no CI" note
+  corrected in LIS-304).
   **Synthetic fixture coverage only — real X3 `OUL^R22` wire proof, the exact MSH-3 sending-app
   token, and the shifted MSH layout remain LIS-75 bench work** (adversarial P2: the whole
   QC-safety property depends on `isSnibeX3` firing); AC-1/AC-2 do not graduate until then, slice
@@ -83,7 +86,7 @@ cleared under HOLD-001 / LIS-71).
   Cross-language SHA-256 anchors pin the bridge tests to the `edge/sim` fixtures (drift
   breaks a test on either side). Landed with adversarial APPROVE + CLEAN fix-verify;
   full suite at this merged pin **777/0/0/5** (762/0/0/5 on the PR #21 branch pre-merge;
-  bridge has no CI — local runs are the record). **Gap 4 of the LIS-119 era is hereby landed
+  local runs recorded; stale "no CI" note corrected in LIS-304). **Gap 4 of the LIS-119 era is hereby landed
   pending the LIS-75 bench proof** (AC-1 real-capture evidence; synthetic proof only
   until then); X3 codes/units stay synthetic until LIS-75/LIS-38. Sits on top of the
   intervening `b2678d9` (LIS-149 EDAN H90-series worklist ORF profile, PR #22) and

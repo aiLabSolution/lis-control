@@ -31,7 +31,8 @@ description: Land a submodule change through the two-level (component → umbrel
    how green local Docker-maven runs are (local tests supplement CI, never replace it;
    checkout/auth/submodule failures are red even when no tests ran). Fix and re-run CI
    or stop as blocked — never merge just because branch protection permits it.
-   Bridge/kit have no CI; there the adversarial review is the whole gate.
+   The bridge HAS CI (`test.yml`) — same rule as core. Kit has no CI; there the
+   adversarial review is the whole gate.
 3. **Merge the component PR** and verify the merge server-side (step 5) before touching
    the umbrella pin.
 4. **Advance the pin to the component PR's `merge_commit_sha`** (not the branch head),
