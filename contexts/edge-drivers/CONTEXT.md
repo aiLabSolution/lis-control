@@ -31,7 +31,7 @@ cleared under HOLD-001 / LIS-71).
   mapping for `59261-8` (the shipped state) the bundle carries a **system-less** coding —
   OE derives UNMAPPED/PARTIAL, not NORMALIZED (ADR-0015 §5) — while a registry mapping
   keyed on `59261-8`/`mmol/mol` CAN rewrite the H9 coding; the e2e test's substring
-  assert cannot tell the two apart. The S7/LIS-235 terminology-sign-off concern.). D8:
+  assert cannot tell the two apart — the S7/LIS-235 terminology-sign-off concern). D8:
   production inbound raw archive per
   **ADR-0022** (content-addressed SHA-256, atomic durable write + provenance sidecar,
   first-wins immutability + tamper evidence, encryption-at-rest mode, rejection↔digest
@@ -222,8 +222,9 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 
 MLLP/HL7 is the pilot transport and the only one that must be enabled + bench-proven for
 go-live (EDAN H60S anchor, port 7999; bridge default 2575). Serial/ASTM (Stage 2) and the
-MAGLUMI X3's native ASTM-over-TCP direct attach (Stage 3 — SnibeLis middleware dropped
-2026-07-06, LIS-178 / ADR-0015 amendment; FILE demoted to the LIS-34 contingency) are the
+Stage-3 direct attaches — the MAGLUMI X3's native ASTM-over-TCP (SnibeLis middleware
+dropped 2026-07-06, LIS-178 / ADR-0015 amendment; FILE demoted to the LIS-34 contingency)
+and the Lifotronic H9's upload-only RS-232 serial (2026-07-19 amendment, LIS-232) — are the
 recorded forward path — bench-validated against the simulators, post-pilot for the live
 fleet under change control (DEC-06 / SD-0). DEC-06 released one narrow exception on
 2026-07-04: LIS-149 may build and bench the EDAN H99S `QRY^R02 -> ORF^R04` worklist/order-download
