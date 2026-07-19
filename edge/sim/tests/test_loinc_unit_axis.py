@@ -79,19 +79,30 @@ def test_every_known_loinc_matches_the_axis_of_its_reported_unit():
 
 
 def test_x3_thyroid_panel_is_covered():
-    """The three bench-captured X3 analytes stay inside the checked set.
+    """Every X3 analyte is actually checked above, and is the expected triple.
 
-    Without this, dropping a code from LOINC_AXIS would make the check above pass
-    vacuously for the panel that motivated it.
+    The axis check skips codes it cannot vouch for, which makes it fail *open*:
+    without this test, dropping a code from LOINC_AXIS -- or adding a fourth
+    analyte whose code is not in the table -- would silently leave the panel that
+    motivated this module unchecked while the suite stayed green. So assert
+    coverage against the raw panel, deliberately NOT through the same filter
+    being guarded, before asserting the mappings themselves.
     """
-    checked = {
+    panel = {
         (code, unit, loinc)
         for fixture, code, unit, loinc in _observations()
         if fixture == "snibelis-maglumi-x3-result-upload"
-        and loinc in LOINC_AXIS
-        and unit in UNIT_AXIS
     }
-    assert checked == {
+    uncovered = {
+        (code, unit, loinc)
+        for code, unit, loinc in panel
+        if loinc not in LOINC_AXIS or unit not in UNIT_AXIS
+    }
+    assert uncovered == set(), (
+        "X3 analytes are not covered by the axis check -- add each code's "
+        "loinc.org property (and any new unit) to the tables above"
+    )
+    assert panel == {
         ("FT3", "pmol/L", "14928-6"),
         ("FT4 II", "ng/dL", "3024-7"),
         ("TSH II", "uIU/mL", "3016-3"),
