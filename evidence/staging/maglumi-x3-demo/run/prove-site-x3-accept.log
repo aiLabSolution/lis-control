@@ -13,3 +13,4 @@ PASS (LIS-39): 3 staged X3 row(s) were technically accepted into
       analyzer-reported reference range + abnormal flag verbatim (LIS-97), and
       staging was consumed (3 -> 0).
 ACCEPT_EXIT=0
+CHAIN_DONE
