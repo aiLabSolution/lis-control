@@ -1,0 +1,7 @@
+ id | test_id | raw_code | raw_unit | loinc  | ucum_value | result | reference_range | abnormal_flag | iscontrol | read_only 
+----+---------+----------+----------+--------+------------+--------+-----------------+---------------+-----------+-----------
+  2 |       1 | FT3      | pmol/L   | 1742-6 | pmol/L     | 5.43   | 3.08 - 6.468    | N             | f         | f
+  3 |       2 | FT4 II   | ng/dL    | 1920-8 |            | 1.58   | 0.9 - 1.75      | N             | f         | f
+  4 |       3 | TSH II   | uIU/mL   | 2345-7 | u[IU]/mL   | 2.78   | 0.3 - 4.5       | N             | f         | f
+(3 rows)
+

@@ -5,9 +5,22 @@ stack (pinned OpenELIS core + pinned analyzer bridge) and driven end to end with
 LIS-75 bench-graduated fixture. No SnibeLis middleware is present anywhere on the path:
 the X3 speaks ASTM E1394-97 directly to the bridge, which forwards FHIR to OpenELIS.
 
-**Status: IN PROGRESS.** Configuration and mapping sections (AC4, AC6) are complete and
-were read from the pinned sources cited below. The run sections (AC1, AC2, AC3, AC5) are
-filled in from the demo execution and are marked `PENDING` until that run is recorded.
+**Status: DEMONSTRATED WITH GAPS.** The transport path is proven end to end on a live
+stack — wire → bridge → `/analyzer/fhir` → staged → **technician-accepted final Result**.
+Two acceptance criteria are not met and are not closable from this slice: the LOINC
+dictionary exercised is the harness's proxy, not the bench dictionary (AC2), and QC routing
+is not bench-proven (AC3). Per-AC verdicts are in the table below.
+
+## AC verdict summary
+
+| AC | Verdict | Basis |
+|---|---|---|
+| 1 — result reaches a final OpenELIS Result | **MET** | 3 rows at `Technical Acceptance`, `run/final-results.txt` |
+| 2 — raw evidence preserved + LOINC/UCUM populated | **PARTIAL** | raw code/unit/value/range/flag all preserved; LOINCs are proxy codes; one UCUM blank |
+| 3 — QC routed out of the patient stream | **NOT MET** | discriminator unproven on the wire (LIS-266) |
+| 4 — staging configuration recorded | **MET** | this document; source identity live-confirmed |
+| 5 — raw archive + replay reproduce the result | **MET** | sha256-anchored fixture, `run/prove-site-x3-e2e.log` |
+| 6 — reverse-mapping notes versioned + linked | **MET** | this document; git-pin versioning |
 
 ## Pinned versions under demonstration
 
@@ -142,15 +155,75 @@ scripts/x3_astm_capture.py --replay <raw.bin> --to HOST:PORT [--gap N]
 deploy/kit/scripts/prove-site-x3-e2e.sh          # X3_FIXTURE_FILE anchors to the checked-in bytes
 ```
 
-Run evidence: **PENDING** — see `run/` in this directory.
+Run evidence in `run/`:
 
-## AC1 / AC2 — normalized patient result
+- `prove-site-x3-e2e.log` — the wire → bridge → FHIR → staged leg, including the LIS-270
+  blank-patient-identity assertion.
+- `staged-analyzer-results.txt` — the staged rows as captured before acceptance.
+- `final-results.txt` — the accepted final Result rows.
 
-**PENDING.**
+The replayed payload is 335 bytes, sha256
+`baf92a3738bcd4bbed784c57fe8d8241268963e5306c192575c070266eb4adae`, cross-checked against
+the checked-in `message.astm` via `X3_FIXTURE_FILE` so the run is anchored to source rather
+than to an inlined constant.
 
-## AC3 — QC routing
+## AC1 — normalized patient result reaches a final Result — MET
 
-**PENDING.** Note the standing constraint recorded below.
+The signed fixture entered the deployed listener, was identified as the registered X3
+channel by observed source IP, was forwarded as a FHIR bundle to `/analyzer/fhir`, staged as
+three `analyzer_results` rows, and was then technically accepted into three final
+`clinlims.result` rows. Staging was consumed (3 → 0) and the accept transaction created the
+sample, sample item and analyses itself — the fixture's accession has no pre-existing order.
+
+```
+accession          | test                            | analysis_status      | value | raw_code
+PATIENT-REDACTED-1 | Transaminases GPT (37°C)(Serum) | Technical Acceptance | 5.43  | FT3
+PATIENT-REDACTED-1 | Transaminases G0T (37°C)(Serum) | Technical Acceptance | 1.58  | FT4 II
+PATIENT-REDACTED-1 | Glucose(Plasma)                 | Technical Acceptance | 2.78  | TSH II
+```
+
+`Technical Acceptance` is the terminal state of the accept transaction itself. `Finalized`
+follows only when the autoverification gate is enabled and clears the analysis, so the proof
+asserts either state rather than `Finalized` alone.
+
+Before this slice the deployed proof stopped at *staged* `analyzer_results`; the acceptance
+leg is `deploy/kit/scripts/prove-site-x3-accept.sh`, added here.
+
+## AC2 — raw evidence preserved, mappings populated — PARTIAL
+
+Preserved verbatim through acceptance, asserted 3/3: raw code, raw unit, value, the
+analyzer-reported reference range, and the abnormal flag. This is the LIS-97 contract
+holding at the core boundary — these are distinct from the lab-owned `min_normal`/
+`max_normal` limits, which the accept path leaves untouched.
+
+Two gaps keep this from MET:
+
+1. **The LOINCs demonstrated are not the bench dictionary's.** `prove-site-x3-e2e.sh`
+   deliberately maps the three wire codes onto arbitrary catalog tests with distinct LOINCs
+   and distinct display names — a deliberate choice to dodge the staged-results dedup
+   collapse, but it means the run exercises `1742-6` / `1920-8` / `2345-7` (GPT/ALAT,
+   GOT/ASAT, Glucose) rather than the bench dictionary's `14928-6` / `3024-7` / `3016-3`.
+   **No run to date demonstrates the real X3 dictionary reaching OpenELIS.** Closing this
+   needs either an OE catalog seeded with the three real LOINC-bearing tests, or a proof
+   variant that seeds them.
+2. **`ng/dL` yields a blank UCUM.** `FhirBundleBuilder.toUcum` consults the per-analyzer
+   resolver first and falls back to a hardcoded backstop; LIS-119 populated that backstop
+   with `uIU/mL` and `pmol/L` but not `ng/dL`, FT4 II's bench-confirmed unit. The bridge's
+   `configuration.yml` does map it, so a deployment whose per-analyzer map is pushed by
+   registry sync is unaffected — but any deployment relying on the backstop silently emits
+   FT4 II with no coded UCUM. Filed separately rather than widening this slice.
+
+## AC3 — QC routing — NOT MET
+
+Not closable from this slice, and the reason is upstream of it. The active discriminator is
+`FIELD_EQUALS O.12 == "Q"`, and **no bench capture has ever confirmed the X3 populates
+`O.12` at all** — every captured patient O-record is `O|1|<id>||^^^CODE` with ~5 fields,
+shorter than the field the rule targets. Replaying the synthetic QC fixture
+(`edge/sim/fixtures/snibe-maglumi-x3-qc-astm/`) would demonstrate that the classifier
+routes a payload carrying the marker; it would **not** demonstrate that the real analyzer
+emits one, which is what this AC asks for. The proof is LIS-266 (chassis-attached QC
+capture). Until then the guarded go-live posture and its required operator QC-review SOP
+stand as the compensating control.
 
 ## Known caveats carried into this demo
 
@@ -180,3 +253,37 @@ These are recorded rather than fixed by this slice, and each is tracked separate
   `thoughts/lis-174-idle-timeout-issue-draft.md`, not yet fixed.
 - **Auto-upload from a live run has never been captured (LIS-266).** Every capture to date is a
   manual `→ LIS Online` replay with the chassis disconnected.
+
+## Reproducing this demo
+
+From the umbrella checkout, with `core/openelis`, `edge/drivers` and `deploy/kit`
+initialized (**including `core/openelis`'s own nested submodules — the image build fails on
+a missing `dataexport` POM otherwise**):
+
+```bash
+export BRIDGE_AUTH_PASSWORD=... LIS_SITE_OE_USER=admin LIS_SITE_OE_PASSWORD=...
+deploy/kit/scripts/compose-site.sh up          # builds both stacks from the pins, waits healthy
+deploy/kit/scripts/prove-site-x3-e2e.sh        # wire -> bridge -> FHIR -> staged
+deploy/kit/scripts/prove-site-x3-accept.sh     # staged -> accepted final Result
+deploy/kit/scripts/compose-site.sh down
+```
+
+Set `X3_FIXTURE_FILE=edge/sim/fixtures/snibelis-maglumi-x3-result-upload/message.astm` to
+anchor the replay against the checked-in bytes.
+
+Operational notes learned running it:
+
+- `compose-site.sh up` refuses to run from a linked git worktree, since deployed config and
+  state binds point at a checkout that worktrees treat as disposable. Override with
+  `LIS_DEPLOY_ALLOW_WORKTREE=true` for a proof stack, and **`down` the stack before removing
+  the worktree**.
+- The demo is **not idempotent across acceptance**. `CLEAN=true` resets staged state only;
+  once results have been accepted, the accept transaction has minted a sample/analysis graph
+  and `analysis` pins the proof analyzer, so it can no longer be dropped. Unwinding that
+  graph means cascading ~30 FK dependents of `sample` alone, which would rot the next time
+  OE adds a table — so `CLEAN` fails closed and tells you to recreate the stack instead.
+- Do not delete that graph by hand in psql. Deleting `sample_human` without its `sample`
+  leaves an orphaned sample, and the analyzer-results worklist then throws an NPE
+  (`StatusService.setRecordStatus`, `sampleHuman` null) which the REST controller swallows
+  into an empty `resultList` — the worklist silently reports "no results found" while rows
+  sit staged. Recreating the stack is the reliable reset.
