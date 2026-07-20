@@ -87,6 +87,13 @@ Chain verified by adversarial review 2026-07-19 (LIS-269):
   `CALIBRATION_*` placeholder (per-rule catch, warn-log only) and the skip does **not** self-heal
   on a later core upgrade — profile rules seed at analyzer creation only, so the analyzer must be
   re-provisioned (recreated from the profile) to pick the rule up.
+- **Amending rules (LIS-297):** prefer the profile re-provision path (edit
+  `snibe-maglumi-x3.json` and re-provision — `isActive` is explicit in the file). Any scripted
+  REST amendment must always send the full rule body with an explicit boolean `isActive`: on
+  cores **without** the LIS-297 fix (core PR #57), a PUT that omits the key silently
+  **activates** an inactive rule (entity default) and a string-typed `"true"` silently
+  deactivates; from LIS-297 on, an omitted key means leave-unchanged and non-boolean types are
+  rejected with 400.
 
 ## Required operator QC-review SOP (compensating control)
 
