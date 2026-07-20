@@ -72,8 +72,18 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx1
 
 The bridge repo HAS CI (`.github/workflows/test.yml`: builds `astm-http-lib`, runs
 root-module `mvn test`; PRs to master/develop) — that check, green on the exact PR
-head, is the gate; local runs are for fast iteration before pushing. The repo has
-**no aggregator pom**: `org.itech:astm-http-lib` is a sibling module not on Central,
+head, is the gate; local runs are for fast iteration before pushing. Two wrinkles when
+reading that gate (both hit on `openelis-analyzer-bridge#50`):
+
+- The workflow triggers on **`push` and `pull_request`**, so one SHA carries **two
+  check-runs both named `test`**. `gh pr checks` shows two rows and **both** must be
+  green — it is easy to read the passing one and miss the failing one.
+- **Known socket flake:** `SnibeChecksumDelegationTest.checksumFalseRejectsE1381Framing`
+  fails with `SocketException: Broken pipe` in CI while the identical tree passes
+  locally and on the other trigger event. Re-run the failed job; don't hunt it in
+  your diff.
+
+The repo has **no aggregator pom**: `org.itech:astm-http-lib` is a sibling module not on Central,
 so a bare `mvn test` at the root fails resolution. One Docker invocation:
 
 ```bash
