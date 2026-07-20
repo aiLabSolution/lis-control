@@ -1,6 +1,6 @@
 # Final accepted Result rows — LIS-39 staging demo
-# Captured 2026-07-20T20:02:35Z from the live site stack
-# core 25e06ea4a / bridge 46e57b9fc / kit 579aacb41
+# Captured 2026-07-20T20:16:00Z from a site stack on FRESH volumes
+# core 25e06ea4a / bridge 46e57b9fc / kit lis-39-x3-accept-proof
 
   accession_number  |            test_name            |   analysis_status    | value | raw_code | raw_unit | loinc  | ucum_value | reference_range | abnormal_flag 
 --------------------+---------------------------------+----------------------+-------+----------+----------+--------+------------+-----------------+---------------
