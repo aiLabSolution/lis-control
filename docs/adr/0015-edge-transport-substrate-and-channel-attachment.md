@@ -16,7 +16,7 @@ LIS-12 was titled "OIE channels vs bespoke drivers" — the interface-engine **b
 The dossier framed this around a premise — "the bridge is the *ASTM-HTTP Bridge*, so it is **HTTP-fronted**, and the open question is whether non-HTTP transports need a thin MLLP→HTTP shim / serial sidecar / file poller in front of it." **Reading the actual `aiLabSolution/openelis-analyzer-bridge` source falsifies that premise** (verified against the repo, namespace `org.itech.ahb`):
 
 - The bridge is **not** HTTP-fronted on the inbound side. "HTTP" is the **northbound** (bridge → OpenELIS core) leg. The repo description is exact: *"middleware for analyzer protocols/transports (ASTM, HL7/MLLP, RS232 serial, file) forwarding to OpenELIS via HTTP."*
-- The bridge **already implements native inbound listeners for every transport** in scope, decomposed cleanly into orthogonal `Transport` (HOW the bytes arrive) and `Protocol` (WHAT the bytes mean) enums (`model/Transport.java` = `TCP, MLLP, SERIAL, FILE, HTTP`; `model/Protocol.java` = `ASTM, HL7, CSV, UNKNOWN`):
+- The bridge **already implements native inbound listeners for every transport** in scope, decomposed cleanly into orthogonal `Transport` (HOW the bytes arrive) and `Protocol` (WHAT the bytes mean) enums (`model/Transport.java` = `TCP, MLLP, SERIAL, FILE, HTTP`; `model/Protocol.java` = `ASTM, HL7, CSV, UNKNOWN` — plus `LIFOTRONIC_H9` since the 2026-07-19 amendment below):
   - **MLLP/HL7** — `mllp/HapiMLLPListener.java` (HAPI `SimpleServer`, dedicated thread, HAPI-generated `ACK`), gated by `org.itech.ahb.mllp.enabled` / `…mllp.port` (`MLLPConfig.java`, default 2575).
   - **Serial** — `serial/SerialPortListener.java` (jSerialComm) + `serial/SerialFrameBuffer.java` (an ASTM LIS2-A2 ENQ/STX/ETX/checksum state machine, and MLLP framing for serial-HL7), per-port baud/parity config (`SerialConfigurationProperties.java`).
   - **ASTM-over-TCP** — `ASTMServlet` listen-servers from the `astm-http-lib` dependency (LIS01-A on 12001, E1381-95 on 12011), started `@Async` by `controller/ASTMServerRunner(Trigger).java`.
@@ -36,8 +36,9 @@ For the pilot and the v1/v1.1 fleet (ADR-0008 / DEC-06):
 | **1 — pilot** | EDAN H60S (anchor), H99S, Seamaty SD1, RAYTO RT-7600 | **MLLP** | HL7 v2.3.1–v2.4 | `HapiMLLPListener` (HAPI `SimpleServer`) | analyzer = TCP client → bridge listens (EDAN port **7999**; bridge default 2575) |
 | **2 — post-pilot v1.1** | ERBA EC90 | **SERIAL** (RS-232) and/or **TCP** | ASTM E1381/E1394 | `SerialPortListener` + `SerialFrameBuffer`; or `ASTMServlet` (LIS01-A / E1381-95) | serial port binding; or ASTM-TCP listen-server |
 | **3 — post-pilot** | SNIBE MAGLUMI X3 *(amended 2026-07-06 — see note below)* | **TCP** (ASTM); MLLP for the HL7 fallback | ASTM E1394-97 (HL7 v2.5 documented alternative) | `ASTMServlet` listen-server (LIS01-A) + dedicated X3 framing profile (LIS-174) | analyzer = TCP client → bridge listens; the X3's native `Online` LIS interface is pointed at our bridge (**direct-attach, no middleware**) |
+| **3 — post-pilot** | Lifotronic H9 (HbA1c) *(added 2026-07-19, [S3.H9] epic — see note below)* | **SERIAL** (RS-232, upload-only) | Proprietary fixed-position binary (`Protocol.LIFOTRONIC_H9`) | `SerialPortListener` + `SerialFrameBuffer` with the dedicated H9 byte-framing profile (`H9FrameBuffer`, LIS-231); protocol is **framing-selected** — `ProtocolDetector` bypassed (LIS-232) | serial port binding; analyzer pushes on `Send Lis Data` — **no ACK/NAK bytes are ever emitted** |
 
-The MLLP path is the **pilot substrate** and is the only transport that must be *enabled and bench-proven for go-live*; serial/ASTM (Stage 2) and the X3's ASTM-over-TCP direct attach (Stage 3) are the **recorded forward path**, bench-validated now (against the ASTM simulators) but post-pilot for the live fleet under change control (DEC-06, SD-0). Enabling a transport is a config flag (`*.enabled=true`) + a restart; it ships no new code.
+The MLLP path is the **pilot substrate** and is the only transport that must be *enabled and bench-proven for go-live*; serial/ASTM (Stage 2) and the Stage-3 direct attaches — the X3's ASTM-over-TCP and, since the 2026-07-19 amendment, the H9's upload-only RS-232 serial — are the **recorded forward path**, bench-validated now (against the simulators) but post-pilot for the live fleet under change control (DEC-06, SD-0). Enabling a transport is a config flag (`*.enabled=true`) + a restart; it ships no new code.
 
 > **⮕ Amendment (2026-07-06, LIS-178) — Stage-3 X3 row re-baselined to native direct-attach.**
 > The Stage-3 row originally read *"SNIBE MAGLUMI X3 + SnibeLis / FILE (middleware export) /
@@ -58,6 +59,21 @@ The MLLP path is the **pilot substrate** and is the only transport that must be 
 > Critical path: LIS-75 → {LIS-174, LIS-175} → LIS-32 → LIS-38. Fleet-scope side of the same
 > amendment: ADR-0008 (DEC-06 amendment note, incl. the REQ-PRIV-09/DEC-17 DPA simplification).
 
+> **⮕ Amendment (2026-07-19, LIS-232) — Lifotronic H9 row added.**
+> The [S3.H9] epic adds the Lifotronic H9 (HbA1c) to the fleet: RS-232, **upload-only** —
+> no ACK/NAK, no message-control id, no lifecycle status. Its proprietary fixed-position
+> binary payload (`0x00`–`0x03` bytes legal in the body) breaks two assumptions the String
+> pipeline made, so the row differs from the other serial units in two recorded ways:
+> **(1)** framing is a dedicated **byte-preserving** profile (`H9FrameBuffer`, LIS-231) and the
+> completed frame maps **directly** to `Protocol.LIFOTRONIC_H9` — the String-heuristic
+> `ProtocolDetector` is bypassed (its S/Q/C-body reads as UNKNOWN); **(2)** the
+> `MessageEnvelope` carries the exact frame bytes (`rawBytes`) end-to-end into the router's
+> H9 branch, with the display String kept only for the normalizer's non-null guard (LIS-232).
+> The unit's upload-only, id-less shape is why it is the first analyzer to structurally
+> require the production inbound raw archive (ADR-0022) and the safe accession/barcode
+> profile (ADR-0023). Decision 1 stands unchanged: direct attachment to the native serial
+> listener — no shim, no sidecar.
+
 **Rejected: an MLLP→HTTP shim / per-channel serial sidecar / standalone file poller** in front of an "HTTP-only" bridge (the dossier's hypothesis). It is unnecessary — the native listeners already exist — and it would add a second hop, a second process to validate (enlarging the L1/L2 surface ADR-0008 minimized), and a second place for framing/ACK bugs. The one place a thin terminator *could* still earn its keep — stronger per-channel OS-level isolation — is addressed as a **residual** under §Decision 4, not adopted for the pilot.
 
 ### 2. The transport-invariant module boundaries (the seam that stays identical regardless of substrate).
@@ -73,7 +89,8 @@ This is the AC's "framer / parser / normalization / ingest-contract module bound
                         ▼  raw application message          │
                  ┌──────────────────┐                       │
                  │  MessageEnvelope  │ ◀─── the convergence seam: every listener builds one
-                 │ {protocol,transport,sourceId,rawMessage,sourcePort,resolvedAnalyzerId}
+                 │ {protocol,transport,sourceId,rawMessage,sourcePort,resolvedAnalyzerId,
+                 │  rawBytes (exact frame — H9, 2026-07-19 amendment)}
                  └──────────────────┘                       │
                         │                                  ▼
                         │            ┌──────────────────────────────────────────────────┐
@@ -88,7 +105,7 @@ This is the AC's "framer / parser / normalization / ingest-contract module bound
 ```
 
 - **Framer** = transport-specific (`HapiMLLPListener` / `SerialFrameBuffer` / `ASTMServlet` / `FileWatcher`). The only layer that knows the wire.
-- **Parser** = protocol-specific, **not** transport-specific (`fhir/HL7ResultParser`, `fhir/ASTMResultParser` — the same HL7 parser serves MLLP *and* serial-HL7; the same ASTM parser serves serial-ASTM *and* ASTM-TCP). Selected by `Protocol`, decoupled from `Transport`.
+- **Parser** = protocol-specific, **not** transport-specific (`fhir/HL7ResultParser`, `fhir/ASTMResultParser` — the same HL7 parser serves MLLP *and* serial-HL7; the same ASTM parser serves serial-ASTM *and* ASTM-TCP; `fhir/H9ResultParser` since the 2026-07-19 amendment — byte-positional, consumes the envelope's `rawBytes`). Selected by `Protocol`, decoupled from `Transport`.
 - **Normalization** = the analyzer-code → LOINC/UCUM map carried on the registry entry (`AnalyzerEntry.codeToLoinc`, applied in `FhirBundleBuilder`). Identical regardless of transport.
 - **Ingest contract** = the northbound is **a FHIR R4 transaction Bundle POSTed `application/fhir+json` to `/analyzer/fhir`** (`forward-http-server.uri` + `/fhir`; template `http://localhost:8080/api/OpenELIS-Global/analyzer/fhir`), with bounded retry (`max-attempts`/`backoff-ms`). Identical regardless of transport.
 
