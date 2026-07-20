@@ -113,9 +113,10 @@ The registry is keyed on the **analyzer's source IP**. Bench values:
       name: "Maglumi X3"          # bench-verified; corrects the "Maglumi User" placeholder
       expectedProtocol: ASTM
       identifierPattern: "(?i)(maglumi|snibe)"
-      codeToLoinc:
-        TSH: "3016-3"
-        FT4: "14920-3"
+      codeToLoinc:                 # bench-verified wire codes + axis-matched LOINC (LIS-38, corrected by LIS-299)
+        FT3: "14928-6"             # pmol/L -> Moles/volume (SCnc)
+        "[FT4 II]": "3024-7"       # ng/dL  -> Mass/volume (MCnc)
+        "[TSH II]": "3016-3"       # uIU/mL -> arbitrary units (ACnc)
       unitToUcum:
         "[uIU/mL]": "u[IU]/mL"
         "[pmol/L]": "pmol/L"
@@ -132,11 +133,19 @@ Three bench-driven cautions:
    (receiver ID, **H-10**) are operator-editable free text with zero validation. Never
    route or validate on them.
 2. **The bench wire codes are `FT3` (bare), `FT4 II`, `TSH II`** — note the inconsistent
-   ` II` suffix, and that the UI shows `FT3 II` while the wire says `FT3`. The `codeToLoinc`
-   keys above are **synthetic seeds** and will not match. The real dictionary is LIS-38.
+   ` II` suffix, and that the UI shows `FT3 II` while the wire says `FT3`. `FT4 II` and
+   `TSH II` contain a space, so they need the same bracket-indexed escape as the unit keys
+   or they **silently fail to bind**; bare `FT3` does not.
 3. **Units seen on the bench: `pmol/L`, `ng/dL`, `uIU/mL`.** Unit keys need the
    bracket-indexed escape (`"[ng/dL]"`) — `/` is outside Spring's valid unindexed
    property-name charset, and an unbracketed key **silently fails to bind** with no error.
+4. **Each LOINC must match the property axis of the unit that analyte reports.** The X3
+   reports FT3 in `pmol/L` (substance concentration) but FT4 II in `ng/dL` (mass
+   concentration), so the two analytes take opposite axes — do not assume a single
+   thyroid-panel convention. Pairing an `ng/dL` FT4 with the *molar* code `14920-3`, or a
+   `pmol/L` FT3 with the *mass* code `3051-0`, is the LIS-299 defect: our stack carries the
+   value and UCUM unit opaquely and will not flag it, but a receiving HIS keying on LOINC
+   reads a perfectly normal result as grossly abnormal.
 
 ### ⚠️ Source-IP keying vs. port-forwarding
 
