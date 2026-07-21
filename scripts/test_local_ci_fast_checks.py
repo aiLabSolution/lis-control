@@ -102,11 +102,40 @@ class ProfileDriftTests(unittest.TestCase):
         self.assertIn("profile drift", str(caught.exception))
         self.assertIn("kit-only", str(caught.exception))
 
-    def test_allowlist_accepts_drift_with_reason(self):
+    def test_notes_only_allowlist_accepts_notes_drift(self):
+        (self.core_profiles / "drift.json").write_text(
+            '{"v": 1, "notes": "core provenance"}', encoding="utf-8"
+        )
+        (self.kit_profiles / "drift.json").write_text(
+            '{"v": 1, "notes": "kit provenance"}', encoding="utf-8"
+        )
+        self.allowlist.write_text(
+            "hl7/drift.json notes-only LIS-99 provenance wording\n", encoding="utf-8"
+        )
+        fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_notes_only_allowlist_rejects_runtime_drift(self):
         (self.core_profiles / "drift.json").write_text('{"v": 1}', encoding="utf-8")
         (self.kit_profiles / "drift.json").write_text('{"v": 2}', encoding="utf-8")
-        self.allowlist.write_text("hl7/drift.json LIS-99 intentional\n", encoding="utf-8")
+        self.allowlist.write_text(
+            "hl7/drift.json notes-only LIS-99 provenance wording\n", encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(fast.FastCheckError, "outside notes-only scope"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_full_file_allowlist_requires_explicit_scope(self):
+        (self.core_profiles / "drift.json").write_text('{"v": 1}', encoding="utf-8")
+        (self.kit_profiles / "drift.json").write_text('{"v": 2}', encoding="utf-8")
+        self.allowlist.write_text(
+            "hl7/drift.json full-file LIS-99 intentional\n", encoding="utf-8"
+        )
         fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_allowlist_rejects_unknown_scope(self):
+        self.allowlist.write_text("hl7/drift.json everything nope\n", encoding="utf-8")
+        with self.assertRaisesRegex(fast.FastCheckError, "scope must be"):
+            fast.read_allowlist(self.allowlist)
 
     def test_allowlist_rejects_parent_traversal(self):
         self.allowlist.write_text("../escape.json nope\n", encoding="utf-8")
@@ -273,6 +302,16 @@ class ComposeRenderTests(unittest.TestCase):
 
 
 class DeployKitConfigTests(unittest.TestCase):
+    def test_hosted_workflow_uses_shared_profile_drift_check(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github/workflows/deploy-kit-config.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 scripts/local_ci_fast_checks.py profile-drift", workflow
+        )
+        self.assertIn("- scripts/local_ci_fast_checks.py", workflow)
+
     @mock.patch("local_ci_fast_checks.render_compose_models")
     @mock.patch("local_ci_fast_checks.run_wrapper_harnesses")
     @mock.patch("local_ci_fast_checks.shellcheck")
@@ -348,6 +387,16 @@ class BridgeTests(unittest.TestCase):
 
 
 class MainTests(unittest.TestCase):
+    @mock.patch("local_ci_fast_checks.check_profile_drift")
+    def test_profile_drift_uses_explicit_component_paths(self, drift):
+        self.assertEqual(
+            fast.main(["profile-drift", "--checkout", "/exact-umbrella"]), 0
+        )
+        control = Path("/exact-umbrella")
+        drift.assert_called_once_with(
+            control, control / "core/openelis", control / "deploy/kit"
+        )
+
     @mock.patch("local_ci_fast_checks.run_checked")
     def test_edge_sim_uses_frozen_python_312_uv_command(self, run):
         with tempfile.TemporaryDirectory() as tmp:
