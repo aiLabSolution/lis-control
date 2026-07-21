@@ -22,6 +22,7 @@ from .normalize import (
     Normalizer,
 )
 from .oru import OruParseError, parse_oru_r01
+from .sanitize import TOKEN_CLASSES, SanitizeError, sanitize_capture
 from .query import (
     QueryError,
     WorklistOrder,
@@ -360,6 +361,34 @@ def _cmd_parse_astm(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_sanitize(args: argparse.Namespace) -> int:
+    """Redact a PHI-bearing ASTM field from a quarantined raw bench capture
+    (+ its matching annotated log) into a sanitized capture + a
+    ``sanitization.json`` transformation ledger (LIS-319, quarantine-first
+    intake). Exit 1 on any refusal (nothing is written on refusal)."""
+    try:
+        result = sanitize_capture(
+            args.capture,
+            args.log,
+            record=args.record,
+            field=args.field,
+            cls=args.cls,
+            token=args.token,
+            ordinal=args.ordinal,
+            length_preserving=args.length_preserving,
+            out_dir=args.out,
+        )
+    except SanitizeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"sanitized {args.capture} -> {result.bin_path} "
+        f"({result.occurrences} occurrence(s) of {args.record}.{args.field} "
+        f"redacted to {result.token!r}); ledger: {result.ledger_path}"
+    )
+    return 0
+
+
 def _add_snibelis_tcp_args(parser: argparse.ArgumentParser) -> None:
     """``--host``/``--port``/``--timeout``: only meaningful for ``--transport
     snibelis-astm`` (:class:`~edge_sim.transport.SnibeLisTcpTransport`, LIS-174 /
@@ -477,6 +506,45 @@ def main(argv: list[str] | None = None) -> int:
     )
     parse_astm_parser.add_argument("fixture", help="fixture id or directory path")
     parse_astm_parser.set_defaults(func=_cmd_parse_astm)
+    sanitize_parser = sub.add_parser(
+        "sanitize",
+        help="redact a PHI-bearing ASTM field from a raw bench capture (quarantine-first)",
+    )
+    sanitize_parser.add_argument(
+        "capture", help="path to the raw capture .bin file (must be outside the repo tree)"
+    )
+    sanitize_parser.add_argument(
+        "--out", required=True, type=Path,
+        help="output directory for the sanitized capture + transformation ledger",
+    )
+    sanitize_parser.add_argument(
+        "--record", required=True, help="ASTM record type to redact within (e.g. O)"
+    )
+    sanitize_parser.add_argument(
+        "--field", required=True, type=int,
+        help="1-based ASTM field number to redact (e.g. 3 for O.3, the specimen-id position)",
+    )
+    sanitize_parser.add_argument(
+        "--class", required=True, dest="cls", choices=sorted(TOKEN_CLASSES),
+        help="canonical redaction token class",
+    )
+    sanitize_parser.add_argument(
+        "--log", default=None, help="path to the matching annotated .log file (optional)"
+    )
+    sanitize_parser.add_argument(
+        "--token", default=None,
+        help="explicit replacement token (default: derived from --class + --ordinal)",
+    )
+    sanitize_parser.add_argument(
+        "--ordinal", type=int, default=1,
+        help="ordinal suffix for the class-derived token (default: 1)",
+    )
+    sanitize_parser.add_argument(
+        "--no-length-preserving", dest="length_preserving", action="store_false", default=True,
+        help="allow the redacted field to change byte length (recomputes RECV "
+        "byte counts in the log; default is length-preserving)",
+    )
+    sanitize_parser.set_defaults(func=_cmd_sanitize)
 
     args = parser.parse_args(argv)
     try:
