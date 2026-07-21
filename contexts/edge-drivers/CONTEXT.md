@@ -36,6 +36,11 @@ cleared under HOLD-001 / LIS-71).
   APPROVED. Exact-head CI was green twice; full suite at the merged pin
   **1106/0/0/7**. The matching deploy policy is
   `lis-deploy-kit#a279b36` (PR #24): retention 0 ms, maintenance 3600000 ms.
+  That kit merge also inherited LIS-307's corrected X3 profile, so the umbrella
+  coherently advances the already-green LIS-272 core seed/mirror merge
+  `OpenELIS-Global-2#810bf24` (PR #56). Their v0.2.0 runtime mapping/QC JSON is
+  identical; a notes-only capture-provenance wording difference remains
+  explicitly allowlisted to LIS-307 rather than hidden from the drift gate.
 - **Intervening pins (not genealogized here):** `6c3fd87` (LIS-130, PR #50) →
   `8d71866` (LIS-299, #52) → `46e57b9` (LIS-232 AC coverage, #51) → `a133569`
   (LIS-303, #53).
