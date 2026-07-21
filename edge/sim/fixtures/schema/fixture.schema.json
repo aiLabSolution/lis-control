@@ -177,6 +177,140 @@
       "type": "object",
       "description": "Placeholder for downstream parser/normalization assertions (e.g. the normalized LOINC/UCUM Result row). Wired up once those services land in Stage 1.",
       "additionalProperties": true
+    },
+    "capture": {
+      "type": "object",
+      "description": "Bench-capture provenance for a graduated (synthetic: false) fixture: who/what/when produced the raw artifact this manifest is derived from, and whether that artifact is verifiable in-repo (ISO 15189 evidence chain). Loader-enforced coupling: required whenever synthetic is false.",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "source_kind",
+        "raw_digest",
+        "captured_at",
+        "instrument",
+        "chassis_connected",
+        "upload_trigger",
+        "tool"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "description": "Bench-capture session identifier (evidence/bench/<analyzer>/<session_id>/...)."
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": ["bench-capture", "bench-derived"],
+          "description": "'bench-capture' = verbatim (redacted) real bytes with the raw artifact stored in-repo, digest-verified on every load. 'bench-derived' = a structurally re-synthesized artifact whose pristine original lives ONLY in the offline evidence store -- CI cannot verify its digest."
+        },
+        "raw_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "sha256 of the raw capture artifact's bytes, 'sha256:<hex>'. Verified against capture.raw_path on every load for source_kind 'bench-capture'; not verifiable in CI for 'bench-derived' (the pristine original is offline-only)."
+        },
+        "raw_path": {
+          "type": "string",
+          "description": "Repo-root-relative path to the raw capture artifact. Required for source_kind 'bench-capture'; forbidden for 'bench-derived' -- enforced by the loader."
+        },
+        "captured_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Capture date, YYYY-MM-DD."
+        },
+        "instrument": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model", "serial"],
+          "properties": {
+            "model": { "type": "string" },
+            "serial": { "type": "string" },
+            "ref": { "type": "string" },
+            "firmware": {
+              "type": ["string", "null"],
+              "description": "Firmware version string; null = NOT RECORDED at capture time."
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "site": { "type": "string" },
+            "operator": { "type": ["string", "null"] },
+            "host": { "type": "string" },
+            "network_path": { "type": "string" },
+            "bridge_version": { "type": ["string", "null"] }
+          }
+        },
+        "analyzer_config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "protocol": { "type": "string" },
+            "checksum": { "type": "boolean" },
+            "communicate_timeout_s": { "type": "integer" },
+            "resend_times": { "type": "integer" },
+            "auto_upload_result": { "type": "boolean" },
+            "auto_upload_qc": { "type": "boolean" },
+            "auto_download_assay": { "type": "boolean" }
+          }
+        },
+        "chassis_connected": {
+          "type": "boolean",
+          "description": "false = the analyzer chassis was disconnected; every 2026-07-17 capture is a stored-result replay."
+        },
+        "upload_trigger": {
+          "type": "string",
+          "enum": ["manual-lis-online", "auto"]
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": ["string", "null"] }
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applied"],
+          "properties": {
+            "applied": { "type": "boolean" },
+            "fields": { "type": "array", "items": { "type": "string" } },
+            "token": { "type": "string" },
+            "length_preserving": { "type": "boolean" },
+            "class": { "type": "string" }
+          }
+        },
+        "unconfirmed_channel_settings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names of channel sub-blocks (e.g. \"tcp\", \"rs232\") whose provenance is NOT \"bench-capture\". A graduated fixture must declare every such sub-block here explicitly; completeness is loader-enforced."
+        },
+        "derivation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spec", "ledger"],
+          "properties": {
+            "spec": {
+              "type": "string",
+              "description": "Path to the derivation spec document."
+            },
+            "ledger": {
+              "type": "string",
+              "description": "Path to the sanitization.json transformation ledger."
+            }
+          },
+          "description": "Required for source_kind 'bench-derived'; forbidden for 'bench-capture' -- enforced by the loader."
+        }
+      }
     }
+  },
+  "if": {
+    "properties": { "synthetic": { "const": false } }
+  },
+  "then": {
+    "required": ["capture"]
   }
 }
