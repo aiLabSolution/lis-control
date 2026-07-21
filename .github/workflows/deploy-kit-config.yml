@@ -6,7 +6,7 @@
 # copy is what deployed environments actually read — LIS-107 showed it silently
 # lagging the bench-validated core capture). This job:
 #   1. fails when a profile present in BOTH trees differs (kit must equal core,
-#      or the divergence must be acknowledged with a reason in
+#      or the divergence must use an explicit scoped exception with a reason in
 #      deploy/ci/profile-drift-allowlist.txt);
 #   2. fails when the kit carries a profile the core mirror doesn't have;
 #      core-only profiles (not yet adopted for deployment) are informational;
@@ -24,12 +24,14 @@ on:
       - core/openelis            # submodule pin bump
       - deploy/kit               # submodule pin bump
       - deploy/ci/**
+      - scripts/local_ci_fast_checks.py
       - .github/workflows/deploy-kit-config.yml
   pull_request:
     paths:
       - core/openelis
       - deploy/kit
       - deploy/ci/**
+      - scripts/local_ci_fast_checks.py
       - .github/workflows/deploy-kit-config.yml
   workflow_dispatch:
 
@@ -75,42 +77,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Profile drift check (kit vs core mirror)
-        run: |
-          set -euo pipefail
-          core_dir=core/openelis/projects/analyzer-profiles
-          kit_dir=deploy/kit/configs/analyzer-profiles
-          allowlist=deploy/ci/profile-drift-allowlist.txt
-          fail=0
-          while IFS= read -r rel; do
-            allowed=""
-            if [ -f "$allowlist" ] && grep -qE "^$rel([[:space:]]|\$)" "$allowlist"; then
-              allowed=" (allowlisted: $(grep -E "^$rel([[:space:]]|\$)" "$allowlist" | head -1))"
-            fi
-            if [ ! -f "$core_dir/$rel" ]; then
-              if [ -n "$allowed" ]; then
-                echo "ALLOWED kit-only profile: $rel$allowed"
-              else
-                echo "::error::kit-only profile not present in the core mirror: $rel"
-                fail=1
-              fi
-            elif ! cmp -s "$kit_dir/$rel" "$core_dir/$rel"; then
-              if [ -n "$allowed" ]; then
-                echo "ALLOWED divergence: $rel$allowed"
-              else
-                echo "::error::profile drift (kit != core @ pinned SHAs): $rel"
-                diff -u "$core_dir/$rel" "$kit_dir/$rel" | head -40 || true
-                fail=1
-              fi
-            else
-              echo "OK in-sync: $rel"
-            fi
-          done < <(cd "$kit_dir" && find . -type f -printf '%P\n' | sort)
-          # Core-only profiles are not deployed yet — informational, not drift.
-          comm -23 \
-            <(cd "$core_dir" && find . -type f -name '*.json' -not -path './schema/*' -printf '%P\n' | sort) \
-            <(cd "$kit_dir" && find . -type f -printf '%P\n' | sort) \
-            | sed 's/^/NOTE core-only (not adopted by the kit): /'
-          exit "$fail"
+        run: python3 scripts/local_ci_fast_checks.py profile-drift
 
       - name: Shellcheck kit scripts and public tests
         run: shellcheck deploy/kit/scripts/*.sh deploy/kit/tests/*.sh
