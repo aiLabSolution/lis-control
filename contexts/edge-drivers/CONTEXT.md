@@ -17,7 +17,29 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`4b9f757`** — LIS-232 Lifotronic H9 edge integration
+- **Pin:** untagged **`356bdb2`** — LIS-273 outbound HIS queue privacy
+  disposition (PR `openelis-analyzer-bridge#54`). A PENDING ORU remains
+  byte-identical and retryable until a matching `MSA-1=AA`; after AA the full
+  body is redacted immediately by default (`delivered-retention-ms=0`) or by a
+  configurable positive retention window. A canonical SHA-256 fingerprint
+  (MSH-7 blanked) preserves duplicate/collision behavior after redaction.
+  Legacy stores migrate/backfill on open; startup catch-up and an independent
+  maintenance task enforce expiry and retry a busy WAL checkpoint even when
+  delivery retries are disabled. The live SQLite store uses
+  `secure_delete=ON`, WAL checkpoint/truncation, and POSIX 0700/0600 access
+  controls; this is logical sanitization, not cryptographic erasure, so the
+  deploy gate still requires encrypted storage and a site-approved lifecycle
+  for backups/snapshots/corrupt copies. Adversarial pass 1 found and reproduced
+  two P1s (zero-retention WAL cleanup had no busy-checkpoint retry, and
+  variable-width ISO timestamps were compared lexically); `808f1c7` added the
+  scheduler regression and chronological `julianday` predicate, and pass 2
+  APPROVED. Exact-head CI was green twice; full suite at the merged pin
+  **1106/0/0/7**. The matching deploy policy is
+  `lis-deploy-kit#a279b36` (PR #24): retention 0 ms, maintenance 3600000 ms.
+- **Intervening pins (not genealogized here):** `6c3fd87` (LIS-130, PR #50) →
+  `8d71866` (LIS-299, #52) → `46e57b9` (LIS-232 AC coverage, #51) → `a133569`
+  (LIS-303, #53).
+- **Prior genealogized pin:** untagged **`4b9f757`** — LIS-232 Lifotronic H9 edge integration
   (PR `openelis-analyzer-bridge#43`). The H9's byte-positional frames cross the whole
   normalize → route → FHIR path without a String round-trip: `SerialMessageHandler` maps the
   framing-selected mode directly to `Protocol.LIFOTRONIC_H9` (D3 — `ProtocolDetector`

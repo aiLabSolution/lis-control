@@ -38,6 +38,7 @@ explanation of what LIS-10 is, what's drafted, and what needs a human decision.
 | [`reading-list.md`](reading-list.md) | Primary sources to read before deciding | Reference |
 | [`responsibility-and-deployment.md`](responsibility-and-deployment.md) | **Responsibility split (PIC/PIP) + deployment-model compliance** — who is the regulated party (LabSolution vendor vs customer lab), per-requirement, and how M1 fully-onsite / M2 public-cloud sync / M3 own-datacenter sync change LabSolution's obligations. Web-researched, cited. **Topology now decided (ADR-0006): M1 pilot ✅, M3 spoke 🔜, M2 parked ⛔.** | Drafted, pending review + counsel |
 | [`m3-sync-compliance-gate.md`](m3-sync-compliance-gate.md) | **Compliance extra work** — the PIP-status obligations (own NPC DPS registration, head DPA + flow-down, breach apparatus, physical custody, central key custody) that must complete **before** the post-pilot M3 on-prem central-sync spoke. **Not on the pilot critical path.** | Drafted, pending review + counsel |
+| [`npc/retention.md`](npc/retention.md) | **Retention schedule** — drafted technical schedule for the transient outbound HIS delivery queue; broader clinical-record durations, tombstone duration, legal holds, backups, and site approvals remain explicit human decisions. | Queue entry drafted; broader schedule needs human approval |
 
 The four core artifacts (VMP, NPC, threat model, matrix) are the literal deliverables named
 in the LIS-10 title; the brief, registers, and this index are the preparation wrapper.
@@ -60,7 +61,10 @@ default (pending ratification — see DEC-25 in the register):
 
 - **Core artifacts** — flat in `docs/compliance/` (the table above).
 - **NPC filing pack** (created later, mostly Stage 5) — under `docs/compliance/npc/`:
-  `ropa.md`, `pia.md`, `breach-runbook.md`, `retention.md`, `lawful-basis.md`.
+  `retention.md` now contains the LIS-273 queue-specific draft; `ropa.md`,
+  `pia.md`, `breach-runbook.md`, and `lawful-basis.md` are created later. The
+  broader retention schedule and accountable site approvals remain
+  `[NEEDS-HUMAN]`.
 
 ## Provenance
 

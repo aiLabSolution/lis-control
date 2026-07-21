@@ -32,6 +32,43 @@ ADR-0012 explicitly deferred **retention/GC** ("a real deployment concern, not a
 **Encryption and access control it never addressed at all** — a sim-scoped harness holds no PHI at
 rest; a production archive does, which is precisely the scope of the pending QA/regulatory sign-off.
 
+## LIS-273 addendum — outbound HIS delivery queue (2026-07-22)
+
+This addendum is deliberately narrower than the inbound raw-message archive
+decision below. It records the retention and deployment gate for the separate
+outbound HIS store-and-forward queue (`his_result_queue`); it does **not** make
+that queue an archive, expand this ADR's inbound scope, or change this ADR from
+**Proposed**. Independent QA/regulatory sign-off is still required before this
+ADR can be Accepted.
+
+For the outbound queue, LIS-273 adopts these technical defaults:
+
+- A PENDING ORU is retained conditionally until the HIS returns a matching
+  `MSA-1=AA`; age alone must never remove bytes still required for retry.
+- After AA, the deployed full-message retention window is 0 ms. The delivered
+  row's full ORU is redacted while the minimum metadata/fingerprint needed for
+  MSH-10 duplicate and collision handling remains. Any nonzero window requires
+  attributable site DPO and QA approval.
+- Owner-only queue storage (0700/0600 where POSIX permissions are available),
+  SQLite `secure_delete`, and WAL truncation are defense-in-depth controls over
+  the active database. They are best-effort logical storage disposal, not
+  cryptographic erase; backups, snapshots, filesystem recovery, and renamed
+  corrupt copies remain governed by the site's separate lifecycle.
+- The queue remains patient-linked after body redaction: control IDs and
+  fingerprints are pseudonymous, not anonymous. Their retention duration is a
+  site decision recorded in `docs/compliance/npc/retention.md`.
+
+**HIS outbound gate.** Before patient results may use the outbound endpoint,
+the site must approve the queue retention entry, place the queue on encrypted
+host/volume storage, restrict access, enable TLS, and replace default
+credentials. The current MAGLUMI X3 site has no OpenELIS-to-bridge HIS outbound
+caller, so this addendum records a prerequisite rather than authorizing current
+traffic.
+
+This addendum closes neither the inbound archive's all-transport scope nor its
+retention, encryption, access-audit, and QA-sign-off residuals. Those continue
+to block an Accepted disposition for ADR-0022.
+
 ## Decision
 
 Implement a production **inbound** raw-byte archive in the bridge, reusing ADR-0012's
