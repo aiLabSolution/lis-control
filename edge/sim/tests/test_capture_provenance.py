@@ -114,6 +114,34 @@ def test_non_bench_capture_identity_provenance_rejected(tmp_path):
         load_fixture(fixture_dir, repo_root=repo_root)
 
 
+# -- (1b) channel.identity must EXIST for a non-synthetic fixture ------------
+
+
+def test_missing_identity_block_rejected(tmp_path):
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    del manifest["channel"]["identity"]
+    _write_fixture(fixture_dir, manifest)
+
+    with pytest.raises(FixtureError, match="identity"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+# -- (1c) bench-capture forbids a derivation block ---------------------------
+
+
+def test_bench_capture_with_derivation_rejected(tmp_path):
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(
+        repo_root,
+        derivation={"spec": "thoughts/tmp-derivation-spec.md", "ledger": "thoughts/tmp-sanitization.json"},
+    )
+    _write_fixture(fixture_dir, manifest)
+
+    with pytest.raises(FixtureError, match="derivation"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
 # -- (2) unconfirmed_channel_settings must exactly match ----------------------
 
 

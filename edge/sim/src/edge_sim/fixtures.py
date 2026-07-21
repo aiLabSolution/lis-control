@@ -87,13 +87,17 @@ def _check_graduated_provenance(manifest: dict, manifest_path: Path, repo_root: 
     """Enforce the graduated-fixture provenance contract (schema v2, LIS-319) on
     top of plain schema validation, for any manifest with ``synthetic: false``:
 
-    a. ``channel.identity.provenance`` (if the block exists) must be "bench-capture".
+    a. ``channel.identity`` must EXIST, and its ``provenance`` must be
+       "bench-capture" -- a graduated fixture with no identity block at all
+       would otherwise load with zero identity attestation.
     b. The set of {"rs232", "tcp"} channel sub-blocks whose provenance is NOT
        "bench-capture" must exactly equal ``capture.unconfirmed_channel_settings``
        (a missing declaration and a stale extra declaration are both errors).
-    c. source_kind "bench-capture": ``raw_path`` is required, must resolve inside
-       the repo, must exist, and its sha256 must equal ``raw_digest`` -- this
-       makes the digest verified on every load, not prose.
+    c. source_kind "bench-capture": ``derivation`` is forbidden (that's the
+       "bench-derived" contract, not this one); ``raw_path`` is required, must
+       resolve inside the repo, must exist, and its sha256 must equal
+       ``raw_digest`` -- this makes the digest verified on every load, not
+       prose.
     d. source_kind "bench-derived": ``derivation`` is required, ``raw_path`` is
        forbidden; the digest is NOT verified here (the pristine original lives
        only in the offline evidence store) -- CI cannot verify it by design.
@@ -103,7 +107,13 @@ def _check_graduated_provenance(manifest: dict, manifest_path: Path, repo_root: 
 
     channel = manifest.get("channel", {})
     identity = channel.get("identity")
-    if identity is not None and identity.get("provenance") != "bench-capture":
+    if identity is None:
+        raise FixtureError(
+            f"{manifest_path}: channel.identity is required for a non-synthetic "
+            "fixture (a graduated fixture must attest analyzer/host identity "
+            "provenance)"
+        )
+    if identity.get("provenance") != "bench-capture":
         raise FixtureError(
             f"{manifest_path}: channel.identity.provenance must be 'bench-capture' for a "
             f"non-synthetic fixture, got {identity.get('provenance')!r}"
@@ -128,6 +138,11 @@ def _check_graduated_provenance(manifest: dict, manifest_path: Path, repo_root: 
 
     source_kind = capture.get("source_kind")
     if source_kind == "bench-capture":
+        if "derivation" in capture:
+            raise FixtureError(
+                f"{manifest_path}: capture.derivation is forbidden for source_kind "
+                "'bench-capture' (that's the 'bench-derived' contract)"
+            )
         raw_path = capture.get("raw_path")
         if not raw_path:
             raise FixtureError(f"{manifest_path}: capture.raw_path is required for source_kind 'bench-capture'")

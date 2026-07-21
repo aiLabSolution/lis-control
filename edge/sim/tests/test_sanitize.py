@@ -97,6 +97,74 @@ def _build_session_with_log(envelopes: list[list[str]]) -> tuple[bytes, str]:
     return bytes(raw), "\n".join(log_lines) + "\n"
 
 
+def _build_split_field_session(sample_id: str) -> tuple[bytes, str]:
+    """Build a single-envelope synthetic session whose O.3 (specimen-id) value
+    is deliberately split across TWO RECV chunks -- the bench-real scenario
+    (bench chunking is nondeterministic) the old substring-replacement
+    ``_rewrite_log`` silently mishandled (LIS-319 adversarial review P1):
+    neither chunk contains the complete pristine value as a contiguous
+    substring, so a per-chunk search-and-replace finds nothing in either
+    chunk and leaves both raw fragments in the log even though the bin itself
+    (redacted as one contiguous byte array) is fully clean."""
+    assay, value, unit, ref_range, ts = "ZZQS", "9.99", "zzU/L", "0.0 - 9.9", "20260101000009"
+    r_line = f"R|1|^^^{assay}|{value}|{unit}|{ref_range}|N||||||{ts}"
+    l_line = "L|1|N"
+    mid = len(sample_id) // 2
+    first_half = sample_id[:mid]
+    second_half = sample_id[mid:]
+    assert first_half and second_half  # sanity: the split is non-trivial
+
+    raw = bytearray()
+    log_lines = [
+        "# X3 ASTM capture session synthetic-split-000 from ('127.0.0.1', 0), ACK mode=simplified"
+    ]
+    counter = 0
+
+    def _ts() -> str:
+        nonlocal counter
+        counter += 1
+        return f"2026-01-01T00:00:{counter:02d}.000"
+
+    def _chunk(data: bytes) -> None:
+        raw.extend(data)
+        log_lines.append(f"[{_ts()}] RECV {len(data)}B  hex={data.hex(' ')}")
+        log_lines.append(f"                 decode={sanitize._render_decode(data)}")
+
+    _chunk(bytes([ENQ]))
+    log_lines.append("                 SEND <ACK> (for <ENQ>)")
+    _chunk(bytes([STX]))
+    log_lines.append("                 SEND <ACK> (for <STX>)")
+    _chunk((_HEADER + "\r").encode("latin-1"))
+    # Chunk A ends mid-way through the O.3 value; chunk B starts with the rest.
+    _chunk(f"P|1\rO|1|{first_half}".encode("latin-1"))
+    _chunk(f"{second_half}||^^^{assay}\r{r_line}\r".encode("latin-1"))
+    _chunk((l_line + "\r").encode("latin-1") + bytes([ETX, EOT]))
+    log_lines.append("                 SEND <ACK> (for <ETX>)")
+    log_lines.append("                 SEND <ACK> (for <EOT>)")
+
+    log_lines.append("")
+    log_lines.append("================= CAPTURE SUMMARY =================")
+    log_lines.append(f"Order (O): sample_id={sample_id!r}  assays=['{assay}']")
+    log_lines.append("===================================================")
+    log_lines.append("")
+
+    return bytes(raw), "\n".join(log_lines) + "\n"
+
+
+def _concat_hex_chunks(log_text: str) -> bytes:
+    """Concatenate every ``RECV ... hex=`` line's decoded bytes, in order --
+    used to verify a rewritten log's hex= lines re-decode to exactly the
+    sanitized bin, end to end."""
+    out = bytearray()
+    for line in log_text.split("\n"):
+        recv_idx = line.find(" RECV ")
+        hex_idx = line.find("B  hex=") if recv_idx != -1 else -1
+        if hex_idx != -1:
+            hexpart = line[hex_idx + len("B  hex=") :]
+            out.extend(bytes.fromhex(hexpart.replace(" ", "")))
+    return bytes(out)
+
+
 def _write_quarantined_capture(tmp_path, raw: bytes, log_text: str | None = None):
     quarantine = tmp_path / "quarantine"
     quarantine.mkdir()
@@ -346,3 +414,112 @@ def test_token_classes_never_produce_a_legacy_token():
     for cls, prefix in TOKEN_CLASSES.items():
         for ordinal in range(1, 5):
             assert f"{prefix}{ordinal}" not in LEGACY_TOKENS
+
+
+# --- (7) P1: value split across two RECV chunks is still fully redacted ----
+def test_chunk_split_redaction_leaves_no_pristine_fragment(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"  # 19 chars: matches "SPECIMEN-REDACTED-1"
+    raw, log_text = _build_split_field_session(sample_id)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    out_dir = tmp_path / "out"
+
+    result = sanitize_capture(
+        bin_path, log_path,
+        record="O", field=3, cls="specimen-id", ordinal=1,
+        out_dir=out_dir,
+    )
+
+    sanitized_bin = result.bin_path.read_bytes()
+    sanitized_log = result.log_path.read_text(encoding="utf-8")
+
+    assert sample_id.encode("latin-1") not in sanitized_bin
+    # Neither raw half-fragment (the two RECV chunks' pristine content) may
+    # survive -- this is exactly what the old substring-based rewrite missed.
+    mid = len(sample_id) // 2
+    first_half, second_half = sample_id[:mid], sample_id[mid:]
+    assert first_half not in sanitized_log
+    assert second_half not in sanitized_log
+    assert sample_id not in sanitized_log
+    assert sample_id.encode("latin-1").hex(" ") not in sanitized_log
+    assert result.token in sanitized_log
+
+    # The log's hex must re-decode to exactly the sanitized bin's bytes, end
+    # to end -- log/bin can never structurally diverge.
+    assert _concat_hex_chunks(sanitized_log) == sanitized_bin
+
+
+# --- (8) P1: the addressed value recurring outside the field refuses -------
+def test_value_recurring_outside_addressed_field_refuses(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00002"
+    assay, value, unit, ref_range, ts = "ZZQ9", "9.99", "zzU/L", "0.0 - 9.9", "20260101000009"
+    records = [
+        _HEADER,
+        f"P|1||{sample_id}",  # planted recurrence at P.4 -- NOT the addressed field
+        f"O|1|{sample_id}||^^^{assay}",
+        f"R|1|^^^{assay}|{value}|{unit}|{ref_range}|N||||||{ts}",
+        "L|1|N",
+    ]
+    raw, log_text = _build_session_with_log([records])
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(SanitizeError, match=r"P\.4"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+    assert not out_dir.exists()
+
+
+# --- (9) P1: a log that doesn't tile the bin refuses -----------------------
+def test_log_bin_hex_mismatch_refuses(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00003"
+    envelopes = [_envelope_records("ZZQM", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    # Corrupt the first RECV chunk's declared hex (the lone ENQ byte, 0x05)
+    # so the log no longer tiles the raw capture.
+    corrupted_log = log_text.replace("hex=05\n", "hex=06\n", 1)
+    assert corrupted_log != log_text  # sanity: the replace actually matched
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, corrupted_log)
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(SanitizeError, match="does not correspond to this capture"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+    assert not out_dir.exists()
+
+
+# --- (10) P1: non-length-preserving chunk mapping recomputes RECV/hex ------
+def test_non_length_preserving_chunk_mapping_recomputes_recv_and_hex(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-LONGVALUE-0001"  # deliberately longer than the token
+    envelopes = [_envelope_records("ZZQL", "4.44", "zzU/L", "0.0 - 9.9", "20260101000004", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    out_dir = tmp_path / "out"
+    token = "SID-1"  # shorter than sample_id; occurrence sits mid-chunk (P/O/R joined)
+
+    result = sanitize_capture(
+        bin_path, log_path,
+        record="O", field=3, cls="specimen-id", token=token,
+        length_preserving=False,
+        out_dir=out_dir,
+    )
+    sanitized_bin = result.bin_path.read_bytes()
+    sanitized_log = result.log_path.read_text(encoding="utf-8")
+
+    assert sample_id not in sanitized_log
+    assert token in sanitized_log
+    assert _concat_hex_chunks(sanitized_log) == sanitized_bin
+
+    for line in sanitized_log.split("\n"):
+        recv_idx = line.find(" RECV ")
+        hex_idx = line.find("B  hex=") if recv_idx != -1 else -1
+        if hex_idx != -1:
+            count_str = line[recv_idx + len(" RECV ") : hex_idx]
+            hexpart = line[hex_idx + len("B  hex=") :]
+            decoded = bytes.fromhex(hexpart.replace(" ", ""))
+            assert int(count_str) == len(decoded)
