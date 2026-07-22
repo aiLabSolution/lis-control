@@ -523,3 +523,132 @@ def test_non_length_preserving_chunk_mapping_recomputes_recv_and_hex(tmp_path):
             hexpart = line[hex_idx + len("B  hex=") :]
             decoded = bytes.fromhex(hexpart.replace(" ", ""))
             assert int(count_str) == len(decoded)
+
+
+# --- (11) LIS-319 hardening: token charset is printable ASCII only ---------
+@pytest.mark.parametrize(
+    "bad_char, char_name",
+    [
+        ("\x0a", "LF"),
+        ("\x00", "NUL"),
+        ("\x09", "TAB"),
+        ("\x7f", "DEL"),
+    ],
+)
+def test_token_with_c0_or_del_byte_rejected_and_writes_nothing(tmp_path, bad_char, char_name):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, _ = _build_session_with_log(envelopes)
+    bin_path, _ = _write_quarantined_capture(tmp_path, raw)
+    out_dir = tmp_path / "out"
+    bad_token = f"BAD{bad_char}TOKEN"  # same "shape" as an accepted token, one bad byte
+
+    with pytest.raises(SanitizeError):
+        sanitize_capture(
+            bin_path, None,
+            record="O", field=3, cls="specimen-id",
+            token=bad_token, length_preserving=False,
+            out_dir=out_dir,
+        )
+    # Nothing written -- refusal happens before any filesystem write.
+    assert not out_dir.exists()
+
+
+# --- (12) LIS-319 hardening: --out aliasing the input's own directory ------
+def test_out_dir_equal_to_input_parent_refuses_and_preserves_pristine_input(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+    original_log_text = log_path.read_text(encoding="utf-8")
+
+    out_dir = bin_path.parent  # aliases the input capture's own directory
+
+    with pytest.raises(SanitizeError, match="pristine"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    # The pristine quarantined capture/log must be byte-for-byte untouched.
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert log_path.read_text(encoding="utf-8") == original_log_text
+
+
+# --- (13) LIS-319 hardening: pre-existing output file refuses -------------
+def test_pre_existing_output_file_refuses_and_preserves_input(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    stale_ledger = out_dir / "sanitization.json"
+    stale_ledger.write_text('{"stale": true}\n', encoding="utf-8")
+
+    with pytest.raises(SanitizeError, match="already exists"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert stale_ledger.read_text(encoding="utf-8") == '{"stale": true}\n'
+
+
+# --- (14) LIS-319 hardening: success path leaves no .tmp litter ------------
+def test_success_leaves_no_tmp_files(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    out_dir = tmp_path / "out"
+
+    sanitize_capture(
+        bin_path, log_path,
+        record="O", field=3, cls="specimen-id", ordinal=1,
+        out_dir=out_dir,
+    )
+
+    assert list(out_dir.glob("*.tmp")) == []
+
+
+# --- (15) LIS-319 hardening: mid-write failure leaves no final output -----
+def test_mid_write_failure_leaves_no_final_named_output(tmp_path, monkeypatch):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    out_dir = tmp_path / "out"
+
+    real_write_text = Path.write_text
+
+    def _flaky_write_text(self, *args, **kwargs):
+        # The bin temp is written first (write_bytes, untouched by this
+        # patch); the annotated-log temp is the SECOND temp write -- fail
+        # exactly there, before it (or the ledger temp after it) ever lands.
+        if self.suffix == ".tmp" and self.name.startswith("annotated-"):
+            raise OSError("simulated disk failure on second temp write")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _flaky_write_text, raising=True)
+
+    with pytest.raises(OSError, match="simulated disk failure"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    # No final-named output exists -- temps are cleaned up (best effort), or
+    # at worst only .tmp litter remains (never a final bin/log/ledger name).
+    assert not (out_dir / bin_path.name).exists()
+    assert not (out_dir / log_path.name).exists()
+    assert not (out_dir / "sanitization.json").exists()
+    for leftover in out_dir.glob("*") if out_dir.exists() else []:
+        assert leftover.suffix == ".tmp"

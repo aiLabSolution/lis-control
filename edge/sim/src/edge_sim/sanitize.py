@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -74,9 +75,21 @@ TOKEN_CLASSES = {
 # tool for a new redaction.
 LEGACY_TOKENS = {"BENCH-SAMPLE-001"}
 
-# A token must never contain an ASTM delimiter or the record separator -- it
-# would corrupt the field/record structure it is substituted into.
-_FORBIDDEN_TOKEN_CHARS = frozenset("|\\^&\r")
+# A token must never contain an ASTM delimiter -- it would corrupt the
+# field/record structure it is substituted into. (CR, every other C0 control,
+# and DEL are rejected separately below by the printable-ASCII range check --
+# not listed here since they are not ASTM delimiters per se.)
+_FORBIDDEN_TOKEN_CHARS = frozenset("|\\^&")
+
+# A token must consist solely of printable ASCII -- 0x20 (space) through 0x7E
+# (``~``) inclusive. This rejects every C0 control byte (0x00-0x1F, which
+# includes CR, LF, NUL, and TAB) and DEL (0x7F), matching the project's
+# established escape-all-C0 wire posture: a length-matched token containing
+# e.g. LF or NUL would otherwise pass both this validator and structure
+# verification (records split on CR; no field/delimiter count changes), so a
+# malformed field would get certified ``structure_verified: true``.
+_PRINTABLE_ASCII_MIN = 0x20
+_PRINTABLE_ASCII_MAX = 0x7E
 
 # Control bytes whose exact order (and, in length-preserving mode, exact byte
 # offset) must survive redaction unchanged -- ENQ/STX/ETX/EOT per the plan,
@@ -371,15 +384,25 @@ def _validate_token(token: str) -> None:
     if not token:
         raise SanitizeError("token must not be empty")
     try:
-        token.encode("ascii")
+        token_bytes = token.encode("ascii")
     except UnicodeEncodeError as exc:
         raise SanitizeError(f"token must be ASCII, got {token!r}") from exc
-    bad = _FORBIDDEN_TOKEN_CHARS & set(token)
-    if bad:
+
+    bad_delims = _FORBIDDEN_TOKEN_CHARS & set(token)
+    if bad_delims:
         raise SanitizeError(
-            f"token {token!r} contains a forbidden delimiter/control character "
-            f"{sorted(bad)!r} -- a token must never contain an ASTM delimiter "
-            "(| \\ ^ &) or CR"
+            f"token {token!r} contains a forbidden delimiter character "
+            f"{sorted(bad_delims)!r} -- a token must never contain an ASTM "
+            "delimiter (| \\ ^ &)"
+        )
+
+    non_printable = sorted({b for b in token_bytes if not (_PRINTABLE_ASCII_MIN <= b <= _PRINTABLE_ASCII_MAX)})
+    if non_printable:
+        raise SanitizeError(
+            f"token {token!r} contains non-printable byte(s) "
+            f"{[f'0x{b:02x}' for b in non_printable]} -- a token must consist "
+            "solely of printable ASCII (0x20-0x7E); every C0 control byte "
+            "(including CR, LF, NUL, and TAB) and DEL (0x7f) is rejected"
         )
 
 
@@ -407,6 +430,66 @@ def _check_quarantine(path: Path) -> None:
         "live outside the repo until it has been sanitized and privacy-"
         "reviewed; there is no override flag"
     )
+
+
+# --- output-path safety ------------------------------------------------
+def _check_output_paths(
+    *, bin_path: Path, log_path: Path | None, out_dir: Path
+) -> tuple[Path, Path | None, Path]:
+    """Resolve the (up to three) would-be output paths -- the sanitized bin,
+    the sanitized log (if a log was given), and ``sanitization.json`` -- and
+    refuse, before any filesystem write, whenever:
+
+    (a) any output path would resolve to the same file as an input path. If
+        ``--out`` names the input capture's own parent directory, ``out_dir /
+        bin_path.name`` ALIASES the input and a plain ``write_bytes`` would
+        irreversibly overwrite the pristine quarantined capture -- the exact
+        artifact this tool exists to protect. Checked first so this specific
+        case gets the precise pristine-evidence message.
+
+    (b) any output path already exists. This is the general backstop -- it
+        also covers every aliasing case check (a) already catches (the input
+        file, if it lives at that exact output path, necessarily already
+        exists there too), plus ordinary clobbering of a previous output set
+        (e.g. a stale ``sanitization.json`` left over from a prior run).
+
+    Returns ``(out_bin_path, out_log_path, ledger_path)`` for the caller to
+    use as the actual (non-resolved) write targets.
+    """
+    inputs: list[tuple[str, Path, Path]] = [("capture", bin_path, bin_path.resolve())]
+    if log_path is not None:
+        inputs.append(("log", log_path, log_path.resolve()))
+
+    out_bin_path = out_dir / bin_path.name
+    out_log_path = out_dir / log_path.name if log_path is not None else None
+    ledger_path = out_dir / "sanitization.json"
+
+    outputs: list[tuple[str, Path]] = [("bin", out_bin_path)]
+    if out_log_path is not None:
+        outputs.append(("log", out_log_path))
+    outputs.append(("ledger", ledger_path))
+
+    for out_label, out_path in outputs:
+        resolved_out = out_path.resolve()
+        for in_label, in_path, resolved_in in inputs:
+            if resolved_out == resolved_in:
+                raise SanitizeError(
+                    f"refusing to write: the output {out_label} path "
+                    f"({out_path}) resolves to the same file as the input "
+                    f"{in_label} ({in_path}) -- this would overwrite the "
+                    f"pristine quarantined {in_label}; choose a different "
+                    "--out directory"
+                )
+
+    for out_label, out_path in outputs:
+        if out_path.exists():
+            raise SanitizeError(
+                f"refusing to write: output path {out_path} already exists -- "
+                "choose a fresh --out directory rather than overwrite a "
+                "previous output set"
+            )
+
+    return out_bin_path, out_log_path, ledger_path
 
 
 # --- annotated-log rewriting ----------------------------------------------
@@ -760,10 +843,17 @@ def sanitize_capture(
       any envelope) -- a single invocation only redacts one addressed field,
       so this refuses with the other location named, rather than emit a
       capture with a PHI copy left behind.
-    * the token contains a delimiter/control byte (``| \\ ^ &`` or CR) or a
-      non-ASCII character.
+    * the token contains a forbidden delimiter character (``| \\ ^ &``), a
+      non-ASCII character, or any non-printable byte -- a token must consist
+      solely of printable ASCII (0x20-0x7E); every C0 control byte (including
+      CR, LF, NUL, and TAB) and DEL (0x7f) is rejected.
     * length-preserving redaction is requested but the token's length does
       not match the original field's length.
+    * any of the (up to three) output paths -- the sanitized bin, the
+      sanitized log, or ``sanitization.json`` -- would resolve to the same
+      file as an input path (this would overwrite the pristine quarantined
+      capture/log), or any of them already exists (no clobbering a previous
+      output set -- choose a fresh ``--out`` directory).
     * the sanitized capture's structure (envelope count, control-token
       sequence -- and, under length-preserving redaction, control-token byte
       offsets and total length -- record-type sequence, per-record field
@@ -788,6 +878,12 @@ def sanitize_capture(
     _check_quarantine(bin_path)
     if log_path is not None:
         _check_quarantine(log_path)
+
+    # Output-path safety checks run early (right after out_dir is known) for
+    # fast failure -- before any file is read or parsed, let alone written.
+    out_bin_path, out_log_path, ledger_path = _check_output_paths(
+        bin_path=bin_path, log_path=log_path, out_dir=out_dir
+    )
 
     if cls not in TOKEN_CLASSES:
         raise SanitizeError(
@@ -881,18 +977,42 @@ def sanitize_capture(
         ledger=ledger,
     )
 
-    # All verification passed -- now, and only now, write outputs.
+    # All verification passed -- now, and only now, write outputs. Staged
+    # publish: write every output to a sibling ``.tmp`` file first, then
+    # ``os.replace`` each temp onto its final name only after ALL temps are
+    # fully written -- so bin, log, and ledger are never left as a partial or
+    # mismatched set if a mid-sequence failure (e.g. disk full) strikes while
+    # writing the second or third file. Temp files are cleaned up (best
+    # effort) if anything fails before every replace has happened.
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_bin_path = out_dir / bin_path.name
-    out_bin_path.write_bytes(new_raw)
 
-    out_log_path: Path | None = None
-    if log_path is not None:
-        out_log_path = out_dir / log_path.name
-        out_log_path.write_text(new_log_text, encoding="utf-8")
+    tmp_bin_path = out_bin_path.with_name(out_bin_path.name + ".tmp")
+    tmp_log_path = out_log_path.with_name(out_log_path.name + ".tmp") if out_log_path is not None else None
+    tmp_ledger_path = ledger_path.with_name(ledger_path.name + ".tmp")
 
-    ledger_path = out_dir / "sanitization.json"
-    ledger_path.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    tmp_written: list[Path] = []
+    published = False
+    try:
+        tmp_bin_path.write_bytes(new_raw)
+        tmp_written.append(tmp_bin_path)
+
+        if out_log_path is not None:
+            tmp_log_path.write_text(new_log_text, encoding="utf-8")
+            tmp_written.append(tmp_log_path)
+
+        tmp_ledger_path.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+        tmp_written.append(tmp_ledger_path)
+
+        # All temps fully written -- publish: rename each onto its final name.
+        os.replace(tmp_bin_path, out_bin_path)
+        if out_log_path is not None:
+            os.replace(tmp_log_path, out_log_path)
+        os.replace(tmp_ledger_path, ledger_path)
+        published = True
+    finally:
+        if not published:
+            for tmp_path_ in tmp_written:
+                tmp_path_.unlink(missing_ok=True)
 
     return SanitizeResult(
         bin_path=out_bin_path,
