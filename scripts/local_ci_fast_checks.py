@@ -31,6 +31,13 @@ SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) [ *](.+)$")
 SCRIPT_CONTROL_ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DRIFT_SCOPES = frozenset(("notes-only", "full-file"))
+X3_PROFILE_RELATIVE = "astm/snibe-maglumi-x3.json"
+LIS_75_X3_PROFILE_VERSION = "0.2.0"
+LIS_75_X3_TEST_MAPPINGS = (
+    ("FT3", "pmol/L", "14928-6", "pmol/L"),
+    ("FT4 II", "ng/dL", "3024-7", "ng/dL"),
+    ("TSH II", "uIU/mL", "3016-3", "u[IU]/mL"),
+)
 
 
 class FastCheckError(RuntimeError):
@@ -144,6 +151,48 @@ def _relative_files(root: Path) -> tuple[str, ...]:
     )
 
 
+def check_x3_bench_profile(profile_path: Path, source: str) -> None:
+    """Require the exact LIS-75 wire dictionary in one shipped X3 profile."""
+    if not profile_path.is_file():
+        raise FastCheckError(f"{source} required X3 profile is missing: {profile_path}")
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FastCheckError(
+            f"cannot read {source} X3 profile {profile_path}: {exc}"
+        ) from exc
+    if not isinstance(profile, dict):
+        raise FastCheckError(f"{source} X3 profile root must be a JSON object")
+
+    profile_meta = profile.get("profileMeta")
+    version = profile_meta.get("version") if isinstance(profile_meta, dict) else None
+    mappings = profile.get("default_test_mappings")
+    observed = []
+    if isinstance(mappings, list):
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                observed.append((None, None, None, None))
+                continue
+            observed.append(
+                tuple(
+                    mapping.get(field)
+                    for field in ("test_code", "unit", "loinc", "ucum")
+                )
+            )
+
+    if (
+        version != LIS_75_X3_PROFILE_VERSION
+        or tuple(observed) != LIS_75_X3_TEST_MAPPINGS
+    ):
+        raise FastCheckError(
+            f"{source} X3 profile does not match the LIS-75 bench dictionary; "
+            f"required version {LIS_75_X3_PROFILE_VERSION} with "
+            "FT3/pmol/L/14928-6, FT4 II/ng/dL/3024-7, and "
+            f"TSH II/uIU/mL/3016-3; observed version={version!r}, mappings={observed!r}"
+        )
+    print(f"OK LIS-75 X3 bench dictionary: {source} {profile_path}")
+
+
 def check_profile_drift(control_root: Path, core: Path, kit: Path) -> None:
     core_profiles = core / "projects/analyzer-profiles"
     kit_profiles = kit / "configs/analyzer-profiles"
@@ -224,6 +273,14 @@ def check_profile_drift(control_root: Path, core: Path, kit: Path) -> None:
     unused = sorted(set(allowlist) - set(kit_files))
     for relative in unused:
         print(f"NOTE unused profile drift allowlist entry: {relative}")
+    for source, profile_path in (
+        ("core", core_profiles / X3_PROFILE_RELATIVE),
+        ("kit", kit_profiles / X3_PROFILE_RELATIVE),
+    ):
+        try:
+            check_x3_bench_profile(profile_path, source)
+        except FastCheckError as exc:
+            failures.append(str(exc))
     if failures:
         raise FastCheckError("profile drift check failed:\n  - " + "\n  - ".join(failures))
 
