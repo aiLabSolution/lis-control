@@ -36,6 +36,50 @@
       "uIU/mL": "u[IU]/mL"
     }
   },
+  "capture": {
+    "session_id": "20260717-0101010034012301113",
+    "source_kind": "bench-recombined",
+    "raw_path": "evidence/bench/maglumi-x3/20260717-0101010034012301113/raw-20260717-144818-005.bin",
+    "raw_digest": "sha256:2c50acec48e69f8e24f1abadde11820e284c656a856e74e9a4fca01679900076",
+    "captured_at": "2026-07-17",
+    "instrument": {
+      "model": "MAGLUMI X3",
+      "serial": "0101010034012301113",
+      "ref": "010101003301",
+      "firmware": null
+    },
+    "environment": {
+      "site": "bench",
+      "operator": null,
+      "host": "capture laptop 192.168.1.50 (WSL2)",
+      "network_path": "analyzer operation-PC 192.168.1.100/24 -> capture laptop 192.168.1.50:2003 -> netsh portproxy -> WSL x3_astm_capture.py --port 2003",
+      "bridge_version": null
+    },
+    "analyzer_config": {
+      "protocol": "ASTM",
+      "checksum": false,
+      "communicate_timeout_s": 3,
+      "resend_times": 3,
+      "auto_upload_result": true,
+      "auto_upload_qc": false,
+      "auto_download_assay": true
+    },
+    "chassis_connected": false,
+    "upload_trigger": "manual-lis-online",
+    "tool": { "name": "x3_astm_capture.py", "version": null },
+    "redaction": {
+      "applied": true,
+      "fields": ["O.3"],
+      "token": "PATIENT-REDACTED-1",
+      "length_preserving": true,
+      "class": "patient-name"
+    },
+    "unconfirmed_channel_settings": ["tcp"],
+    "recombination": {
+      "normalized_fields": { "O": [2] },
+      "note": "Three single-assay wire envelopes combined into one multi-order transmission; the O-record sequence field is renumbered 1/2/3. Every other record byte is verbatim from the cited capture (loader-verified record containment). See source.note for the full transformation account."
+    }
+  },
   "expected": {
     "message_type": "ASTM^E1394",
     "records": 9,
