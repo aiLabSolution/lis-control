@@ -81,6 +81,16 @@ class ComposeRecipeTests(unittest.TestCase):
         self.assertNotEqual(environment["LIS_SITE_NETWORK"], "lis-site")
         self.assertNotEqual(environment["LIS_SITE_X3_BIND"], "12021")
 
+    def test_site_environment_allows_worktree_for_the_ephemeral_bridge(self):
+        # The bridge wrapper refuses `up` from a linked git worktree unless
+        # LIS_DEPLOY_ALLOW_WORKTREE=true; unlike the OpenELIS wrapper it has no
+        # USE_LOCAL_PROOF bypass. Local CI always runs on the PR-head worktree,
+        # and the site bridge is a proof-isolated, self-tearing-down stack, so
+        # the override is the intended path (caught live: the first real site
+        # run was refused at the bridge `up`).
+        environment = stacks.site_environment(self.layout, "secret")
+        self.assertEqual(environment["LIS_DEPLOY_ALLOW_WORKTREE"], "true")
+
     def test_image_sanity_rejects_retired_floating_images(self):
         with self.assertRaisesRegex(stacks.StackCheckError, "floating"):
             stacks.image_list_sanity("one\ntwo\nthree:develop\n")

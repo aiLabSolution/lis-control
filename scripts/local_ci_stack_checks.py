@@ -686,6 +686,13 @@ def site_environment(layout: Layout, password: str) -> dict[str, str]:
         "LIS_DEPLOY_KIT_ROOT": str(layout.kit),
         "LIS_DEPLOY_BRIDGE_ROOT": str(layout.bridge),
         "LIS_DEPLOY_USE_LOCAL_PROOF": "true",
+        # The OpenELIS wrapper skips its worktree guard under USE_LOCAL_PROOF,
+        # but the bridge wrapper has no such bypass and refuses `up` from a
+        # linked worktree unless ALLOW_WORKTREE is set. Local CI always runs on
+        # the PR-head worktree and this bridge is a proof-isolated stack that
+        # the teardown trap removes, so the documented override is the intended
+        # path here.
+        "LIS_DEPLOY_ALLOW_WORKTREE": "true",
         "LIS_DEPLOY_SITE": "true",
         "LIS_SITE_NETWORK": SITE_NETWORK,
         "LIS_SITE_X3_BIND": SITE_X3_PORT,
