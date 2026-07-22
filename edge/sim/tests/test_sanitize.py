@@ -12,6 +12,7 @@ module's log rewriting must match byte-for-byte.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -626,17 +627,22 @@ def test_mid_write_failure_leaves_no_final_named_output(tmp_path, monkeypatch):
     bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
     out_dir = tmp_path / "out"
 
-    real_write_text = Path.write_text
+    # sanitize.py writes every staged temp via the fd-based
+    # _write_staged_bytes/_write_staged_text helpers (O_EXCL | O_NOFOLLOW),
+    # not Path.write_bytes/write_text -- so the flaky failure is injected at
+    # that seam instead.
+    real_write_staged_text = sanitize._write_staged_text
 
-    def _flaky_write_text(self, *args, **kwargs):
-        # The bin temp is written first (write_bytes, untouched by this
-        # patch); the annotated-log temp is the SECOND temp write -- fail
-        # exactly there, before it (or the ledger temp after it) ever lands.
-        if self.suffix == ".tmp" and self.name.startswith("annotated-"):
+    def _flaky_write_staged_text(path, text, *args, **kwargs):
+        # The bin temp is written first (via _write_staged_bytes, untouched
+        # by this patch); the annotated-log temp is the SECOND temp write --
+        # fail exactly there, before it (or the ledger temp after it) ever
+        # lands.
+        if path.suffix == ".tmp" and path.name.startswith("annotated-"):
             raise OSError("simulated disk failure on second temp write")
-        return real_write_text(self, *args, **kwargs)
+        return real_write_staged_text(path, text, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", _flaky_write_text, raising=True)
+    monkeypatch.setattr(sanitize, "_write_staged_text", _flaky_write_staged_text, raising=True)
 
     with pytest.raises(OSError, match="simulated disk failure"):
         sanitize_capture(
@@ -652,3 +658,86 @@ def test_mid_write_failure_leaves_no_final_named_output(tmp_path, monkeypatch):
     assert not (out_dir / "sanitization.json").exists()
     for leftover in out_dir.glob("*") if out_dir.exists() else []:
         assert leftover.suffix == ".tmp"
+
+
+# --- (16) LIS-319 re-gate P0: symlink planted at a staging name is never
+# followed, and the pristine input is never overwritten -----------------
+def test_symlink_at_bin_staging_name_refuses_and_leaves_input_untouched(tmp_path):
+    """Live-proven defect: the staged-publish temp paths (``<final-name>.tmp``)
+    used to bypass both guard loops in ``_check_output_paths``, which checked
+    only the three FINAL output names. A symlink planted at
+    ``<out_dir>/<output-name>.tmp`` pointing at the pristine input was
+    followed by the temp write, irreversibly overwriting the quarantined
+    input with exit 0, and ``os.replace`` then published the symlink as the
+    output. Now: the staging names are included in both guard loops (so this
+    refuses up front, with the precise aliasing message), and every staging
+    file is additionally created with ``O_EXCL | O_NOFOLLOW`` regardless (the
+    race-free guarantee)."""
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+    original_hash = hashlib.sha256(original_bin_bytes).hexdigest()
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    staging_symlink = out_dir / (bin_path.name + ".tmp")
+    staging_symlink.symlink_to(bin_path)
+
+    with pytest.raises(SanitizeError):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    # The pristine input is untouched -- byte-identical, hash-identical --
+    # nothing was followed or written through the symlink.
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert hashlib.sha256(bin_path.read_bytes()).hexdigest() == original_hash
+
+    # The symlink itself is still present, still a symlink, still pointing at
+    # the input -- nothing followed it, nothing replaced it with a real file.
+    assert staging_symlink.is_symlink()
+    assert staging_symlink.resolve() == bin_path.resolve()
+
+    # No final-named output was ever produced.
+    assert not (out_dir / bin_path.name).exists()
+    assert not (out_dir / log_path.name).exists()
+    assert not (out_dir / "sanitization.json").exists()
+
+
+# --- (17) LIS-319 re-gate P0: bystander regular file at a staging name is
+# refused up front (no-clobber contract), not silently overwritten -------
+def test_bystander_file_at_staging_name_refuses_and_leaves_content_unchanged(tmp_path):
+    """Live-proven defect: a bystander regular file named ``<output>.tmp``
+    was silently overwritten and renamed away, contradicting the no-clobber
+    refusal contract this tool otherwise upholds for the three final output
+    names. Now the staging names are checked by the same up-front
+    ``exists()`` backstop as the final names."""
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    bystander = out_dir / (bin_path.name + ".tmp")
+    bystander_content = b"not part of any sanitize run\n"
+    bystander.write_bytes(bystander_content)
+
+    with pytest.raises(SanitizeError, match="already exists"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert bystander.read_bytes() == bystander_content
+    assert not bystander.is_symlink()
+    assert not (out_dir / bin_path.name).exists()
+    assert not (out_dir / log_path.name).exists()
+    assert not (out_dir / "sanitization.json").exists()

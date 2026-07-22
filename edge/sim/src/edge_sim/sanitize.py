@@ -438,23 +438,37 @@ def _check_output_paths(
 ) -> tuple[Path, Path | None, Path]:
     """Resolve the (up to three) would-be output paths -- the sanitized bin,
     the sanitized log (if a log was given), and ``sanitization.json`` -- and
-    refuse, before any filesystem write, whenever:
+    refuse, up front, before any filesystem write is attempted, whenever:
 
-    (a) any output path would resolve to the same file as an input path. If
-        ``--out`` names the input capture's own parent directory, ``out_dir /
-        bin_path.name`` ALIASES the input and a plain ``write_bytes`` would
-        irreversibly overwrite the pristine quarantined capture -- the exact
-        artifact this tool exists to protect. Checked first so this specific
-        case gets the precise pristine-evidence message.
+    (a) any FINAL or STAGING output path would resolve to the same file as an
+        input path. Staged publish (see :func:`sanitize_capture`) writes each
+        output to a sibling ``<final-name>.tmp`` staging path before
+        ``os.replace``-ing it onto the final name, so the staging name is
+        just as capable of aliasing an input as the final name is -- both are
+        checked here. If ``--out`` names the input capture's own parent
+        directory, ``out_dir / bin_path.name`` (or its ``.tmp`` staging
+        counterpart) ALIASES the input; checked first so this specific case
+        gets the precise pristine-evidence message.
 
-    (b) any output path already exists. This is the general backstop -- it
-        also covers every aliasing case check (a) already catches (the input
-        file, if it lives at that exact output path, necessarily already
-        exists there too), plus ordinary clobbering of a previous output set
-        (e.g. a stale ``sanitization.json`` left over from a prior run).
+    (b) any FINAL or STAGING output path already exists. This is the general
+        backstop -- it also covers every aliasing case (a) already catches,
+        plus ordinary clobbering of a previous output set (e.g. a stale
+        ``sanitization.json`` left over from a prior run) or a bystander file
+        already sitting at a staging name.
+
+    These up-front checks are the fast, precise-message common case, not the
+    sole guarantee: a check-then-write always leaves a TOCTOU window, and an
+    ``exists()`` check cannot distinguish "nothing here" from "a symlink
+    planted here after this check ran." The actual race-free guarantee is
+    that every staging file is created via ``os.open`` with
+    ``O_EXCL | O_NOFOLLOW`` (see :func:`_open_staging_fd`), which refuses ANY
+    pre-existing entry -- regular file, symlink, or otherwise -- atomically,
+    independent of whether this function's checks already caught it.
 
     Returns ``(out_bin_path, out_log_path, ledger_path)`` for the caller to
-    use as the actual (non-resolved) write targets.
+    use as the actual (non-resolved) write targets -- the FINAL names, not
+    the staging names (the caller derives the staging names itself for the
+    actual staged writes).
     """
     inputs: list[tuple[str, Path, Path]] = [("capture", bin_path, bin_path.resolve())]
     if log_path is not None:
@@ -464,10 +478,18 @@ def _check_output_paths(
     out_log_path = out_dir / log_path.name if log_path is not None else None
     ledger_path = out_dir / "sanitization.json"
 
-    outputs: list[tuple[str, Path]] = [("bin", out_bin_path)]
+    def _staging(path: Path) -> Path:
+        return path.with_name(path.name + ".tmp")
+
+    outputs: list[tuple[str, Path]] = [
+        ("bin", out_bin_path),
+        ("bin staging", _staging(out_bin_path)),
+    ]
     if out_log_path is not None:
         outputs.append(("log", out_log_path))
+        outputs.append(("log staging", _staging(out_log_path)))
     outputs.append(("ledger", ledger_path))
+    outputs.append(("ledger staging", _staging(ledger_path)))
 
     for out_label, out_path in outputs:
         resolved_out = out_path.resolve()
@@ -490,6 +512,57 @@ def _check_output_paths(
             )
 
     return out_bin_path, out_log_path, ledger_path
+
+
+def _open_staging_fd(path: Path) -> int:
+    """Open ``path`` (a ``<final-name>.tmp`` staging path) for exclusive,
+    symlink-refusing creation -- the race-free guarantee behind the up-front
+    checks in :func:`_check_output_paths`.
+
+    ``O_EXCL`` refuses ANY pre-existing directory entry at ``path`` -- a
+    regular file, a symlink, a FIFO, anything -- atomically: the kernel
+    either creates a brand-new entry or fails, with no window in which a
+    planted entry could be followed or clobbered. This holds even when the
+    entry was planted, or a plain ``exists()`` check raced, after
+    :func:`_check_output_paths` already ran.
+
+    ``O_NOFOLLOW`` is belt-and-braces on top of ``O_EXCL``: if the staging
+    path's last component is itself a symlink, the open fails (``ELOOP``)
+    rather than following it and writing through to whatever it points at --
+    e.g. a symlink planted at the sanitized-bin staging name pointing back at
+    the pristine quarantined input, which a plain ``write_bytes``/
+    ``open(..., "wb")`` would follow and irreversibly overwrite.
+
+    Raises :class:`SanitizeError` naming the staging path and directing the
+    operator to a fresh ``--out`` directory whenever the open fails for any
+    reason (pre-existing entry of any kind, symlink, permission, etc).
+    """
+    try:
+        return os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    except OSError as exc:
+        raise SanitizeError(
+            f"refusing to write: could not create staging path {path} "
+            f"exclusively ({exc.strerror or exc}) -- it may already exist as "
+            "a file, symlink, or other entry (possibly planted, or created "
+            "by a race, after the up-front output-path check); choose a "
+            "fresh --out directory"
+        ) from exc
+
+
+def _write_staged_bytes(path: Path, data: bytes) -> None:
+    """Create ``path`` exclusively (see :func:`_open_staging_fd`) and write
+    binary ``data`` through the resulting file descriptor."""
+    fd = _open_staging_fd(path)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+
+
+def _write_staged_text(path: Path, text: str) -> None:
+    """Create ``path`` exclusively (see :func:`_open_staging_fd`) and write
+    text ``text`` (UTF-8) through the resulting file descriptor."""
+    fd = _open_staging_fd(path)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
 
 
 # --- annotated-log rewriting ----------------------------------------------
@@ -850,10 +923,17 @@ def sanitize_capture(
     * length-preserving redaction is requested but the token's length does
       not match the original field's length.
     * any of the (up to three) output paths -- the sanitized bin, the
-      sanitized log, or ``sanitization.json`` -- would resolve to the same
-      file as an input path (this would overwrite the pristine quarantined
-      capture/log), or any of them already exists (no clobbering a previous
-      output set -- choose a fresh ``--out`` directory).
+      sanitized log, or ``sanitization.json`` -- OR their ``.tmp`` staging
+      counterparts, would resolve to the same file as an input path (this
+      would overwrite the pristine quarantined capture/log), or any of them
+      already exists (no clobbering a previous output set, and no writing
+      through a bystander file already sitting at a staging name) -- choose a
+      fresh ``--out`` directory. These up-front checks cover the common case
+      with a precise message; independent of them, every staging file is
+      actually created via ``os.open`` with ``O_EXCL | O_NOFOLLOW``, so a
+      racing or pre-planted entry (symlink or otherwise) at a staging name
+      fails closed at creation time too -- it is never followed and never
+      silently overwritten.
     * the sanitized capture's structure (envelope count, control-token
       sequence -- and, under length-preserving redaction, control-token byte
       offsets and total length -- record-type sequence, per-record field
@@ -984,6 +1064,15 @@ def sanitize_capture(
     # mismatched set if a mid-sequence failure (e.g. disk full) strikes while
     # writing the second or third file. Temp files are cleaned up (best
     # effort) if anything fails before every replace has happened.
+    #
+    # Every temp is created via _write_staged_bytes/_write_staged_text, which
+    # open it with O_EXCL | O_NOFOLLOW (see _open_staging_fd): this refuses,
+    # race-free, ANY pre-existing entry at the staging name -- a symlink
+    # planted there is never followed (so it can never redirect this write
+    # onto e.g. the pristine input), and a bystander regular file there is
+    # never silently overwritten. _check_output_paths already refuses the
+    # common case (a staging name that already exists) up front, with a
+    # precise message; this is the guarantee that also holds under a race.
     out_dir.mkdir(parents=True, exist_ok=True)
 
     tmp_bin_path = out_bin_path.with_name(out_bin_path.name + ".tmp")
@@ -993,14 +1082,14 @@ def sanitize_capture(
     tmp_written: list[Path] = []
     published = False
     try:
-        tmp_bin_path.write_bytes(new_raw)
+        _write_staged_bytes(tmp_bin_path, new_raw)
         tmp_written.append(tmp_bin_path)
 
         if out_log_path is not None:
-            tmp_log_path.write_text(new_log_text, encoding="utf-8")
+            _write_staged_text(tmp_log_path, new_log_text)
             tmp_written.append(tmp_log_path)
 
-        tmp_ledger_path.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+        _write_staged_text(tmp_ledger_path, json.dumps(ledger, indent=2) + "\n")
         tmp_written.append(tmp_ledger_path)
 
         # All temps fully written -- publish: rename each onto its final name.
