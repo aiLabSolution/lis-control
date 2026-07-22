@@ -411,18 +411,114 @@ def test_bench_recombined_record_absent_even_after_masking_rejected(tmp_path):
         load_fixture(fixture_dir, repo_root=repo_root)
 
 
-def test_normalized_fields_declaring_field_one_rejected(tmp_path):
+def test_normalized_fields_declaring_field_one_rejected_by_schema(tmp_path):
     """Field 1 is the record-type letter itself; declaring it as a
     'normalized' field would let the recombination silently swap record
-    types, which is never legitimate."""
+    types, which is never legitimate. Since LIS-319 fix 1, the schema's items
+    enum ([2]) now catches this before the loader's own containment check
+    even runs -- 1 is not one of [2]."""
     repo_root, fixture_dir = _make_repo(tmp_path)
     manifest = _bench_recombined_manifest(
         repo_root, raw_bytes=_RECOMBINED_RAW_BYTES, recombination={"normalized_fields": {"O": [1]}}
     )
     _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
 
-    with pytest.raises(FixtureError, match="field 1"):
+    with pytest.raises(FixtureError, match="not one of"):
         load_fixture(fixture_dir, repo_root=repo_root)
+
+
+# -- (8) LIS-319 re-gate fix: normalized_fields restricted to the sequence ----
+# -- field (A1/A2), and bench-capture requires exact multiset equality (C1) --
+
+
+def test_normalized_fields_value_field_rejected_by_schema(tmp_path):
+    """The A1/A2 re-gate loophole: capture.recombination.normalized_fields was
+    unbounded, so declaring a value field (e.g. R.4, the measurement) let
+    swapped or fabricated measurement content pass containment while
+    claiming bench provenance. Loaded through the public loader, the schema
+    (fix 1) now rejects this before the loader's containment check runs."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(
+        repo_root, raw_bytes=_RECOMBINED_RAW_BYTES, recombination={"normalized_fields": {"R": [4]}}
+    )
+    _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
+
+    with pytest.raises(FixtureError, match="not one of"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_verify_record_containment_defense_in_depth_rejects_h_and_non_sequence_index(tmp_path):
+    """Defense-in-depth (fix 1): the loader's own containment check
+    independently rejects an "H" declaration or a non-2 field index in
+    normalized_fields, even when called directly with a hand-built manifest
+    dict that bypasses schema validation entirely -- proving the guard does
+    not rely solely on the schema's items enum."""
+    from edge_sim.fixtures import _verify_record_containment
+
+    manifest_path = tmp_path / "manifest.json"
+    (tmp_path / "message.astm").write_bytes(_MESSAGE_BYTES)
+    base_manifest = {
+        "protocol": "astm-e1394",
+        "message": {"path": "message.astm", "encoding": "ascii", "framing": "raw"},
+    }
+
+    manifest = {**base_manifest, "capture": {"recombination": {"normalized_fields": {"H": [2]}}}}
+    with pytest.raises(FixtureError, match="'H'"):
+        _verify_record_containment(manifest, manifest_path, tmp_path, _RAW_BYTES, "bench-recombined")
+
+    manifest = {**base_manifest, "capture": {"recombination": {"normalized_fields": {"O": [4]}}}}
+    with pytest.raises(FixtureError, match="sequence field"):
+        _verify_record_containment(manifest, manifest_path, tmp_path, _RAW_BYTES, "bench-recombined")
+
+    # The legitimate declaration -- O.2 -- must not raise from this guard (it
+    # may still fail containment matching itself, but not this check).
+    manifest = {**base_manifest, "capture": {"recombination": {"normalized_fields": {"O": [2]}}}}
+    _verify_record_containment(manifest, manifest_path, tmp_path, _RAW_BYTES, "bench-recombined")
+
+
+def test_bench_capture_dropped_record_rejected(tmp_path):
+    """The C1 re-gate loophole: bench-capture containment was a one-directional
+    subset check, so a message that DROPS records (e.g. omits the P and L
+    records) still loaded as 'verbatim (redacted) real bytes' as long as every
+    record it DID contain was verbatim-contained in the raw capture. Fix 2
+    requires the raw record multiset to be consumed exactly for
+    'bench-capture'."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    dropped_records = [r for r in _SYNTHETIC_RECORDS if not r.startswith(b"P|") and not r.startswith(b"L|")]
+    message_bytes = b"\n".join(dropped_records) + b"\n"
+    _write_fixture(fixture_dir, manifest, message_bytes=message_bytes)
+
+    with pytest.raises(FixtureError, match="unconsumed"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_bench_capture_exact_multiset_match_loads(tmp_path):
+    """Positive case for fix 2: a bench-capture message that consumes the raw
+    record multiset exactly (the common case -- one envelope, verbatim) still
+    loads."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    _write_fixture(fixture_dir, manifest)
+
+    fx = load_fixture(fixture_dir, repo_root=repo_root)
+    assert fx.manifest["capture"]["source_kind"] == "bench-capture"
+
+
+def test_bench_recombined_leftover_duplicate_records_still_loads(tmp_path):
+    """Fix 2 applies only to 'bench-capture'; 'bench-recombined' keeps subset
+    semantics because flattening multiple envelopes into one transmission
+    legitimately drops duplicate H/P/L records. This mirrors
+    test_bench_recombined_masked_match_loads, named here to make the subset
+    exemption explicit against fix 2 (raw has 10 records across two envelopes;
+    the flattened message consumes only 7, leaving 3 duplicate H/P/L records
+    unconsumed)."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(repo_root, raw_bytes=_RECOMBINED_RAW_BYTES)
+    _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
+
+    fx = load_fixture(fixture_dir, repo_root=repo_root)
+    assert fx.manifest["capture"]["source_kind"] == "bench-recombined"
 
 
 # -- (7) the real graduated fixture --------------------------------------------

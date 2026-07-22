@@ -41,6 +41,9 @@ nothing here upgrades what simulator-derived artifacts can prove (plan §17.3.2)
   capture, only re-framed/re-sequenced, loader-verified by record containment): a recombined
   artifact carries **real** measurement content and is NOT governed by this spec — no value
   substitution occurs; a derived artifact carries **synthetic** content produced under it.
+  The recombined class is scoped to captures **already committed and grandfathered under
+  §17.3.8b** — forward graduations of new captures are re-synthesized (`bench-derived`) per
+  ratified decision 8; introducing a new recombined fixture requires a recorded owner decision.
 - **Derivation** — the deterministic transformation pristine → derived: identity fields,
   measurement values, ranges, and result timestamps are substituted; everything else is
   preserved under the invariants below.

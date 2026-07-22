@@ -143,10 +143,20 @@ def _verify_record_containment(
     these source kinds.
 
     For ``source_kind`` "bench-capture", containment must be strictly
-    verbatim. For "bench-recombined", a record that isn't verbatim may still
-    match if masking -- on BOTH sides -- the fields declared in
-    ``capture.recombination.normalized_fields`` for its record type makes the
-    two equal (field 1, the record-type letter, may never be declared there).
+    verbatim, AND (LIS-319 fix 2) the raw record multiset must be consumed
+    *exactly* -- a message that drops records (e.g. omits a P or L record)
+    must not load as "bench-capture", since that source_kind claims verbatim
+    capture bytes, not merely a subset of them. For "bench-recombined", a
+    record that isn't verbatim may still match if masking -- on BOTH sides --
+    the fields declared in ``capture.recombination.normalized_fields`` for its
+    record type makes the two equal (field 1, the record-type letter, may
+    never be declared there; nor may field indices other than 2, the record
+    sequence field, nor may record type "H" be declared at all -- recombination
+    legitimately rewrites only the sequence field of a non-H record. The
+    schema already enforces this; this is defense-in-depth). Unlike
+    "bench-capture", "bench-recombined" keeps subset semantics: flattening
+    multiple envelopes into one transmission legitimately drops duplicate
+    H/P/L records.
     """
     protocol = manifest.get("protocol")
     if protocol != "astm-e1394":
@@ -170,10 +180,20 @@ def _verify_record_containment(
         recombination = manifest.get("capture", {}).get("recombination") or {}
         normalized_fields = recombination.get("normalized_fields", {})
         for record_type, indices in normalized_fields.items():
-            if 1 in indices:
+            # Defense-in-depth: the schema already restricts normalized_fields
+            # to the non-H record-type properties, each with items enum [2] --
+            # but a schema is not the only path a manifest could reach this
+            # function (e.g. a caller invoking this function directly, or a
+            # future schema regression), so re-check the same invariant here:
+            # only the sequence field (2) of a non-H record type may be
+            # declared. This subsumes the older field-1-only guard (1 is not
+            # a subset of {2}).
+            if record_type == "H" or not set(indices).issubset({2}):
                 raise FixtureError(
-                    f"{manifest_path}: capture.recombination.normalized_fields[{record_type!r}] "
-                    "must not declare field 1 (the record-type letter)"
+                    f"{manifest_path}: capture.recombination.normalized_fields[{record_type!r}] = "
+                    f"{indices!r} is invalid -- recombination may only rewrite the sequence field "
+                    "(field 2) of a non-H record type; field 1 (the record-type letter) and record "
+                    "type 'H' (which has no sequence field) may never be declared"
                 )
 
     available = list(raw_records)
@@ -207,6 +227,14 @@ def _verify_record_containment(
         raise FixtureError(
             f"{manifest_path}: message record {snippet!r} not found in raw capture record "
             f"multiset ({attempted})"
+        )
+
+    if source_kind == "bench-capture" and available:
+        leftover_snippet = available[0][:40].decode("ascii", errors="replace")
+        raise FixtureError(
+            f"{manifest_path}: capture.source_kind 'bench-capture' claims verbatim capture bytes, "
+            f"so the message must consume the raw capture's record multiset exactly -- "
+            f"{len(available)} raw record(s) left unconsumed, first: {leftover_snippet!r}"
         )
 
 
@@ -249,7 +277,11 @@ def _check_graduated_provenance(manifest: dict, manifest_path: Path, repo_root: 
        message bytes must be strictly, verbatim record-contained in the raw
        capture (:func:`_verify_record_containment`) -- a graduated fixture
        cannot inherit "bench-capture" provenance for bytes the raw capture
-       never produced.
+       never produced. That containment must additionally be an EXACT
+       record-multiset match (LIS-319 fix 2): every raw record must be
+       consumed, not merely a subset of them -- otherwise a message that
+       drops records (e.g. omits a P or L record) could still load as
+       "verbatim (redacted) real bytes".
     d. source_kind "bench-derived": ``derivation`` is required, ``raw_path``
        and ``recombination`` are both forbidden; the digest is NOT verified
        here (the pristine original lives only in the offline evidence store)

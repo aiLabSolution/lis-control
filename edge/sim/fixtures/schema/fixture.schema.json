@@ -200,7 +200,7 @@
         "source_kind": {
           "type": "string",
           "enum": ["bench-capture", "bench-derived", "bench-recombined"],
-          "description": "'bench-capture' = verbatim (redacted) real bytes with the raw artifact stored in-repo, digest-verified on every load. 'bench-derived' = a structurally re-synthesized artifact whose pristine original lives ONLY in the offline evidence store -- CI cannot verify its digest. 'bench-recombined' = records drawn verbatim from the cited in-repo raw capture but re-framed/re-sequenced (e.g. multi-envelope flattened to one transmission); the record-level containment relationship is loader-verified; raw_path is required and digest-verified like 'bench-capture'."
+          "description": "'bench-capture' = verbatim (redacted) real bytes with the raw artifact stored in-repo, digest-verified on every load; the message must consume the raw record multiset exactly (loader-enforced). 'bench-derived' = a structurally re-synthesized artifact whose pristine original lives ONLY in the offline evidence store -- CI cannot verify its digest. 'bench-recombined' = records drawn verbatim from the cited in-repo raw capture but re-framed/re-sequenced (e.g. multi-envelope flattened to one transmission); the record-level containment relationship is loader-verified (subset semantics: flattening legitimately drops duplicate H/P/L records); raw_path is required and digest-verified like 'bench-capture'. This class exists for already-committed captures grandfathered under the plan's §17.3.8b decision -- forward graduations of new captures use 'bench-derived' (re-synthesized content) per ratified decision 8; do not introduce new bench-recombined fixtures without a recorded owner decision."
         },
         "raw_digest": {
           "type": "string",
@@ -312,16 +312,15 @@
             "normalized_fields": {
               "type": "object",
               "additionalProperties": false,
-              "description": "Maps an ASTM record-type letter to the 1-based field indices that the recombination legitimately rewrote (e.g. {\"O\": [2]}). Field 1 is always the record-type letter itself and must never be declared here -- enforced by the loader. Note: this repo's hand-rolled schema validator (edge_sim/_schema.py) does not propagate constraints through an open-ended \"additionalProperties\" map, so the record-type keys are enumerated explicitly (the ASTM E1394 record types) rather than left as an arbitrary-key map, to keep the array/integer typing here actually schema-enforced.",
+              "description": "Maps an ASTM record-type letter to the 1-based field indices that the recombination legitimately rewrote. Recombination legitimately rewrites exactly one thing: the record sequence field (field 2) of a non-H record type -- so only the value 2 may be declared, and only for P/O/R/C/Q/M/L. 'H' has no sequence field (its field 2 is the delimiter definition) and must never be declared here at all. Field 1 (the record-type letter) must never be declared either. Both constraints are enforced here AND, as defense-in-depth, by the loader (edge_sim/fixtures.py:_verify_record_containment). Note: this repo's hand-rolled schema validator (edge_sim/_schema.py) does not propagate constraints through an open-ended \"additionalProperties\" map, so the record-type keys are enumerated explicitly (the ASTM E1394 record types, excluding H) rather than left as an arbitrary-key map, to keep the array/integer typing here actually schema-enforced.",
               "properties": {
-                "H": { "type": "array", "items": { "type": "integer" } },
-                "P": { "type": "array", "items": { "type": "integer" } },
-                "O": { "type": "array", "items": { "type": "integer" } },
-                "R": { "type": "array", "items": { "type": "integer" } },
-                "C": { "type": "array", "items": { "type": "integer" } },
-                "Q": { "type": "array", "items": { "type": "integer" } },
-                "M": { "type": "array", "items": { "type": "integer" } },
-                "L": { "type": "array", "items": { "type": "integer" } }
+                "P": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "O": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "R": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "C": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "Q": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "M": { "type": "array", "items": { "type": "integer", "enum": [2] } },
+                "L": { "type": "array", "items": { "type": "integer", "enum": [2] } }
               }
             },
             "note": {

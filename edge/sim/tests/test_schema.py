@@ -203,6 +203,62 @@ def test_normalized_fields_rejects_non_integer_array_items(schema):
         validate(d, schema)
 
 
+# -- normalized_fields restricted to the sequence field (2) (LIS-319 fix 1) ---
+
+
+def test_normalized_fields_rejects_non_sequence_field_value(schema):
+    """Recombination may only rewrite the record sequence field (2); declaring
+    a value field like R.4 (the measurement) must be rejected by the items
+    enum -- this is the A1/A2 loophole the re-gate probes exploited."""
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"R": [4]}}
+    with pytest.raises(SchemaError, match=r"not one of"):
+        validate(d, schema)
+
+
+def test_normalized_fields_rejects_range_of_indices(schema):
+    """A range like R.2..13 is just as much a value-field declaration as a
+    single index and must be rejected the same way."""
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"R": list(range(2, 14))}}
+    with pytest.raises(SchemaError, match=r"not one of"):
+        validate(d, schema)
+
+
+def test_normalized_fields_rejects_h_record_type(schema):
+    """A manifest that declares "H" under normalized_fields must be rejected:
+    "H" is no longer a named property (it has no sequence field -- its field 2
+    is the delimiter definition), and additionalProperties is false."""
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"H": [2]}}
+    with pytest.raises(SchemaError, match="H"):
+        validate(d, schema)
+
+
+def test_normalized_fields_still_accepts_o_field_2(schema):
+    """The legitimate declaration -- O.2, the sequence field a recombination
+    renumbers -- must still validate."""
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"O": [2]}}
+    validate(d, schema)  # must not raise
+
+
 def test_if_then_else_without_then_or_else_passes():
     # A bare "if" with no matching "then"/"else" branch is a no-op — the schema
     # itself only declares "then", but the validator must support both being
