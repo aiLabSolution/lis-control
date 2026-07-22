@@ -23,6 +23,7 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -35,6 +36,8 @@ DEFAULT_LOCK_PATH = "/tmp/lis-local-ci.lock"
 DEFAULT_REGISTRY = "local_ci.json"
 GITHUB_DESCRIPTION_LIMIT = 140
 GH_TIMEOUT_SECONDS = 60
+STATUS_DETAIL_ENV = "LIS_LOCAL_CI_STATUS_DETAIL_FILE"
+MAX_STATUS_DETAIL_LENGTH = 100
 
 _TOP_LEVEL_FIELDS = {"version", "mode", "repositories", "checks"}
 _REPOSITORY_FIELDS = {"gate_required"}
@@ -583,6 +586,23 @@ def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
     return str(output) + str(stderr)
 
 
+def read_command_status_detail(path: Path) -> str | None:
+    """Read the optional one-line detail emitted by a trusted check command."""
+    if not path.exists():
+        return None
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LocalCIError(f"cannot read command status detail: {exc}") from exc
+    if not value or "\n" in value or "\r" in value:
+        raise LocalCIError("command status detail must be one non-empty line")
+    if len(value) > MAX_STATUS_DETAIL_LENGTH:
+        raise LocalCIError(
+            f"command status detail exceeds {MAX_STATUS_DETAIL_LENGTH} characters"
+        )
+    return value
+
+
 def run_check(
     root: Path,
     check: CheckConfig,
@@ -606,6 +626,8 @@ def run_check(
     start = time.monotonic()
     timed_out = False
     environment = os.environ.copy()
+    detail_directory = tempfile.TemporaryDirectory(prefix="lis-local-ci-detail-")
+    detail_path = Path(detail_directory.name) / "status.txt"
     environment.update(
         {
             "LIS_LOCAL_CI_BASE_SHA": pr.base_sha,
@@ -617,6 +639,7 @@ def run_check(
             "LIS_LOCAL_CI_CHECKOUT": str(checkout),
             # Stack checks reserve cleanup time before this hard engine limit.
             "LIS_LOCAL_CI_TIMEOUT_SECONDS": str(check.timeout_seconds),
+            STATUS_DETAIL_ENV: str(detail_path),
         }
     )
     try:
@@ -645,11 +668,22 @@ def run_check(
         returncode = 124
         output = _timeout_output(exc)
         output += f"\nTIMED OUT after {check.timeout_seconds}s\n"
+    command_detail: str | None = None
+    try:
+        command_detail = read_command_status_detail(detail_path)
+    except LocalCIError as exc:
+        returncode = 2
+        output += f"\nINVALID STATUS DETAIL: {exc}\n"
+    finally:
+        detail_directory.cleanup()
     duration = time.monotonic() - start
     passed = returncode == 0
-    detail = "passed" if passed else (
-        f"timed out after {check.timeout_seconds}s" if timed_out else f"failed (exit {returncode})"
-    )
+    if passed:
+        detail = command_detail or "passed"
+    elif timed_out:
+        detail = f"timed out after {check.timeout_seconds}s"
+    else:
+        detail = f"failed (exit {returncode})"
     log = (
         f"local_ci check: {check.name}\n"
         f"repository: {pr.repository}\n"

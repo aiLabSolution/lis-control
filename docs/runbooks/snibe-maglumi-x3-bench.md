@@ -49,9 +49,18 @@ disk is the deliverable**. A live bridge→OpenELIS parse is out of scope here.
   (`docs/runbooks/edan-h99s-bench-conformance.md`, LIS-149) and H60S
   (`docs/runbooks/edan-h60s-bench-conformance.md`, LIS-20, PR #91) bench captures —
   graduated fixtures, wire-fact write-ups, raw archives.
+- **Patient-safety consequence of the bare `P|1` this capture pinned:** because the X3
+  sends no patient id and no name, every X3 result stages with a blank patient hint and
+  the LIS-239 same-day patient-mismatch guard cannot fire on this channel. The operator
+  procedure that compensates is
+  [`docs/runbooks/x3-patient-identity-verification-sop.md`](x3-patient-identity-verification-sop.md)
+  (LIS-270) — a required go-live gate for this channel; the systematic control is LIS-296.
+  If a future capture shows the X3 populating P-record identity fields, that SOP and the
+  staging banner must be revisited.
 - **Downstream consumers of this capture:** LIS-174 (framing receive-path spec),
   LIS-175 (port/IP/identity/codes for the analyzer channel), LIS-38 (Lis-ID →
-  LOINC/UCUM dictionary + fixture graduation), LIS-33 (QC sample-ID pattern),
+  LOINC/UCUM dictionary + fixture graduation), LIS-269 (QC sample-ID pattern;
+  supersedes LIS-33 on the native path),
   LIS-173 (calibration-ID convention). LIS-34 (SnibeLis export/DB fallback) closes
   Won't-Do if the native connect succeeds (the expected outcome).
 
@@ -292,17 +301,61 @@ alternative** and is a valid slice outcome.
 ### 9. QC upload characterization (capture-only)
 
 Run only after the sample-result path is stable, and only if the operator can send
-QC without disrupting routine controls.
+QC without disrupting routine controls. This is the LIS-266 chassis-attached
+session's QC leg; classification/provisioning is tracked by LIS-269 (LIS-33 is
+retained-Done, superseded by LIS-269 for the native path).
 
 1. Enable `Upload QC Data`, send one QC result, capture the bytes.
 2. Classify the QC message and note any wire discriminator (KB §9.2 warns there may
    be **no** wire discriminator between QC and patient results — flag this for
-   LIS-33).
+   LIS-269). Specifically record: does the O-record carry an action code (`O.12=Q`)?
+   What is the QC sample-ID convention? Are Q-segments (lot / control level)
+   emitted?
 3. **Never auto-accept QC.** Capture and classify only; QC acceptance is engineer
    sign-off territory.
 
 Pass criteria: the QC message is archived and labeled as characterization
-evidence; if there is no wire discriminator, a QC-routing note is filed for LIS-33.
+evidence; if there is no wire discriminator, a QC-routing note is filed for LIS-269.
+
+### 9a. QC replay proof (LIS-269 — after the §9 capture exists)
+
+OE now provisions the X3 with a **provisional** `O.12=Q` QC rule via the
+`snibe-maglumi-x3` analyzer profile (`astm/snibe-maglumi-x3.json`, authoritative
+copy in `deploy/kit/configs/analyzer-profiles/`) — provisional means *assumed,
+not bench-verified*; the guarded go-live posture and required operator SOP are in
+`docs/runbooks/x3-qc-guarded-go-live.md`.
+Once §9 has produced a real QC bin, close the loop:
+
+1. Derive the actual discriminator from the captured bytes and amend the OE-side
+   rules if it differs from `O.12=Q` (profile `configDefaults.qcRules` and the
+   analyzer's `analyzer_qc_rule` rows; add a sample-ID rule if that is the real
+   convention, and activate the inactive `CALIBRATION_*` placeholder only with a
+   confirmed operand).
+   In OE, the X3 analyzer's transport IP must be set (operator config) so push-sync
+   provisions the bridge registry keyed at the real source IP — verify with
+   `GET <bridge>/api/analyzers` that the X3 entry carries the expected `qcRules`.
+2. Replay the captured QC bin through the deployed stack:
+
+   ```
+   python3 scripts/x3_astm_capture.py --replay <archived raw-*.bin> --to <bridge-host>:<x3-port>
+   ```
+
+   The X3 listener port depends on topology: the deploy-kit site stack publishes
+   `${LIS_SITE_X3_BIND:-12021}:12021` (`deploy/kit/compose/bridge-site.yml`), so a site
+   replay targets **12021** by default; the dev-bench compose maps host **12020** → container
+   12021 (`docs/runbooks/snibe-maglumi-x3-bridge-openelis-bringup.md`).
+
+3. Verify staging: the QC row must land in `analyzer_results` with
+   `iscontrol = true` and `read_only = true` (QC meta-tag path; the column is
+   `iscontrol`, no underscore), and must **never**
+   be acceptable into the patient stream. A patient-shaped replay from the same
+   session must still stage as a patient result (no over-classification).
+4. Archive the replay evidence next to the capture and note the verdict on LIS-269;
+   on a confirmed discriminator, retire the heightened daily review per
+   `x3-qc-guarded-go-live.md` §SOP step 6.
+
+Pass criteria: captured QC bin replays to a QC-tagged, read-only staging row; the
+provisional rule is either confirmed or amended from the capture; evidence archived.
 
 ## Exit Criteria
 
@@ -328,7 +381,8 @@ The X3 native-ASTM capture (LIS-75) is complete when:
   identity, and codes.
 - **LIS-38** — graduate the captured bytes into an `edge/sim` fixture
   (`synthetic: false`) and build the Lis-ID → LOINC/UCUM conformance dictionary.
-- **LIS-33** — QC sample-ID pattern / routing if §9 shows no wire discriminator.
+- **LIS-269** — QC sample-ID pattern / routing if §9 shows no wire discriminator
+  (supersedes LIS-33 for the native path; run §9a replay proof after capture).
 - **LIS-173** — calibration-ID convention if calibration uploads are observed.
 - **LIS-177 / ADR-0014** — order-download (`Q` → host-initiated `O`) round-trip,
   out of scope for this capture.

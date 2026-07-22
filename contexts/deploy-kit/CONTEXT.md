@@ -21,6 +21,10 @@ outside the OpenELIS clinical core and the edge analyzer bridge.
   rule seed, and result processing.
 - Edge/drivers owns analyzer transport listeners and message parsing/runtime
   routing.
+- A site stack may carry a complete analyzer source binding marked
+  `LOCAL_BOOTSTRAP` as a narrow startup/liveness exception. OpenELIS remains
+  authoritative for ordinary registry entries and wins the same source key;
+  deploy kit owns the explicitly marked bootstrap document until that handoff.
 
 ## Component decisions
 

@@ -127,6 +127,53 @@
       ]
     },
     {
+      "name": "core-backend",
+      "repository": "aiLabSolution/OpenELIS-Global-2",
+      "paths": [
+        "src/**",
+        "pom.xml",
+        "dataexport/**",
+        "plugins/**",
+        "fhir/**",
+        "Dockerfile",
+        "build.docker-compose.yml",
+        "docker-compose.yml",
+        "dev.docker-compose.yml",
+        "docker-compose.letsencrypt.yml",
+        ".github/ci/ci.analyzer-harness.yml",
+        ".github/workflows/backend.yml"
+      ],
+      "class": "heavy",
+      "timeout_seconds": 3600,
+      "min_memory_mib": 2048,
+      "command": [
+        "python3",
+        "scripts/local_ci_heavy_checks.py",
+        "core-backend"
+      ]
+    },
+    {
+      "name": "core-frontend",
+      "repository": "aiLabSolution/OpenELIS-Global-2",
+      "paths": [
+        "frontend/**",
+        "build.docker-compose.yml",
+        "docker-compose.yml",
+        "dev.docker-compose.yml",
+        "docker-compose.letsencrypt.yml",
+        ".github/ci/ci.analyzer-harness.yml",
+        ".github/workflows/frontend.yml"
+      ],
+      "class": "heavy",
+      "timeout_seconds": 1800,
+      "min_memory_mib": 1024,
+      "command": [
+        "python3",
+        "scripts/local_ci_heavy_checks.py",
+        "core-frontend"
+      ]
+    },
+    {
       "name": "stage0-bootstrap",
       "repository": "aiLabSolution/lis-control",
       "paths": [

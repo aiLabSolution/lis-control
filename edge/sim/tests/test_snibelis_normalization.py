@@ -8,8 +8,10 @@ row the bridge POSTs to ``/analyzer/fhir``. Unknown assays/units are retained an
 flagged for engineer review, never dropped (KB §7). Session/framing conformance is
 LIS-108 (``test_snibelis.py``); this module owns parse → normalize.
 
-All fixtures here are synthetic (LIS-75 blocks a real SnibeLis capture); a live
-capture graduates them via LIS-38.
+RESULT_UPLOAD is graduated to the LIS-75 bench capture (real FT3/FT4 II/TSH II
+wire bytes, Pinote QA-approved LOINC/UCUM dictionary, LIS-38 AC1). The other
+fixtures here (RESULT_UNMAPPED, CALIBRATION, QC) remain synthetic seeds pending
+their own graduation (LIS-276).
 """
 
 from pathlib import Path
@@ -49,17 +51,23 @@ def _replay(fixture_dir, tmp_path):
 
 
 def test_result_upload_normalizes_each_assay_to_loinc_and_ucum(tmp_path):
-    """The two-analyte thyroid panel normalizes end-to-end: raw code/unit/value
-    preserved beside the resolved LOINC + UCUM, status NORMALIZED (LIS-32 AC)."""
+    """The three-analyte thyroid panel (real LIS-75 bench values) normalizes
+    end-to-end: raw code/unit/value preserved beside the resolved LOINC + UCUM,
+    status NORMALIZED (LIS-32 AC)."""
     replay = _replay(RESULT_UPLOAD, tmp_path)
 
     rows = replay.observations
     assert [(r.raw_code, r.loinc, r.ucum_value, r.status) for r in rows] == [
-        ("TSH", "3016-3", "u[IU]/mL", STATUS_NORMALIZED),
-        ("FT4", "14920-3", "pmol/L", STATUS_NORMALIZED),
+        ("FT3", "14928-6", "pmol/L", STATUS_NORMALIZED),
+        ("FT4 II", "3024-7", "ng/dL", STATUS_NORMALIZED),
+        ("TSH II", "3016-3", "u[IU]/mL", STATUS_NORMALIZED),
     ]
     # raw analyzer value/unit are carried through unchanged beside the normalized form.
-    assert [(r.value, r.raw_unit) for r in rows] == [("2.31", "uIU/mL"), ("14.8", "pmol/L")]
+    assert [(r.value, r.raw_unit) for r in rows] == [
+        ("5.43", "pmol/L"),
+        ("1.58", "ng/dL"),
+        ("2.78", "uIU/mL"),
+    ]
     # every analyte is a patient RESULT (no QC/warning/calibration in the happy path).
     assert all(r.kind == KIND_RESULT for r in rows)
 
@@ -86,24 +94,31 @@ def test_result_upload_is_reproducible(tmp_path):
 def test_parse_preserves_raw_reference_range_flag_and_completion_time():
     """The parsed ASTM result carries R-6 reference range, R-7 abnormal flag and
     R-13 completion time verbatim — provenance the normalized row is derived from
-    (ISO 15189 4.13)."""
+    (ISO 15189 4.13). Real X3 wire places the completion time at field 13, not
+    the KB-documented field 12 off-by-one (LIS-75 AC4)."""
     fixture = load_fixture(RESULT_UPLOAD)
     msg = parse_e1394(fixture.message_bytes)
-    results = msg.patients[0].orders[0].results
-    assert [r.reference_range for r in results] == ["0.27 to 4.20", "12 to 22"]
-    assert [r.abnormal_flags for r in results] == ["N", "N"]
-    assert [r.completion_time for r in results] == ["20260703101530", "20260703101530"]
+    results = msg.results
+    assert [r.reference_range for r in results] == ["3.08 - 6.468", "0.9 - 1.75", "0.3 - 4.5"]
+    assert [r.abnormal_flags for r in results] == ["N", "N", "N"]
+    assert [r.completion_time for r in results] == [
+        "20250320153245",
+        "20250320152944",
+        "20250320154408",
+    ]
     # the completion timestamp survives the transport-neutral report the normalizer reads.
     report_ct = [o.completion_time for o in _report_observations(fixture)]
-    assert report_ct == ["20260703101530", "20260703101530"]
+    assert report_ct == ["20250320153245", "20250320152944", "20250320154408"]
 
 
-def test_parse_recovers_multi_assay_order_list():
-    """The multi-assay O-5 (``^^^TSH\\^^^FT4``) is split into the ordered assay
-    list with ``^^^`` stripped (KB §5.3/§7)."""
+def test_parse_recovers_three_single_assay_orders():
+    """The real X3 wire sends one assay per O-record (not the vendor-doc-example
+    multi-assay O-5 with a ``\\``-repeat-delimited list) -- three orders under one
+    patient, each with a single assay (LIS-75 AC5)."""
     fixture = load_fixture(RESULT_UPLOAD)
     msg = parse_e1394(fixture.message_bytes)
-    assert msg.patients[0].orders[0].assays == ("TSH", "FT4")
+    orders = msg.patients[0].orders
+    assert [o.assays for o in orders] == [("FT3",), ("FT4 II",), ("TSH II",)]
 
 
 # --- missing mapping: retained + flagged, never dropped (LIS-32 AC) ---------

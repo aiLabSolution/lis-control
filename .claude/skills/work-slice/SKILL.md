@@ -103,8 +103,9 @@ Two gates, both hard:
    green (local runs supplement CI, never replace it). Checkout/auth/submodule failures
    are red even when zero tests ran. CI is non-transitive: umbrella green ≠ component
    green. Fix and re-run CI, or stop the slice as blocked; never merge just because
-   branch protection permits it. Bridge/kit have no CI — the adversarial review is the
-   whole gate there.
+   branch protection permits it. The bridge HAS CI too (`test.yml` — root-module
+   `mvn test` on PRs to master/develop): same green-on-exact-head rule. Kit has no
+   CI — there the adversarial review is the whole gate.
 2. **adversarial-reviewer** agent on the PR — it verifies CI itself and cannot APPROVE
    over a red or unrun head. Run **ac-verifier** before moving the issue to Done.
 

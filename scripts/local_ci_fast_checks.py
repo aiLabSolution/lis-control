@@ -30,6 +30,7 @@ MAVEN_IMAGE = "maven:3.9-eclipse-temurin-21"
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) [ *](.+)$")
 SCRIPT_CONTROL_ROOT = Path(__file__).resolve().parents[1]
+PROFILE_DRIFT_SCOPES = frozenset(("notes-only", "full-file"))
 
 
 class FastCheckError(RuntimeError):
@@ -104,27 +105,34 @@ def assert_gitlink(control_root: Path, relative: str) -> Path:
     return component
 
 
-def read_allowlist(path: Path) -> dict[str, str]:
+def read_allowlist(path: Path) -> dict[str, tuple[str, str]]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         raise FastCheckError(f"cannot read profile drift allowlist {path}: {exc}") from exc
-    entries: dict[str, str] = {}
+    entries: dict[str, tuple[str, str]] = {}
     for number, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        fields = line.split(maxsplit=1)
+        fields = line.split(maxsplit=2)
         relative = fields[0]
-        reason = fields[1] if len(fields) == 2 else "no reason recorded"
         relative_path = Path(relative)
         if relative_path.is_absolute() or ".." in relative_path.parts or "\\" in relative:
             raise FastCheckError(
                 f"{path}:{number}: allowlist path must be a relative POSIX path"
             )
+        if len(fields) < 2 or fields[1] not in PROFILE_DRIFT_SCOPES:
+            scopes = " or ".join(sorted(PROFILE_DRIFT_SCOPES))
+            raise FastCheckError(
+                f"{path}:{number}: allowlist scope must be {scopes}"
+            )
+        if len(fields) < 3:
+            raise FastCheckError(f"{path}:{number}: allowlist reason is required")
+        scope, reason = fields[1:]
         if relative in entries:
             raise FastCheckError(f"{path}:{number}: duplicate allowlist path {relative}")
-        entries[relative] = reason
+        entries[relative] = (scope, reason)
     return entries
 
 
@@ -149,18 +157,46 @@ def check_profile_drift(control_root: Path, core: Path, kit: Path) -> None:
         core_file = core_profiles / relative
         allowed = allowlist.get(relative)
         if not core_file.is_file():
-            if allowed:
-                print(f"ALLOWED kit-only profile: {relative} ({allowed})")
+            if allowed and allowed[0] == "full-file":
+                scope, reason = allowed
+                print(f"ALLOWED kit-only profile: {relative} ({scope}: {reason})")
+            elif allowed:
+                failures.append(
+                    f"kit-only profile outside notes-only scope: {relative}"
+                )
             else:
                 failures.append(f"kit-only profile not present in core mirror: {relative}")
             continue
         if kit_file.read_bytes() == core_file.read_bytes():
             print(f"OK profile in-sync: {relative}")
             continue
-        if allowed:
-            print(f"ALLOWED profile divergence: {relative} ({allowed})")
+        if allowed and allowed[0] == "full-file":
+            scope, reason = allowed
+            print(f"ALLOWED profile divergence: {relative} ({scope}: {reason})")
             continue
-        failures.append(f"profile drift (kit != core at umbrella pins): {relative}")
+        if allowed:
+            _scope, reason = allowed
+            try:
+                core_profile = json.loads(core_file.read_text(encoding="utf-8"))
+                kit_profile = json.loads(kit_file.read_text(encoding="utf-8"))
+                if not isinstance(core_profile, dict) or not isinstance(kit_profile, dict):
+                    raise ValueError("profile root must be a JSON object")
+                core_profile.pop("notes", None)
+                kit_profile.pop("notes", None)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                failures.append(
+                    f"cannot verify notes-only profile drift for {relative}: {exc}"
+                )
+            else:
+                if core_profile == kit_profile:
+                    print(
+                        f"ALLOWED notes-only profile divergence: {relative} "
+                        f"(notes-only: {reason})"
+                    )
+                    continue
+                failures.append(f"profile drift outside notes-only scope: {relative}")
+        else:
+            failures.append(f"profile drift (kit != core at umbrella pins): {relative}")
         try:
             before = core_file.read_text(encoding="utf-8").splitlines()
             after = kit_file.read_text(encoding="utf-8").splitlines()
@@ -531,6 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         choices=(
             "edge-sim",
+            "profile-drift",
             "deploy-kit-config",
             "kit-lint",
             "core-i18n",
@@ -566,6 +603,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cwd=checkout / "edge/sim",
             )
             print("OK edge-sim")
+        elif args.check == "profile-drift":
+            check_profile_drift(
+                checkout, checkout / "core/openelis", checkout / "deploy/kit"
+            )
         elif args.check == "deploy-kit-config":
             deploy_kit_config(checkout)
         elif args.check == "kit-lint":

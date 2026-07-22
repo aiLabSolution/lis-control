@@ -38,6 +38,36 @@ def test_receiver_acks_enq_stx_etx_eot_in_order():
     assert receiver.envelope_count == 1
 
 
+def test_eot_ack_is_returned_only_after_durable_sink_completes():
+    events = []
+    receiver = SnibeLisReceiver(lambda payload: events.append(("persisted", payload)))
+    receiver.feed(bytes([ENQ]))
+    receiver.feed(bytes([STX]))
+    receiver.feed(b"H|\\^&\rP|1\rL|1|N\r")
+    receiver.feed(bytes([ETX]))
+
+    response = receiver.feed(bytes([EOT]))
+
+    assert events == [("persisted", b"H|\\^&\rP|1\rL|1|N")]
+    assert response == bytes([ACK])
+
+
+def test_durable_sink_failure_withholds_eot_ack_and_keeps_payload_pending():
+    def fail(_payload):
+        raise OSError("disk full")
+
+    receiver = SnibeLisReceiver(fail)
+    receiver.feed(bytes([ENQ]))
+    receiver.feed(bytes([STX]))
+    receiver.feed(b"H|\\^&\rP|1\rL|1|N\r")
+    receiver.feed(bytes([ETX]))
+
+    with pytest.raises(OSError, match="disk full"):
+        receiver.feed(bytes([EOT]))
+    assert receiver.complete is False
+    assert receiver.state == "AWAIT_EOT"
+
+
 def test_receiver_does_not_ack_individual_records():
     """Feeding the record body one byte at a time never yields a response --
     only ENQ/STX/ETX/EOT do."""

@@ -603,3 +603,69 @@ def test_shared_synthetic_fixture_classifies_fail_closed_as_calibration():
     assert group.result_type == RESULT_TYPE_CALIBRATION
     assert observations(group) == []
     assert group.accession == "000000000012345"  # leading zeros survive even here
+
+
+# ── S4 edge-integration mirror (LIS-232): shared patient fixture + archive ────
+
+
+S4_PATIENT_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "lifotronic-h9-synthetic"
+    / "measurement-s4-patient-n2.hex"
+)
+S4_PATIENT_FRAME_SHA256 = (
+    "c8941a554e40cd2040b2c555e8ac36dae7d6445857fddcafa1a7d89f2b0d98f2"
+)
+
+
+def load_s4_patient_frame() -> bytes:
+    return bytes.fromhex(S4_PATIENT_FIXTURE.read_text(encoding="ascii"))
+
+
+def test_s4_shared_patient_fixture_anchors_digest_and_yields_observation():
+    # The S4 (LIS-232) pipeline fixture: block S, venous blood-type, no error —
+    # the frame the Java bridge routes end-to-end into a FHIR bundle
+    # (H9EdgeIntegrationTest pins the SAME digest). Here the sim proves the
+    # mirrored codec+parser read the identical bytes to matching semantics:
+    # patient classification, verbatim accession, and an IFCC result row.
+    frame = load_s4_patient_frame()
+    assert hashlib.sha256(frame).hexdigest() == S4_PATIENT_FRAME_SHA256
+
+    codec = H9FrameBuffer()
+    assert codec.feed(frame) == [frame]
+
+    group = parse(frame)
+    assert group.result_type == RESULT_TYPE_PATIENT
+    assert group.accession == "000000000012345"
+    ifcc = [r for r in observations(group) if r.test_code == LOINC_HBA1C_IFCC]
+    assert len(ifcc) == 1
+
+
+def test_s4_patient_fixture_archive_round_trip_and_deterministic_replay(tmp_path):
+    # ADR-0012 primitive ↔ ADR-0022 production contract: the sim archive stores
+    # the exact frame under its digest, reloads it integrity-verified, and a
+    # replay of the reloaded bytes parses to identical semantics — the sim-side
+    # mirror of the bridge's raw → replay → identical-bundle acceptance leg.
+    from edge_sim.archive import RawMessageArchive
+
+    frame = load_s4_patient_frame()
+    archive = RawMessageArchive(tmp_path / "h9-archive")
+
+    entry = archive.archive(
+        frame,
+        received_at="2026-07-19T00:00:00Z",
+        source="/dev/serial/by-id/usb-lifotronic-h9",
+        protocol="LIFOTRONIC_H9",
+        transport="SERIAL",
+        framing="h9-structural",
+        fixture_id="lifotronic-h9-synthetic/measurement-s4-patient-n2",
+    )
+    assert entry.digest == S4_PATIENT_FRAME_SHA256
+
+    reloaded = archive.load(entry.digest)
+    assert reloaded.raw == frame
+
+    original = parse(frame)
+    replayed = parse(reloaded.raw)
+    assert replayed == original

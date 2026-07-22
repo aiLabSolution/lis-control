@@ -17,7 +17,73 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`940e3a0`** — LIS-110 vendor-aware MSH-16 result-type profile
+- **Pin:** untagged **`356bdb2`** — LIS-273 outbound HIS queue privacy
+  disposition (PR `openelis-analyzer-bridge#54`). A PENDING ORU remains
+  byte-identical and retryable until a matching `MSA-1=AA`; after AA the full
+  body is redacted immediately by default (`delivered-retention-ms=0`) or by a
+  configurable positive retention window. A canonical SHA-256 fingerprint
+  (MSH-7 blanked) preserves duplicate/collision behavior after redaction.
+  Legacy stores migrate/backfill on open; startup catch-up and an independent
+  maintenance task enforce expiry and retry a busy WAL checkpoint even when
+  delivery retries are disabled. The live SQLite store uses
+  `secure_delete=ON`, WAL checkpoint/truncation, and POSIX 0700/0600 access
+  controls; this is logical sanitization, not cryptographic erasure, so the
+  deploy gate still requires encrypted storage and a site-approved lifecycle
+  for backups/snapshots/corrupt copies. Adversarial pass 1 found and reproduced
+  two P1s (zero-retention WAL cleanup had no busy-checkpoint retry, and
+  variable-width ISO timestamps were compared lexically); `808f1c7` added the
+  scheduler regression and chronological `julianday` predicate, and pass 2
+  APPROVED. Exact-head CI was green twice; full suite at the merged pin
+  **1106/0/0/7**. The matching deploy policy is
+  `lis-deploy-kit#a279b36` (PR #24): retention 0 ms, maintenance 3600000 ms.
+  That kit merge also inherited LIS-307's corrected X3 profile, so the umbrella
+  coherently advances the already-green LIS-272 core seed/mirror merge
+  `OpenELIS-Global-2#810bf24` (PR #56). Their v0.2.0 runtime mapping/QC JSON is
+  identical; a notes-only capture-provenance wording difference remains
+  explicitly allowlisted to LIS-307 rather than hidden from the drift gate.
+- **Intervening pins (not genealogized here):** `6c3fd87` (LIS-130, PR #50) →
+  `8d71866` (LIS-299, #52) → `46e57b9` (LIS-232 AC coverage, #51) → `a133569`
+  (LIS-303, #53).
+- **Prior genealogized pin:** untagged **`4b9f757`** — LIS-232 Lifotronic H9 edge integration
+  (PR `openelis-analyzer-bridge#43`). The H9's byte-positional frames cross the whole
+  normalize → route → FHIR path without a String round-trip: `SerialMessageHandler` maps the
+  framing-selected mode directly to `Protocol.LIFOTRONIC_H9` (D3 — `ProtocolDetector`
+  bypassed; its String heuristic reads S/Q/C bodies as UNKNOWN), `MessageEnvelope` gains an
+  immutable `byte[] rawBytes` (D2 — H9 sets exact frame + lossless ISO-8859-1 display; all
+  other transports unchanged), and `HttpForwardingRouter` grows the `LIFOTRONIC_H9` branch
+  (D4 — `H9ResultParser.parse(rawBytes)`; recorded deviation: the slice text's
+  `parse(rawBytes, rules)` signature was not adopted — the parser itself emits the
+  hardcoded IFCC pair `59261-8`/`mmol/mol`, and the registry `codeToLoinc`/`unitToUcum`
+  resolvers still apply downstream in `FhirBundleBuilder`. Net effect: with no registry
+  mapping for `59261-8` (the shipped state) the bundle carries a **system-less** coding —
+  OE derives UNMAPPED/PARTIAL, not NORMALIZED (ADR-0015 §5) — while a registry mapping
+  keyed on `59261-8`/`mmol/mol` CAN rewrite the H9 coding; the e2e test's substring
+  assert cannot tell the two apart — the S7/LIS-235 terminology-sign-off concern). D8:
+  production inbound raw archive per
+  **ADR-0022** (content-addressed SHA-256, atomic durable write + provenance sidecar,
+  first-wins immutability + tamper evidence, encryption-at-rest mode, rejection↔digest
+  correlation, orphan-payload heal, `DUPLICATE_SUPPRESSED` once per digest); H9 traffic is
+  **fail-closed without the archive** (`bridge.archive.enabled`, shipped default `false`).
+  The serial rate-limit is spent before the archive fsyncs, but a byte-identical resend
+  still reaches dedup — retry-does-not-duplicate holds. Parse refusals log a digest-linked
+  `getSafeSummary()` only; the unredacted field window survives in the `rejected_bundles`
+  row + encrypted sidecar (adversarial P1: raw frame bytes reached application logs —
+  fixed in two passes, the second converting five further throw sites and inverting the
+  guard into an allowlist over the parser's real label vocabulary, plus an e2e logback
+  assertion). Three review passes (2× REQUEST_CHANGES on real findings); full suite at the
+  pin **1041/0/0/7** (1036/0/0/7 on the PR #43 branch pre-merge; the pin's `test` check is
+  green — its `build-and-push-dev-image` check fails on missing registry credentials,
+  pre-existing infra). Cross-level fixture anchor `c8941a55…0d98f2` byte-identical with
+  `edge/sim` (umbrella #158 + pin-bump #176). Close-out: AC1 automation / OE-staging AC4
+  half re-scoped to **LIS-305**; AC2/AC3 coverage follows as bridge PR #51 (test-only)
+  plus its pin bump.
+- **Intervening pins (not genealogized here):** `de22890` (LIS-133, PR #38) → `d2b25bc`
+  (**LIS-230 H9 codec/framer**, #39) → `0783b53` (LIS-87, #40) → `9292566` (LIS-252, #42) →
+  `1426c68` (**LIS-231 H9 parser**, #41) → `7f6e855` (LIS-265, #46) → `6613968` (LIS-38, #45)
+  → `75230de` (LIS-268, #47) → `d3e0f97` (LIS-267 durable X3 inbound, #48) → `8ee93ea`
+  (LIS-271, #44) → `9c6e2c7` (LIS-277, #49); the H9 pair (framer, parser) are the LIS-232
+  integration's direct precursors — see the [S3.H9] epic.
+- **Prior genealogized pin:** untagged **`940e3a0`** — LIS-110 vendor-aware MSH-16 result-type profile
   (PR `openelis-analyzer-bridge#37`). `HL7ResultParser.fromEdanMsh16`: EDAN H60/H90-series
   messages (existing `isEdanH90Series` announce gate) map MSH-16 `0`/blank → PATIENT and
   `1` → QC; every other value — the documented non-result frames `2`=test-connection /
@@ -32,7 +98,9 @@ cleared under HOLD-001 / LIS-71).
   edan branch, `normalize_report` QC re-kind widened to ASTM-or-EDAN; SD1 HL7-QC re-kind
   gap deliberately kept, tracked LIS-95). Adversarial review: pass-1 REQUEST_CHANGES
   (KB-citation P1 + two P2s) → fixed in `21826fe` → pass-2 APPROVE. Full suite at the pin
-  **887/0/0/5**, `edge/sim` **343** (bridge has no CI — local runs are the record).
+  **887/0/0/5**, `edge/sim` **343** (local runs recorded; N.B. the "bridge has no CI"
+  note originally here was wrong — bridge `test.yml` has existed since 2025-12-04;
+  corrected in LIS-304).
   `1=QC` + the §3.2.3 layout are protocol-documented but not yet wire-confirmed (no
   QC-mode bench capture) — deviation recorded in `docs/runbooks/edan-h60s-bench-conformance.md`.
 - **Intervening pins (not genealogized here):** `002210a` → `f051a3c` (LIS-44, PR #32) →
@@ -56,7 +124,8 @@ cleared under HOLD-001 / LIS-71).
   `edanH90=false` (SNIBE) reads `OBX-8` and applies `OBX-7` exactly as LIS-176 intended, with no
   EDAN regression (`git diff a1182b9 002210a` on `FhirBundleBuilder` empty). Landed with
   adversarial APPROVE (no P0/P1; conflict resolution verified faithful); full suite at this
-  merged pin **803/0/0/5**, `edge/sim` **328** (bridge has no CI — local runs are the record).
+  merged pin **803/0/0/5**, `edge/sim` **328** (local runs recorded; stale "no CI" note
+  corrected in LIS-304).
   **Synthetic fixture coverage only — real X3 `OUL^R22` wire proof, the exact MSH-3 sending-app
   token, and the shifted MSH layout remain LIS-75 bench work** (adversarial P2: the whole
   QC-safety property depends on `isSnibeX3` firing); AC-1/AC-2 do not graduate until then, slice
@@ -83,7 +152,7 @@ cleared under HOLD-001 / LIS-71).
   Cross-language SHA-256 anchors pin the bridge tests to the `edge/sim` fixtures (drift
   breaks a test on either side). Landed with adversarial APPROVE + CLEAN fix-verify;
   full suite at this merged pin **777/0/0/5** (762/0/0/5 on the PR #21 branch pre-merge;
-  bridge has no CI — local runs are the record). **Gap 4 of the LIS-119 era is hereby landed
+  local runs recorded; stale "no CI" note corrected in LIS-304). **Gap 4 of the LIS-119 era is hereby landed
   pending the LIS-75 bench proof** (AC-1 real-capture evidence; synthetic proof only
   until then); X3 codes/units stay synthetic until LIS-75/LIS-38. Sits on top of the
   intervening `b2678d9` (LIS-149 EDAN H90-series worklist ORF profile, PR #22) and
@@ -153,10 +222,11 @@ cleared under HOLD-001 / LIS-71).
 ## Module boundaries (ADR-0015 §2 — transport-invariant seam)
 
 ```
-analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelope (convergence seam)
-             HapiMLLPListener / SerialFrameBuffer        │
-             / ASTMServlet / FileWatcher                  ▼
-                                            MessageNormalizer → HL7ResultParser / ASTMResultParser
+analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelope (convergence seam;
+             HapiMLLPListener / SerialFrameBuffer        │  H9 carries byte[] rawBytes)
+             (incl. H9 byte framing) / ASTMServlet        ▼
+             / FileWatcher                  MessageNormalizer → HL7ResultParser / ASTMResultParser
+                                            / H9ResultParser (byte-positional, rawBytes)
                                             → FhirBundleBuilder (codeToLoinc)
                                             ──▶ FHIR R4 Bundle → POST /analyzer/fhir → OpenELIS core
 ```
@@ -165,7 +235,12 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 - **Parser** = protocol-specific, not transport-specific.
 - **Normalization** = analyzer-code → LOINC/UCUM, carried on the **OpenELIS analyzer registry**
   entry (`AnalyzerEntry.codeToLoinc`); the bridge pulls `/rest/analyzer/analyzers` on startup.
-  Adding/re-mapping an analyzer on an enabled transport is **config, not redeploy**.
+  Adding/re-mapping an analyzer on an enabled transport is **config, not redeploy**. LIS-268
+  adds one explicit deploy-liveness exception: a complete deploy-kit source binding marked
+  `LOCAL_BOOTSTRAP` survives unrelated OE snapshots until OE claims that exact source key;
+  an analyzer-ID collision at a different source rejects the sync loudly. Unmarked entries
+  remain OE-owned and stale-removable, and the entire local entry (including `qcRules` and
+  code/unit maps) is preserved.
 - **Ingest contract** = a FHIR R4 transaction Bundle POSTed to `/analyzer/fhir` (ADR-0015 §5;
   the production serialization of core ADR-0003's `NormalizedObservation` DTO, which the Python
   `edge/sim` simulator speaks).
@@ -174,8 +249,9 @@ analyzer ──▶ framer (transport-specific)           ──▶ MessageEnvelo
 
 MLLP/HL7 is the pilot transport and the only one that must be enabled + bench-proven for
 go-live (EDAN H60S anchor, port 7999; bridge default 2575). Serial/ASTM (Stage 2) and the
-MAGLUMI X3's native ASTM-over-TCP direct attach (Stage 3 — SnibeLis middleware dropped
-2026-07-06, LIS-178 / ADR-0015 amendment; FILE demoted to the LIS-34 contingency) are the
+Stage-3 direct attaches — the MAGLUMI X3's native ASTM-over-TCP (SnibeLis middleware
+dropped 2026-07-06, LIS-178 / ADR-0015 amendment; FILE demoted to the LIS-34 contingency)
+and the Lifotronic H9's upload-only RS-232 serial (2026-07-19 amendment, LIS-232) — are the
 recorded forward path — bench-validated against the simulators, post-pilot for the live
 fleet under change control (DEC-06 / SD-0). DEC-06 released one narrow exception on
 2026-07-04: LIS-149 may build and bench the EDAN H99S `QRY^R02 -> ORF^R04` worklist/order-download

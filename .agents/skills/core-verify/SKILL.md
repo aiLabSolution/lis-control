@@ -68,10 +68,13 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/mvnhome -e MAVEN_OPTS="-Xmx1
 - CI signature: a red Build+Test dying in ~90s = spotless; a long run means formatting
   passed and the full suite is executing.
 
-## Bridge (edge/drivers) tests — no CI exists, local run is the ONLY gate
+## Bridge (edge/drivers) tests — local runs supplement CI
 
-The bridge repo has **no aggregator pom**: `org.itech:astm-http-lib` is a sibling module
-not on Central, so a bare `mvn test` at the root fails resolution. One Docker invocation:
+The bridge repo HAS CI (`.github/workflows/test.yml`: builds `astm-http-lib`, runs
+root-module `mvn test`; PRs to master/develop) — that check, green on the exact PR
+head, is the gate; local runs are for fast iteration before pushing. The repo has
+**no aggregator pom**: `org.itech:astm-http-lib` is a sibling module not on Central,
+so a bare `mvn test` at the root fails resolution. One Docker invocation:
 
 ```bash
 docker run --rm --network host --user "$(id -u):$(id -g)" \
@@ -82,7 +85,7 @@ docker run --rm --network host --user "$(id -u):$(id -g)" \
              -DargLine="-Xmx1300m -Djava.net.preferIPv6Addresses=true"'
 ```
 
-(~623 tests, minutes.)
+(~1000 tests, ~2 min from a warm `.m2`.)
 
 ## Cleanup gotcha
 
