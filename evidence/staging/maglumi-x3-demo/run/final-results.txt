@@ -1,0 +1,12 @@
+# Final accepted Result rows — LIS-39 staging demo
+# Captured 2026-07-20T20:28:06Z from a site stack on FRESH volumes
+# core 25e06ea4a / bridge 46e57b9fc / kit lis-39-x3-accept-proof @ fc59778
+# Companion logs in this directory are from the same single sequential run.
+
+  accession_number  |            test_name            |   analysis_status    | value | raw_code | raw_unit | loinc  | ucum_value | reference_range | abnormal_flag 
+--------------------+---------------------------------+----------------------+-------+----------+----------+--------+------------+-----------------+---------------
+ PATIENT-REDACTED-1 | Transaminases GPT (37°C)(Serum) | Technical Acceptance | 5.43  | FT3      | pmol/L   | 1742-6 | pmol/L     | 3.08 - 6.468    | N
+ PATIENT-REDACTED-1 | Transaminases G0T (37°C)(Serum) | Technical Acceptance | 1.58  | FT4 II   | ng/dL    | 1920-8 |            | 0.9 - 1.75      | N
+ PATIENT-REDACTED-1 | Glucose(Plasma)                 | Technical Acceptance | 2.78  | TSH II   | uIU/mL   | 2345-7 | u[IU]/mL   | 0.3 - 4.5       | N
+(3 rows)
+

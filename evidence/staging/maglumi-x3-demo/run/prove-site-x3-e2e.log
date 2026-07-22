@@ -1,0 +1,17 @@
+observed analyzer source identity: 172.19.0.1
+seeded OE analyzer id=5 source=172.19.0.1 with FT3/FT4 II/TSH II map
+registry[172.19.0.1] -> id 5
+OpenELIS -> bridge push registered the X3 channel
+registry[172.19.0.1] -> id 5
+X3 channel registered via full-state sync (source 172.19.0.1)
+fixture sent: 335 bytes, sha256 baf92a3738bcd4bbed784c57fe8d8241268963e5306c192575c070266eb4adae
+PASS: synthetic X3 ASTM fixture entered the deployed listener, was identified as
+      analyzer 5 (source 172.19.0.1), forwarded as FHIR to /analyzer/fhir,
+      and staged FT3=5.43 / FT4 II=1.58 / TSH II=2.78 on accession PATIENT-REDACTED-1 in OpenELIS.
+PATIENT-REDACTED-1|GPT/ALAT|5.43|pmol/L|1742-6
+PATIENT-REDACTED-1|GOT/ASAT|1.58|ng/dL|1920-8
+PATIENT-REDACTED-1|Glucose|2.78|uIU/mL|2345-7
+PASS (LIS-270): the bare-P|1 X3 wire staged 3 row(s) carrying
+      wirePatientIdentityAbsent=true and no client-visible patient hint — the
+      'no patient identity from analyzer' staging banner is driven end-to-end.
+E2E_EXIT=0

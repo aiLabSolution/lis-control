@@ -1,0 +1,9 @@
+# Staged analyzer_results BEFORE acceptance — LIS-39 staging demo
+# Columns: raw_code | raw_unit | value | reference_range | abnormal_flag | loinc | ucum_value
+# Captured by prove-site-x3-accept.sh in the same run as the companion logs.
+# Note FT4 II's empty ucum_value — the ng/dL backstop gap, tracked as LIS-315.
+
+staged before accept (3 row(s)):
+FT3|pmol/L|5.43|3.08 - 6.468|N|1742-6|pmol/L
+FT4 II|ng/dL|1.58|0.9 - 1.75|N|1920-8|
+TSH II|uIU/mL|2.78|0.3 - 4.5|N|2345-7|u[IU]/mL
