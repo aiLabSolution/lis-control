@@ -104,13 +104,15 @@ class ComposeRecipeTests(unittest.TestCase):
         argv = ("ps", "--format", "{{.Names}}")
         self.assertEqual(docker_shim.augment_argv(argv, {}), argv)
 
+    @mock.patch("local_ci_stack_checks.assert_site_bridge_proof_clean")
+    @mock.patch("local_ci_stack_checks.assert_openelis_proof_clean")
     @mock.patch("local_ci_stack_checks.site_down")
     @mock.patch("local_ci_stack_checks.ownership_guard", side_effect=lambda _root: contextlib.nullcontext())
     @mock.patch("local_ci_stack_checks.run_logged", return_value=completed())
     @mock.patch("local_ci_stack_checks.require_docker", return_value="/bin/true")
     @mock.patch("local_ci_stack_checks.initialize_pins")
     def test_site_check_executes_canonical_wrapper_and_failure_script(
-        self, _pins, _docker, run, _ownership, _down
+        self, _pins, _docker, run, _ownership, _down, _openelis_clean, _bridge_clean
     ):
         stacks.site_stack_smoke(self.layout)
         commands = [call.args[0] for call in run.call_args_list]
@@ -126,6 +128,118 @@ class ComposeRecipeTests(unittest.TestCase):
 
 
 class TeardownTests(unittest.TestCase):
+    def test_each_stack_refuses_preexisting_proof_state_without_mutating_it(self):
+        layout = stacks.Layout.from_root(REPO_ROOT)
+        cases = (
+            ("stage0", stacks.stage0_bootstrap),
+            ("stage4", stacks.stage4_smoke),
+            ("site", stacks.site_stack_smoke),
+        )
+        for label, check in cases:
+            with self.subTest(check=label), mock.patch(
+                "local_ci_stack_checks.initialize_pins"
+            ), mock.patch(
+                "local_ci_stack_checks.require_docker", return_value="/bin/true"
+            ), mock.patch(
+                "local_ci_stack_checks.ownership_guard",
+                side_effect=lambda _root: contextlib.nullcontext(),
+            ), mock.patch(
+                "local_ci_stack_checks.assert_openelis_proof_clean",
+                side_effect=stacks.StackCheckError("pre-existing proof state"),
+            ), mock.patch(
+                "local_ci_stack_checks.run_logged",
+                return_value=completed(stdout="one\ntwo\nthree\n"),
+            ) as run:
+                with self.assertRaisesRegex(
+                    stacks.StackCheckError, "pre-existing proof state"
+                ):
+                    check(layout)
+
+            mutating = [
+                call.args[0]
+                for call in run.call_args_list
+                if "up" in call.args[0] or "down" in call.args[0]
+            ]
+            self.assertEqual(
+                mutating,
+                [],
+                f"{label} touched stale proof state instead of refusing it",
+            )
+
+    def test_site_refuses_any_preexisting_bridge_state_without_mutating_it(self):
+        layout = stacks.Layout.from_root(REPO_ROOT)
+        cases = (
+            ("project", "project", stacks.SITE_BRIDGE_PROJECT),
+            ("container", "container", stacks.SITE_BRIDGE_CONTAINER),
+            ("volume", "volume", stacks.SITE_BRIDGE_VOLUME),
+            ("network", "network", stacks.SITE_NETWORK),
+        )
+        for label, stale_kind, stale_name in cases:
+            with self.subTest(state=label):
+                def docker_state(argv, _cwd, **_kwargs):
+                    if argv[:3] == ("docker", "ps", "-aq"):
+                        if stale_kind == "project" and any(
+                            stale_name in value for value in argv
+                        ):
+                            return completed(stdout="stale-bridge-container\n")
+                        return completed()
+                    if (
+                        len(argv) > 3
+                        and argv[0] == "docker"
+                        and argv[2] == "inspect"
+                    ):
+                        kind, name = argv[1], argv[3]
+                        if kind == stale_kind and name == stale_name:
+                            return completed()
+                        return completed(1, f"No such {kind}: {name}\n")
+                    return completed()
+
+                with mock.patch(
+                    "local_ci_stack_checks.initialize_pins"
+                ), mock.patch(
+                    "local_ci_stack_checks.require_docker", return_value="/bin/true"
+                ), mock.patch(
+                    "local_ci_stack_checks.assert_openelis_proof_clean"
+                ), mock.patch(
+                    "local_ci_stack_checks.ownership_guard",
+                    side_effect=lambda _root: contextlib.nullcontext(),
+                ), mock.patch(
+                    "local_ci_stack_checks.run_logged", side_effect=docker_state
+                ) as run:
+                    with self.assertRaises(stacks.StackCheckError) as caught:
+                        stacks.site_stack_smoke(layout)
+
+                self.assertIn(stale_name, str(caught.exception))
+                mutating = [
+                    call.args[0]
+                    for call in run.call_args_list
+                    if "up" in call.args[0] or "down" in call.args[0]
+                ]
+                self.assertEqual(mutating, [])
+
+    @mock.patch("local_ci_stack_checks.run_logged")
+    def test_object_absence_requires_confirmed_docker_not_found(self, run):
+        run.side_effect = [
+            completed(
+                1,
+                "[]\nError response from daemon: get confirmed-absent: "
+                "no such volume\n",
+            ),
+            completed(
+                1,
+                "permission denied while trying to connect to the Docker daemon socket\n",
+            ),
+        ]
+
+        with self.assertRaisesRegex(
+            stacks.StackCheckError, "indeterminate.*permission denied"
+        ):
+            stacks.assert_objects_missing(
+                REPO_ROOT, "volume", ("confirmed-absent", "indeterminate")
+            )
+
+        self.assertEqual(run.call_count, 2)
+
     def test_deadline_terminates_nested_command_process_group(self):
         with tempfile.TemporaryDirectory() as temporary:
             pid_file = Path(temporary) / "child.pid"

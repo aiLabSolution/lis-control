@@ -447,6 +447,17 @@ def assert_objects_missing(root: Path, kind: str, names: Iterable[str]) -> None:
         result = run_logged(("docker", kind, "inspect", name), root, quiet=True)
         if result.returncode == 0:
             leftovers.append(name)
+            continue
+        detail = (result.stdout or "").strip()
+        lowered = detail.lower()
+        confirmed_missing = f"no such {kind}" in lowered or (
+            kind == "network" and "network " in lowered and " not found" in lowered
+        )
+        if not confirmed_missing:
+            raise StackCheckError(
+                f"cannot inspect Docker {kind} object {name}: "
+                f"{detail or f'exit {result.returncode} with no output'}"
+            )
     if leftovers:
         raise StackCheckError(
             f"Docker state is not clean; {kind} object(s) remain: "
@@ -459,6 +470,13 @@ def assert_openelis_proof_clean(root: Path, project: str) -> None:
     assert_objects_missing(root, "container", PROOF_CONTAINERS)
     assert_objects_missing(root, "volume", PROOF_VOLUMES)
     assert_objects_missing(root, "network", (PROOF_NETWORK,))
+
+
+def assert_site_bridge_proof_clean(root: Path) -> None:
+    assert_project_empty(root, SITE_BRIDGE_PROJECT)
+    assert_objects_missing(root, "container", (SITE_BRIDGE_CONTAINER,))
+    assert_objects_missing(root, "volume", (SITE_BRIDGE_VOLUME,))
+    assert_objects_missing(root, "network", (SITE_NETWORK,))
 
 
 def direct_openelis_down(layout: Layout, project: str) -> None:
@@ -518,6 +536,7 @@ def diagnose_openelis(layout: Layout, project: str, environment: Mapping[str, st
 def stage0_bootstrap(layout: Layout) -> None:
     initialize_pins(layout, ("core/openelis", "deploy/kit"))
     require_docker()
+    assert_openelis_proof_clean(layout.root, STAGE0_PROJECT)
     files = openelis_files(layout)
     with ownership_guard(layout.core), TeardownTrap() as trap:
         trap.add(
@@ -569,6 +588,7 @@ def stage4_smoke(layout: Layout, core_override_sha: str | None = None) -> None:
         core_override_sha=core_override_sha,
     )
     real_docker = require_docker()
+    assert_openelis_proof_clean(layout.root, STAGE4_PROJECT)
     wrapper = openelis_wrapper(layout)
     with docker_isolation_environment(layout, real_docker) as isolation:
         environment = {**wrapper_environment(layout, STAGE4_PROJECT), **isolation}
@@ -757,6 +777,8 @@ def diagnose_site(layout: Layout, environment: Mapping[str, str]) -> None:
 def site_stack_smoke(layout: Layout) -> None:
     initialize_pins(layout, ("core/openelis", "deploy/kit", "edge/drivers"))
     real_docker = require_docker()
+    assert_openelis_proof_clean(layout.root, SITE_OE_PROJECT)
+    assert_site_bridge_proof_clean(layout.root)
     password = secrets.token_hex(24)
     with docker_isolation_environment(layout, real_docker) as isolation:
         environment = {**site_environment(layout, password), **isolation}
