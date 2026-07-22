@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -578,8 +579,14 @@ def test_out_dir_equal_to_input_parent_refuses_and_preserves_pristine_input(tmp_
     assert log_path.read_text(encoding="utf-8") == original_log_text
 
 
-# --- (13) LIS-319 hardening: pre-existing output file refuses -------------
-def test_pre_existing_output_file_refuses_and_preserves_input(tmp_path):
+# --- (13) LIS-319 hardening: pre-existing --out directory refuses ---------
+def test_existing_out_dir_refuses_and_preserves_pristine_input(tmp_path):
+    """New output contract (Codex round-3 P0/P1 fix): --out is a single
+    atomically-published unit, so the ONLY thing that matters is whether the
+    --out directory name itself already exists -- not whether some subset of
+    its three files happen to be present. A pre-created --out (even with a
+    stale ledger inside, left over from some unrelated prior use of that
+    path) refuses up front."""
     sample_id = "ZZFAKE-SAMPLE-00001"
     envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
     raw, log_text = _build_session_with_log(envelopes)
@@ -602,8 +609,9 @@ def test_pre_existing_output_file_refuses_and_preserves_input(tmp_path):
     assert stale_ledger.read_text(encoding="utf-8") == '{"stale": true}\n'
 
 
-# --- (14) LIS-319 hardening: success path leaves no .tmp litter ------------
-def test_success_leaves_no_tmp_files(tmp_path):
+# --- (14) LIS-319 hardening: success leaves exactly the 3 final files, no
+# staging sibling left behind ------------------------------------------------
+def test_success_leaves_exactly_three_files_and_no_staging_sibling(tmp_path):
     sample_id = "ZZFAKE-SAMPLE-00001"
     envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
     raw, log_text = _build_session_with_log(envelopes)
@@ -616,7 +624,10 @@ def test_success_leaves_no_tmp_files(tmp_path):
         out_dir=out_dir,
     )
 
-    assert list(out_dir.glob("*.tmp")) == []
+    assert sorted(p.name for p in out_dir.iterdir()) == sorted(
+        [bin_path.name, log_path.name, "sanitization.json"]
+    )
+    assert not (tmp_path / (out_dir.name + ".staging")).exists()
 
 
 # --- (15) LIS-319 hardening: mid-write failure leaves no final output -----
@@ -627,20 +638,19 @@ def test_mid_write_failure_leaves_no_final_named_output(tmp_path, monkeypatch):
     bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
     out_dir = tmp_path / "out"
 
-    # sanitize.py writes every staged temp via the fd-based
-    # _write_staged_bytes/_write_staged_text helpers (O_EXCL | O_NOFOLLOW),
-    # not Path.write_bytes/write_text -- so the flaky failure is injected at
-    # that seam instead.
+    # sanitize.py writes every staged file via the fd-based
+    # _write_staged_bytes/_write_staged_text helpers (O_EXCL | O_NOFOLLOW,
+    # dir_fd-relative to the staging directory), not Path.write_bytes/
+    # write_text -- so the flaky failure is injected at that seam instead.
+    # The bin is written first (via _write_staged_bytes, untouched by this
+    # patch); the annotated-log write is the SECOND staged write -- fail
+    # exactly there, before it (or the ledger write after it) ever lands.
     real_write_staged_text = sanitize._write_staged_text
 
-    def _flaky_write_staged_text(path, text, *args, **kwargs):
-        # The bin temp is written first (via _write_staged_bytes, untouched
-        # by this patch); the annotated-log temp is the SECOND temp write --
-        # fail exactly there, before it (or the ledger temp after it) ever
-        # lands.
-        if path.suffix == ".tmp" and path.name.startswith("annotated-"):
-            raise OSError("simulated disk failure on second temp write")
-        return real_write_staged_text(path, text, *args, **kwargs)
+    def _flaky_write_staged_text(staging_fd, basename, text):
+        if basename == log_path.name:
+            raise OSError("simulated disk failure on second staged write")
+        return real_write_staged_text(staging_fd, basename, text)
 
     monkeypatch.setattr(sanitize, "_write_staged_text", _flaky_write_staged_text, raising=True)
 
@@ -651,39 +661,35 @@ def test_mid_write_failure_leaves_no_final_named_output(tmp_path, monkeypatch):
             out_dir=out_dir,
         )
 
-    # No final-named output exists -- temps are cleaned up (best effort), or
-    # at worst only .tmp litter remains (never a final bin/log/ledger name).
-    assert not (out_dir / bin_path.name).exists()
-    assert not (out_dir / log_path.name).exists()
-    assert not (out_dir / "sanitization.json").exists()
-    for leftover in out_dir.glob("*") if out_dir.exists() else []:
-        assert leftover.suffix == ".tmp"
+    # No final --out directory exists at all, and the staging sibling is
+    # cleaned up (best effort) -- never a partial final set.
+    assert not out_dir.exists()
+    assert not (tmp_path / (out_dir.name + ".staging")).exists()
 
 
-# --- (16) LIS-319 re-gate P0: symlink planted at a staging name is never
-# followed, and the pristine input is never overwritten -----------------
-def test_symlink_at_bin_staging_name_refuses_and_leaves_input_untouched(tmp_path):
-    """Live-proven defect: the staged-publish temp paths (``<final-name>.tmp``)
-    used to bypass both guard loops in ``_check_output_paths``, which checked
-    only the three FINAL output names. A symlink planted at
-    ``<out_dir>/<output-name>.tmp`` pointing at the pristine input was
-    followed by the temp write, irreversibly overwriting the quarantined
-    input with exit 0, and ``os.replace`` then published the symlink as the
-    output. Now: the staging names are included in both guard loops (so this
-    refuses up front, with the precise aliasing message), and every staging
-    file is additionally created with ``O_EXCL | O_NOFOLLOW`` regardless (the
-    race-free guarantee)."""
+# --- (16) LIS-319 re-gate P0: symlink planted at the STAGING-DIRECTORY
+# sibling name (``<out>.staging``) is never followed, and the pristine input
+# is never overwritten -------------------------------------------------
+def test_symlink_at_staging_name_refuses_and_leaves_input_untouched(tmp_path):
+    """New output contract: staging is now a whole SIBLING DIRECTORY,
+    ``<out>.staging`` (not a per-file ``<final-name>.tmp``), and ``--out``
+    itself must not exist -- so this can no longer be constructed by
+    planting an entry inside a pre-created --out (see the old, now-
+    impossible version of this test). A symlink planted at the staging
+    directory's OWN name, pointing at the input's quarantine directory,
+    must refuse (``os.mkdir(dir_fd=...)`` fails closed on any pre-existing
+    entry there) rather than have anything written through it."""
     sample_id = "ZZFAKE-SAMPLE-00001"
     envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
     raw, log_text = _build_session_with_log(envelopes)
     bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    quarantine_dir = bin_path.parent
     original_bin_bytes = bin_path.read_bytes()
     original_hash = hashlib.sha256(original_bin_bytes).hexdigest()
 
     out_dir = tmp_path / "out"
-    out_dir.mkdir()
-    staging_symlink = out_dir / (bin_path.name + ".tmp")
-    staging_symlink.symlink_to(bin_path)
+    staging_symlink = tmp_path / (out_dir.name + ".staging")
+    staging_symlink.symlink_to(quarantine_dir, target_is_directory=True)
 
     with pytest.raises(SanitizeError):
         sanitize_capture(
@@ -698,24 +704,21 @@ def test_symlink_at_bin_staging_name_refuses_and_leaves_input_untouched(tmp_path
     assert hashlib.sha256(bin_path.read_bytes()).hexdigest() == original_hash
 
     # The symlink itself is still present, still a symlink, still pointing at
-    # the input -- nothing followed it, nothing replaced it with a real file.
+    # the quarantine directory -- nothing followed it, nothing replaced it.
     assert staging_symlink.is_symlink()
-    assert staging_symlink.resolve() == bin_path.resolve()
+    assert staging_symlink.resolve() == quarantine_dir.resolve()
 
-    # No final-named output was ever produced.
-    assert not (out_dir / bin_path.name).exists()
-    assert not (out_dir / log_path.name).exists()
-    assert not (out_dir / "sanitization.json").exists()
+    # No --out directory was ever produced.
+    assert not out_dir.exists()
 
 
-# --- (17) LIS-319 re-gate P0: bystander regular file at a staging name is
-# refused up front (no-clobber contract), not silently overwritten -------
+# --- (17) LIS-319 re-gate P0: bystander regular file at the staging-
+# directory sibling name refuses with the crashed-prior-run message ------
 def test_bystander_file_at_staging_name_refuses_and_leaves_content_unchanged(tmp_path):
-    """Live-proven defect: a bystander regular file named ``<output>.tmp``
-    was silently overwritten and renamed away, contradicting the no-clobber
-    refusal contract this tool otherwise upholds for the three final output
-    names. Now the staging names are checked by the same up-front
-    ``exists()`` backstop as the final names."""
+    """A bystander regular file sitting at ``<out>.staging`` -- e.g. an
+    unrelated file that happens to share that name -- refuses (``os.mkdir``
+    fails closed: a file already occupies that name) with the crashed-
+    prior-run message, and is left completely unmodified."""
     sample_id = "ZZFAKE-SAMPLE-00001"
     envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
     raw, log_text = _build_session_with_log(envelopes)
@@ -723,12 +726,11 @@ def test_bystander_file_at_staging_name_refuses_and_leaves_content_unchanged(tmp
     original_bin_bytes = bin_path.read_bytes()
 
     out_dir = tmp_path / "out"
-    out_dir.mkdir()
-    bystander = out_dir / (bin_path.name + ".tmp")
+    bystander = tmp_path / (out_dir.name + ".staging")
     bystander_content = b"not part of any sanitize run\n"
     bystander.write_bytes(bystander_content)
 
-    with pytest.raises(SanitizeError, match="already exists"):
+    with pytest.raises(SanitizeError, match="prior run"):
         sanitize_capture(
             bin_path, log_path,
             record="O", field=3, cls="specimen-id", ordinal=1,
@@ -738,6 +740,274 @@ def test_bystander_file_at_staging_name_refuses_and_leaves_content_unchanged(tmp
     assert bin_path.read_bytes() == original_bin_bytes
     assert bystander.read_bytes() == bystander_content
     assert not bystander.is_symlink()
-    assert not (out_dir / bin_path.name).exists()
-    assert not (out_dir / log_path.name).exists()
-    assert not (out_dir / "sanitization.json").exists()
+    assert not out_dir.exists()
+
+
+# --- (17b) LIS-319 re-gate P0: a DANGLING symlink at the staging-directory
+# sibling name is caught by lstat semantics, not fooled by the missing
+# target --------------------------------------------------------------------
+def test_dangling_symlink_at_staging_name_refuses(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+
+    out_dir = tmp_path / "out"
+    dangling = tmp_path / (out_dir.name + ".staging")
+    dangling.symlink_to(tmp_path / "does-not-exist-target")
+
+    with pytest.raises(SanitizeError):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert dangling.is_symlink()
+    assert not out_dir.exists()
+
+
+# --- (18) LIS-319 re-gate P0: a DANGLING symlink at the final --out name
+# itself is caught by lstat semantics (a symlink counts as "existing" even
+# when its target is absent) -------------------------------------------------
+def test_dangling_symlink_at_out_name_refuses_and_is_left_in_place(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+
+    out_dir = tmp_path / "out"
+    out_dir.symlink_to(tmp_path / "nonexistent-target")
+
+    with pytest.raises(SanitizeError, match="already exists"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert out_dir.is_symlink()
+    assert bin_path.read_bytes() == original_bin_bytes
+
+
+# --- (19) LIS-319 hardening: --out's parent must already exist -------------
+def test_out_dir_parent_missing_refuses_with_clear_message(tmp_path):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, _ = _build_session_with_log(envelopes)
+    bin_path, _ = _write_quarantined_capture(tmp_path, raw)
+    out_dir = tmp_path / "does-not-exist-parent" / "out"
+
+    with pytest.raises(SanitizeError, match="parent"):
+        sanitize_capture(
+            bin_path, None,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+    assert not out_dir.exists()
+    assert not out_dir.parent.exists()
+
+
+# --- (20) LIS-319 Codex round-3 P0: a parent-directory swap performed AFTER
+# validation begins (post up-front checks, mid-processing) must not redirect
+# any write -- the parent fd, pinned EARLY, keeps writing through the real
+# original directory (now reachable only under its post-swap name), never
+# through the attacker's replacement symlink -----------------------------
+def test_parent_swap_after_validation_writes_through_pinned_fd(tmp_path, monkeypatch):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    quarantine_dir = bin_path.parent
+    original_bin_bytes = bin_path.read_bytes()
+    original_log_text = log_path.read_text(encoding="utf-8")
+    original_quarantine_entries = sorted(p.name for p in quarantine_dir.iterdir())
+
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    victim_moved = tmp_path / "victim-moved"
+    out_dir = victim / "out"
+
+    real_build_ledger = sanitize._build_ledger
+    swapped = False
+
+    def _swap_then_build_ledger(*args, **kwargs):
+        # Fires well AFTER out_dir's parent has already been pinned (see
+        # sanitize_capture: the pin happens immediately after
+        # _check_output_paths, long before _build_ledger is ever reached) --
+        # this is deliberately a POST-pin, mid-processing attack.
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            victim.rename(victim_moved)
+            victim.symlink_to(quarantine_dir, target_is_directory=True)
+        return real_build_ledger(*args, **kwargs)
+
+    monkeypatch.setattr(sanitize, "_build_ledger", _swap_then_build_ledger)
+
+    result = sanitize_capture(
+        bin_path, log_path,
+        record="O", field=3, cls="specimen-id", ordinal=1,
+        out_dir=out_dir,
+    )
+
+    # The pristine input is completely untouched.
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert log_path.read_text(encoding="utf-8") == original_log_text
+
+    # The quarantine directory gained NO new entries -- nothing was ever
+    # written into it, even though the attacker's symlink pointed straight
+    # at it under the swapped "victim" name.
+    assert sorted(p.name for p in quarantine_dir.iterdir()) == original_quarantine_entries
+
+    # The sanitized set landed under the REAL pinned directory
+    # (victim-moved/out), reached via the fd, never via the "victim"
+    # pathname (which by publish time is the attacker's symlink).
+    real_out = victim_moved / "out"
+    assert real_out.is_dir()
+    assert sorted(p.name for p in real_out.iterdir()) == sorted(
+        [bin_path.name, log_path.name, "sanitization.json"]
+    )
+    assert sample_id.encode("latin-1") not in (real_out / bin_path.name).read_bytes()
+    assert result.token in (real_out / "sanitization.json").read_text(encoding="utf-8")
+
+
+# --- (21) LIS-319 Codex round-3 P1: fault injection at every publication
+# boundary (staged bin write, staged log write, staged ledger write, and the
+# single final rename) must leave --out absent and the staging sibling
+# cleaned up, every time -----------------------------------------------------
+@pytest.mark.parametrize("boundary", ["bin", "log", "ledger", "rename"])
+def test_fault_injection_at_every_publish_boundary_leaves_no_trace(tmp_path, monkeypatch, boundary):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+    out_dir = tmp_path / "out"
+    staging_sibling = tmp_path / (out_dir.name + ".staging")
+
+    if boundary == "bin":
+        def _flaky(staging_fd, basename, data):
+            raise OSError("simulated fault: staged bin write")
+
+        monkeypatch.setattr(sanitize, "_write_staged_bytes", _flaky)
+    elif boundary == "log":
+        real = sanitize._write_staged_text
+
+        def _flaky(staging_fd, basename, text):
+            if basename == log_path.name:
+                raise OSError("simulated fault: staged log write")
+            return real(staging_fd, basename, text)
+
+        monkeypatch.setattr(sanitize, "_write_staged_text", _flaky)
+    elif boundary == "ledger":
+        real = sanitize._write_staged_text
+
+        def _flaky(staging_fd, basename, text):
+            if basename == "sanitization.json":
+                raise OSError("simulated fault: staged ledger write")
+            return real(staging_fd, basename, text)
+
+        monkeypatch.setattr(sanitize, "_write_staged_text", _flaky)
+    else:  # rename -- the single final-publish boundary
+        def _flaky(parent_fd, staging_name, final_name):
+            raise OSError("simulated fault: final publish rename")
+
+        monkeypatch.setattr(sanitize, "_publish_staging_dir", _flaky)
+
+    with pytest.raises(OSError, match="simulated fault"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert not out_dir.exists()
+    assert not staging_sibling.exists()
+    assert bin_path.read_bytes() == original_bin_bytes
+
+
+# --- (22) LIS-319 hardening: a dangling symlink planted INSIDE the fresh
+# staging directory (at the bin's basename) is still refused by the
+# O_EXCL | O_NOFOLLOW staged-file open -- defense in depth on top of the
+# staging-directory-level guard ----------------------------------------------
+def test_planted_entry_inside_staging_dir_refuses_via_o_excl(tmp_path, monkeypatch):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    original_bin_bytes = bin_path.read_bytes()
+    out_dir = tmp_path / "out"
+    staging_sibling = tmp_path / (out_dir.name + ".staging")
+
+    real_make_staging_dir = sanitize._make_staging_dir
+
+    def _plant_then_make(parent_fd, staging_name):
+        staging_fd = real_make_staging_dir(parent_fd, staging_name)
+        # Plant a DANGLING symlink at the bin's basename, inside the fresh
+        # staging dir, before the real staged bin write ever runs.
+        os.symlink(
+            str(tmp_path / "does-not-exist-target"),
+            bin_path.name,
+            dir_fd=staging_fd,
+        )
+        return staging_fd
+
+    monkeypatch.setattr(sanitize, "_make_staging_dir", _plant_then_make)
+
+    with pytest.raises(SanitizeError):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert not out_dir.exists()
+    assert not staging_sibling.exists()
+
+
+# --- (23) LIS-319 documented residual, proven: a symlink planted at the
+# final --out name in the window between the pre-rename re-check and the
+# publish rename makes the rename fail ENOTDIR (a directory source never
+# dereferences or replaces a non-directory destination) -- fail-closed
+# refusal, staging cleaned up, symlink never followed ------------------------
+def test_symlink_planted_at_out_name_inside_publish_window_fails_closed(tmp_path, monkeypatch):
+    sample_id = "ZZFAKE-SAMPLE-00001"
+    envelopes = [_envelope_records("ZZQ1", "1.11", "zzU/L", "0.0 - 9.9", "20260101000001", sample_id)]
+    raw, log_text = _build_session_with_log(envelopes)
+    bin_path, log_path = _write_quarantined_capture(tmp_path, raw, log_text)
+    quarantine_dir = bin_path.parent
+    original_bin_bytes = bin_path.read_bytes()
+    original_quarantine_entries = sorted(p.name for p in quarantine_dir.iterdir())
+    out_dir = tmp_path / "out"
+    staging_sibling = tmp_path / (out_dir.name + ".staging")
+
+    real_publish = sanitize._publish_staging_dir
+
+    def _plant_then_publish(parent_fd, staging_name, final_name):
+        # Fires AFTER the caller's pre-rename absence re-check -- this is
+        # exactly the residual window the docstring documents.
+        os.symlink(str(quarantine_dir), final_name, dir_fd=parent_fd)
+        return real_publish(parent_fd, staging_name, final_name)
+
+    monkeypatch.setattr(sanitize, "_publish_staging_dir", _plant_then_publish)
+
+    with pytest.raises(SanitizeError, match="could not rename"):
+        sanitize_capture(
+            bin_path, log_path,
+            record="O", field=3, cls="specimen-id", ordinal=1,
+            out_dir=out_dir,
+        )
+
+    # The symlink was never followed: the quarantine directory gained no
+    # entries and the pristine input is byte-unchanged.
+    assert bin_path.read_bytes() == original_bin_bytes
+    assert sorted(p.name for p in quarantine_dir.iterdir()) == original_quarantine_entries
+    # The planted symlink survives (rename failed ENOTDIR, replaced nothing)
+    # and the staging sibling is cleaned up.
+    assert out_dir.is_symlink()
+    assert not staging_sibling.exists()

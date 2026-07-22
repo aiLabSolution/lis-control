@@ -31,6 +31,36 @@ structure-verified tool instead of an ad-hoc hand edit:
   capture never lands in git or a PR before it has been sanitized and
   reviewed. There is no override flag; that posture is deliberate.
 
+Output contract (fd-pinned staging, single atomic publish)
+------------------------------------------------------------
+``--out`` must name a directory that does NOT yet exist, whose PARENT
+already does. The tool never creates ``--out``'s parent (no more
+``mkdir(parents=True)``); the caller creates it once, deliberately. The
+three output files (sanitized bin, sanitized log, ``sanitization.json``)
+are written into a sibling staging directory, ``<out>.staging``, and the
+whole staging directory is published as ``--out`` in ONE atomic
+``os.rename`` at the very end -- so a fault at any point before that single
+rename leaves neither a partial ``--out`` nor any final-named file behind,
+only (at worst) a ``<out>.staging`` directory that a subsequent run refuses
+to reuse (crashed-prior-run posture: inspect/delete it by hand).
+
+This closes two defects an external adversarial review (Codex round 3)
+found in the prior per-file ``<name>.tmp`` + sequential-``os.replace``
+design: (1) a parent-directory swap performed AFTER the original up-front
+path checks but before writing could redirect every subsequent write
+through a re-traversed pathname -- fixed by resolving ``--out``'s parent
+ONCE, early (before any of the slower parsing/redaction/ledger work below),
+and opening it with ``os.open(..., O_NOFOLLOW)`` to obtain a directory file
+descriptor; every later filesystem operation for output goes through that
+fd (or the staging-directory fd derived from it) via the ``dir_fd=``-taking
+``os.*`` calls, never through ``out_dir``'s pathname again, so a rename-
+and-symlink swap of ``out_dir``'s parent after the pin cannot retarget the
+write. (2) three independent sequential ``os.replace`` calls could leave a
+partial final set (e.g. a final bin with no ledger) if a fault struck
+between them -- fixed by publishing all three files as one directory via a
+single ``os.rename``, which is atomic: either the whole set appears at
+``--out`` or none of it does.
+
 Canonical token vocabulary
 ---------------------------
 ``TOKEN_CLASSES`` maps a redaction class to its token prefix; the caller
@@ -436,131 +466,283 @@ def _check_quarantine(path: Path) -> None:
 def _check_output_paths(
     *, bin_path: Path, log_path: Path | None, out_dir: Path
 ) -> tuple[Path, Path | None, Path]:
-    """Resolve the (up to three) would-be output paths -- the sanitized bin,
-    the sanitized log (if a log was given), and ``sanitization.json`` -- and
-    refuse, up front, before any filesystem write is attempted, whenever:
+    """Cheap, pathname-level checks on ``out_dir`` -- fast failure with a
+    precise message before any parsing, redaction, or fd work is attempted.
+    These are NOT the authoritative guarantee (see :func:`sanitize_capture`'s
+    fd-pinned checks, which run against ``os.stat(..., dir_fd=parent_fd,
+    follow_symlinks=False)`` and are race-free); this function purely
+    improves the common, non-adversarial error message and fails fast.
 
-    (a) any FINAL or STAGING output path would resolve to the same file as an
-        input path. Staged publish (see :func:`sanitize_capture`) writes each
-        output to a sibling ``<final-name>.tmp`` staging path before
-        ``os.replace``-ing it onto the final name, so the staging name is
-        just as capable of aliasing an input as the final name is -- both are
-        checked here. If ``--out`` names the input capture's own parent
-        directory, ``out_dir / bin_path.name`` (or its ``.tmp`` staging
-        counterpart) ALIASES the input; checked first so this specific case
-        gets the precise pristine-evidence message.
+    Refuses whenever:
 
-    (b) any FINAL or STAGING output path already exists. This is the general
-        backstop -- it also covers every aliasing case (a) already catches,
-        plus ordinary clobbering of a previous output set (e.g. a stale
-        ``sanitization.json`` left over from a prior run) or a bystander file
-        already sitting at a staging name.
+    (a) ``out_dir`` resolves to the same directory as an input's own parent
+        directory (the caller pointed ``--out`` at the quarantine directory
+        itself) -- checked first so this specific footgun gets the precise
+        pristine-evidence message, mentioning "pristine" explicitly.
 
-    These up-front checks are the fast, precise-message common case, not the
-    sole guarantee: a check-then-write always leaves a TOCTOU window, and an
-    ``exists()`` check cannot distinguish "nothing here" from "a symlink
-    planted here after this check ran." The actual race-free guarantee is
-    that every staging file is created via ``os.open`` with
-    ``O_EXCL | O_NOFOLLOW`` (see :func:`_open_staging_fd`), which refuses ANY
-    pre-existing entry -- regular file, symlink, or otherwise -- atomically,
-    independent of whether this function's checks already caught it.
+    (b) ``out_dir`` already exists as ANY kind of directory entry --
+        checked via ``os.lstat`` (symlink-aware: a symlink counts as an
+        existing entry, even a dangling one that would otherwise fool a
+        followed-symlink ``exists()`` check). This replaces the OLD per-
+        final-name existence checks: under the new output contract, ``--out``
+        is a single unit that either does not exist yet (may proceed) or
+        already exists (refuse) -- there is no longer a notion of some of
+        its three files existing and others not.
 
-    Returns ``(out_bin_path, out_log_path, ledger_path)`` for the caller to
-    use as the actual (non-resolved) write targets -- the FINAL names, not
-    the staging names (the caller derives the staging names itself for the
-    actual staged writes).
+    (c) ``out_dir``'s PARENT does not already exist. This tool no longer
+        creates ``--out``'s parent (no ``mkdir(parents=True)`` any more) --
+        the fd-pinning guarantee in :func:`sanitize_capture` requires a real,
+        already-existing parent directory to open and hold open (via
+        ``os.open(..., O_NOFOLLOW)``) for the duration of the run.
+
+    Returns ``(out_bin_path, out_log_path, ledger_path)`` -- the FINAL
+    output paths, for the caller's bookkeeping and for the eventual
+    :class:`SanitizeResult`. Only their ``.name`` (basename) is used for the
+    actual fd-relative writes; the caller never re-traverses these Path
+    objects to perform a write.
     """
-    inputs: list[tuple[str, Path, Path]] = [("capture", bin_path, bin_path.resolve())]
+    inputs: list[tuple[str, Path]] = [("capture", bin_path.resolve())]
     if log_path is not None:
-        inputs.append(("log", log_path, log_path.resolve()))
+        inputs.append(("log", log_path.resolve()))
+
+    out_dir_resolved = out_dir.resolve()
+    for in_label, resolved_in in inputs:
+        if out_dir_resolved == resolved_in.parent:
+            raise SanitizeError(
+                f"refusing to write: --out ({out_dir}) resolves to the same "
+                f"directory as the input {in_label}'s own directory "
+                f"({resolved_in.parent}) -- writing there would overwrite "
+                f"the pristine quarantined {in_label}; choose a different "
+                "--out directory"
+            )
 
     out_bin_path = out_dir / bin_path.name
     out_log_path = out_dir / log_path.name if log_path is not None else None
     ledger_path = out_dir / "sanitization.json"
 
-    def _staging(path: Path) -> Path:
-        return path.with_name(path.name + ".tmp")
+    try:
+        os.lstat(out_dir)
+    except FileNotFoundError:
+        pass
+    else:
+        raise SanitizeError(
+            f"refusing to write: --out directory {out_dir} already exists -- "
+            "under the current output contract the --out directory must NOT "
+            "exist (the sanitized bin/log/ledger are published as one new "
+            "directory, atomically); choose a fresh --out path"
+        )
 
-    outputs: list[tuple[str, Path]] = [
-        ("bin", out_bin_path),
-        ("bin staging", _staging(out_bin_path)),
-    ]
-    if out_log_path is not None:
-        outputs.append(("log", out_log_path))
-        outputs.append(("log staging", _staging(out_log_path)))
-    outputs.append(("ledger", ledger_path))
-    outputs.append(("ledger staging", _staging(ledger_path)))
-
-    for out_label, out_path in outputs:
-        resolved_out = out_path.resolve()
-        for in_label, in_path, resolved_in in inputs:
-            if resolved_out == resolved_in:
-                raise SanitizeError(
-                    f"refusing to write: the output {out_label} path "
-                    f"({out_path}) resolves to the same file as the input "
-                    f"{in_label} ({in_path}) -- this would overwrite the "
-                    f"pristine quarantined {in_label}; choose a different "
-                    "--out directory"
-                )
-
-    for out_label, out_path in outputs:
-        if out_path.exists():
-            raise SanitizeError(
-                f"refusing to write: output path {out_path} already exists -- "
-                "choose a fresh --out directory rather than overwrite a "
-                "previous output set"
-            )
+    parent = out_dir.parent
+    if not parent.is_dir():
+        raise SanitizeError(
+            f"refusing to write: --out's parent directory ({parent}) does "
+            "not exist -- this tool creates --out itself but not its "
+            "parent; create the parent directory first, then re-run"
+        )
 
     return out_bin_path, out_log_path, ledger_path
 
 
-def _open_staging_fd(path: Path) -> int:
-    """Open ``path`` (a ``<final-name>.tmp`` staging path) for exclusive,
-    symlink-refusing creation -- the race-free guarantee behind the up-front
-    checks in :func:`_check_output_paths`.
-
-    ``O_EXCL`` refuses ANY pre-existing directory entry at ``path`` -- a
-    regular file, a symlink, a FIFO, anything -- atomically: the kernel
-    either creates a brand-new entry or fails, with no window in which a
-    planted entry could be followed or clobbered. This holds even when the
-    entry was planted, or a plain ``exists()`` check raced, after
-    :func:`_check_output_paths` already ran.
-
-    ``O_NOFOLLOW`` is belt-and-braces on top of ``O_EXCL``: if the staging
-    path's last component is itself a symlink, the open fails (``ELOOP``)
-    rather than following it and writing through to whatever it points at --
-    e.g. a symlink planted at the sanitized-bin staging name pointing back at
-    the pristine quarantined input, which a plain ``write_bytes``/
-    ``open(..., "wb")`` would follow and irreversibly overwrite.
-
-    Raises :class:`SanitizeError` naming the staging path and directing the
-    operator to a fresh ``--out`` directory whenever the open fails for any
-    reason (pre-existing entry of any kind, symlink, permission, etc).
-    """
+def _resolve_parent_strict(out_dir: Path) -> Path:
+    """Resolve ``out_dir``'s parent to a canonical, symlink-free path,
+    strictly (raising if it does not actually exist right now). This is the
+    first half of the fd-pinning guarantee (see :func:`_open_parent_dir_fd`):
+    resolving separately from opening leaves a tiny window between the two
+    (documented, out-of-scope residual -- see :func:`sanitize_capture`'s
+    docstring), but the ``O_NOFOLLOW`` on the subsequent open closes it for
+    the specific case of the final path component being swapped for a
+    symlink in that window."""
     try:
-        return os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        return out_dir.parent.resolve(strict=True)
     except OSError as exc:
         raise SanitizeError(
-            f"refusing to write: could not create staging path {path} "
-            f"exclusively ({exc.strerror or exc}) -- it may already exist as "
-            "a file, symlink, or other entry (possibly planted, or created "
-            "by a race, after the up-front output-path check); choose a "
+            f"refusing to write: --out's parent directory ({out_dir.parent}) "
+            f"could not be resolved ({exc.strerror or exc}) -- create it "
+            "first, then re-run"
+        ) from exc
+
+
+def _open_parent_dir_fd(parent_resolved: Path) -> int:
+    """Open ``parent_resolved`` ONCE and return a directory file descriptor
+    pinned to it. Every subsequent output filesystem operation goes through
+    this fd (or the staging-directory fd derived from it) via the
+    ``dir_fd=``-taking ``os.*`` calls, never through ``out_dir``'s pathname
+    again -- so a rename-and-symlink swap of ``out_dir``'s parent performed
+    AFTER this call (e.g. by an attacker who moves the real directory aside
+    and plants a symlink at its old name pointing at an input's quarantine
+    directory) cannot redirect any later write: the fd stays bound to the
+    original directory's inode regardless of what its old pathname now
+    refers to. ``O_NOFOLLOW`` refuses to open if the pathname's last
+    component is itself a symlink at open time."""
+    try:
+        return os.open(str(parent_resolved), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise SanitizeError(
+            f"refusing to write: could not open --out's parent directory "
+            f"{parent_resolved} ({exc.strerror or exc})"
+        ) from exc
+
+
+def _assert_absent_fd(parent_fd: int, name: str, *, message: str) -> None:
+    """Authoritative, race-free existence check: ``os.stat(name, dir_fd=...,
+    follow_symlinks=False)`` is an ``fstatat(..., AT_SYMLINK_NOFOLLOW)`` --
+    it inspects the directory entry itself (lstat semantics), so a symlink
+    at ``name`` counts as "existing" even when it is dangling (its target
+    does not exist). Raises :class:`SanitizeError` with ``message`` whenever
+    anything at all is found there; a clean ``FileNotFoundError`` is the
+    only success case."""
+    try:
+        os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    raise SanitizeError(message)
+
+
+def _make_staging_dir(parent_fd: int, staging_name: str) -> int:
+    """Create the sibling staging directory ``<out>.staging`` and open it,
+    both fd-relative to the already-pinned parent directory fd -- the
+    staging unit every output file is written into before the single
+    atomic publish (see :func:`_publish_staging_dir`).
+
+    ``os.mkdir(..., dir_fd=parent_fd)`` fails closed (``FileExistsError``)
+    on ANY pre-existing entry at ``staging_name`` -- regular file, symlink,
+    or directory -- atomically, independent of the caller's earlier
+    ``_assert_absent_fd`` check (which exists purely for a precise error
+    message in the common, non-racing case). A pre-existing staging entry
+    most often means a prior run crashed between creating the staging
+    directory and completing the final rename; the operator is directed to
+    inspect and delete it by hand rather than have this tool guess whether
+    it is safe to reuse or remove.
+
+    Isolated as its own small function (rather than inlined) so a test can
+    wrap it to plant an entry INSIDE the freshly created, freshly opened
+    staging directory -- proving the ``O_EXCL | O_NOFOLLOW`` staged-file
+    opens (see :func:`_open_staging_fd`) are a real defense-in-depth layer
+    of their own, not merely redundant with this directory-level guard.
+    """
+    try:
+        os.mkdir(staging_name, dir_fd=parent_fd)
+    except FileExistsError as exc:
+        raise SanitizeError(
+            f"refusing to write: a staging entry already exists at "
+            f"{staging_name!r} next to the requested --out directory -- a "
+            f"prior run may have crashed before completing publish; inspect "
+            f"and delete {staging_name} before retrying"
+        ) from exc
+    except OSError as exc:
+        raise SanitizeError(
+            f"refusing to write: could not create staging directory "
+            f"{staging_name!r} ({exc.strerror or exc})"
+        ) from exc
+
+    try:
+        return os.open(staging_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except OSError as exc:
+        try:
+            os.rmdir(staging_name, dir_fd=parent_fd)
+        except OSError:
+            pass  # best effort -- the open failure below is what we report
+        raise SanitizeError(
+            f"refusing to write: could not open staging directory "
+            f"{staging_name!r} after creating it ({exc.strerror or exc})"
+        ) from exc
+
+
+def _publish_staging_dir(parent_fd: int, staging_name: str, final_name: str) -> None:
+    """Atomically publish the fully-written staging directory as
+    ``final_name`` -- the single rename that makes the whole three-file
+    output set appear at ``--out`` at once (or, on failure, not at all).
+
+    Because the rename SOURCE is a directory, ``rename(2)`` constrains what
+    an entry planted at ``final_name`` in the tiny window between the
+    caller's pre-rename absence re-check and this rename can do -- and
+    never dereferences the destination's final path component in any case:
+
+    * a non-directory entry there (regular file, or a symlink -- dangling
+      or not) makes the rename fail with ``ENOTDIR``: the symlink is never
+      followed, nothing is written anywhere, and the caller's cleanup
+      removes the fully-written staging set;
+    * an EMPTY directory there is atomically replaced -- the sanitized set
+      still lands at ``--out`` inside the pinned parent;
+    * a non-empty directory there makes the rename fail
+      (``ENOTEMPTY``/``EEXIST``), same fail-closed outcome as above.
+
+    In every case the quarantined input (reachable only through a wholly
+    different, already-pinned path) is untouchable through the destination
+    name. A rename failure is wrapped as :class:`SanitizeError` so the CLI
+    still exits cleanly rather than with a traceback.
+
+    Isolated as its own function -- rather than an inline ``os.rename`` call
+    -- so a test can monkeypatch exactly this publish boundary to simulate a
+    fault there, without touching any other ``os.rename`` call in the
+    process."""
+    try:
+        os.rename(staging_name, final_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+    except OSError as exc:
+        raise SanitizeError(
+            f"refusing to publish: could not rename the staging directory "
+            f"{staging_name!r} onto the final --out name ({exc.strerror or exc}) "
+            "-- an entry may have appeared at the --out name during the run; "
+            "the staged outputs have been cleaned up, re-run with a fresh --out"
+        ) from exc
+
+
+def _open_staging_fd(staging_fd: int, basename: str) -> int:
+    """Create ``basename`` exclusively inside the staging directory (fd
+    ``staging_fd``, itself fd-relative to the pinned parent -- see
+    :func:`_make_staging_dir`) -- the race-free guarantee behind the
+    directory-level checks in :func:`_make_staging_dir`.
+
+    ``O_EXCL`` refuses ANY pre-existing directory entry at ``basename``
+    inside the staging directory -- a regular file, a symlink, a FIFO,
+    anything -- atomically: the kernel either creates a brand-new entry or
+    fails, with no window in which a planted entry could be followed or
+    clobbered. This holds even when the entry was planted (e.g. by a racing
+    process, or a bug) after the staging directory itself was created and
+    opened.
+
+    ``O_NOFOLLOW`` is belt-and-braces on top of ``O_EXCL``: if ``basename``
+    is itself a symlink, the open fails rather than following it and
+    writing through to whatever it points at -- e.g. a symlink planted at
+    the sanitized-bin basename pointing back at the pristine quarantined
+    input, which a plain ``write_bytes``/``open(..., "wb")`` would follow
+    and irreversibly overwrite.
+
+    Raises :class:`SanitizeError` naming ``basename`` whenever the open
+    fails for any reason (pre-existing entry of any kind, symlink,
+    permission, etc).
+    """
+    try:
+        return os.open(
+            basename,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o644,
+            dir_fd=staging_fd,
+        )
+    except OSError as exc:
+        raise SanitizeError(
+            f"refusing to write: could not create {basename!r} exclusively "
+            f"inside the staging directory ({exc.strerror or exc}) -- an "
+            "unexpected entry appeared there (possibly planted, or created "
+            "by a race) after the staging directory was created; choose a "
             "fresh --out directory"
         ) from exc
 
 
-def _write_staged_bytes(path: Path, data: bytes) -> None:
-    """Create ``path`` exclusively (see :func:`_open_staging_fd`) and write
-    binary ``data`` through the resulting file descriptor."""
-    fd = _open_staging_fd(path)
+def _write_staged_bytes(staging_fd: int, basename: str, data: bytes) -> None:
+    """Create ``basename`` exclusively inside the staging directory (see
+    :func:`_open_staging_fd`) and write binary ``data`` through the
+    resulting file descriptor."""
+    fd = _open_staging_fd(staging_fd, basename)
     with os.fdopen(fd, "wb") as f:
         f.write(data)
 
 
-def _write_staged_text(path: Path, text: str) -> None:
-    """Create ``path`` exclusively (see :func:`_open_staging_fd`) and write
-    text ``text`` (UTF-8) through the resulting file descriptor."""
-    fd = _open_staging_fd(path)
+def _write_staged_text(staging_fd: int, basename: str, text: str) -> None:
+    """Create ``basename`` exclusively inside the staging directory (see
+    :func:`_open_staging_fd`) and write text ``text`` (UTF-8) through the
+    resulting file descriptor."""
+    fd = _open_staging_fd(staging_fd, basename)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -922,18 +1104,33 @@ def sanitize_capture(
       CR, LF, NUL, and TAB) and DEL (0x7f) is rejected.
     * length-preserving redaction is requested but the token's length does
       not match the original field's length.
-    * any of the (up to three) output paths -- the sanitized bin, the
-      sanitized log, or ``sanitization.json`` -- OR their ``.tmp`` staging
-      counterparts, would resolve to the same file as an input path (this
-      would overwrite the pristine quarantined capture/log), or any of them
-      already exists (no clobbering a previous output set, and no writing
-      through a bystander file already sitting at a staging name) -- choose a
-      fresh ``--out`` directory. These up-front checks cover the common case
-      with a precise message; independent of them, every staging file is
-      actually created via ``os.open`` with ``O_EXCL | O_NOFOLLOW``, so a
-      racing or pre-planted entry (symlink or otherwise) at a staging name
-      fails closed at creation time too -- it is never followed and never
-      silently overwritten.
+    * ``out_dir`` (``--out``) resolves to an input's own parent directory
+      (this would overwrite the pristine quarantined capture/log).
+    * ``out_dir`` already exists as ANY kind of directory entry -- file,
+      directory, or symlink (even a dangling one) -- under the current
+      output contract ``--out`` must NOT already exist; the sanitized bin,
+      log, and ledger are published as one new directory, atomically.
+      Choose a fresh ``--out`` path.
+    * ``out_dir``'s PARENT does not already exist -- this tool creates
+      ``--out`` itself but never its parent (no more
+      ``mkdir(parents=True)``); create the parent first.
+    * a sibling staging directory, ``<out>.staging``, already exists (any
+      kind of entry) -- most often because a prior run crashed before
+      completing its single publish rename; inspect and delete it by hand
+      before retrying.
+
+      These are the up-front, precise-message checks; the AUTHORITATIVE
+      guarantee is fd-relative and race-free: ``--out``'s parent is resolved
+      and opened (``O_NOFOLLOW``) exactly ONCE, early, into a pinned
+      directory file descriptor, and every later filesystem operation for
+      output -- the existence checks above, staging-directory creation, the
+      three staged file creations (``O_EXCL | O_NOFOLLOW``), and the final
+      publish -- goes through that fd (or the staging-directory fd derived
+      from it), never through ``out_dir``'s pathname again. This defeats a
+      parent-directory swap performed by an attacker AFTER these checks:
+      renaming ``out_dir``'s parent aside and symlinking a new one in its
+      place cannot redirect any later write, because the pin already holds
+      the original directory open by inode, not by name.
     * the sanitized capture's structure (envelope count, control-token
       sequence -- and, under length-preserving redaction, control-token byte
       offsets and total length -- record-type sequence, per-record field
@@ -950,6 +1147,25 @@ def sanitize_capture(
     output (no timestamps are written into either); the ledger's
     ``created_at`` is a date, not a timestamp, so same-day reruns are also
     byte-identical.
+
+    Residual, documented honestly (not fixed, because it cannot cause
+    input-overwrite or a partial output): an entry planted at the final
+    ``--out`` name in the tiny window between the pre-rename best-effort
+    re-check and the rename itself changes only WHETHER the publish
+    succeeds, never WHERE anything is written. Because the rename source is
+    a directory, ``rename(2)`` fails ``ENOTDIR`` on a non-directory entry
+    there (a symlink -- dangling or not -- is never dereferenced, and the
+    run refuses with the staging set cleaned up), fails ``ENOTEMPTY``/
+    ``EEXIST`` on a non-empty directory, and atomically replaces only an
+    EMPTY directory (in which case the set still lands as a real directory
+    inside the pinned parent). No input is ever reachable through the
+    destination name in any of these cases. Separately, the window
+    between ``out_dir.parent.resolve()`` and the subsequent ``os.open`` pin
+    is itself before validation completes; it is closed for the *final*
+    path component by ``O_NOFOLLOW``, but a swap of an *intermediate*
+    directory component earlier in the path, timed to land inside that
+    specific window, is out of scope (pre-validation; no fd is pinned yet
+    to defend with).
     """
     bin_path = Path(bin_path)
     log_path = Path(log_path) if log_path is not None else None
@@ -965,143 +1181,197 @@ def sanitize_capture(
         bin_path=bin_path, log_path=log_path, out_dir=out_dir
     )
 
-    if cls not in TOKEN_CLASSES:
-        raise SanitizeError(
-            f"unknown token class {cls!r}; choose one of {sorted(TOKEN_CLASSES)}"
-        )
-    if field < 1:
-        raise SanitizeError("field must be a 1-based ASTM field number (>= 1)")
-
-    if not bin_path.is_file():
-        raise SanitizeError(f"capture file not found: {bin_path}")
-    raw = bin_path.read_bytes()
-
-    original_structure = _parse_structure(raw)
-    if not original_structure.envelopes:
-        raise SanitizeError(
-            f"{bin_path.name} contains no ASTM envelopes (no ENQ..EOT session found)"
-        )
-
-    occurrences = _find_occurrences(original_structure, record=record, field=field)
-    if not occurrences:
-        raise SanitizeError(
-            f"{record}.{field} is absent or empty in every envelope of "
-            f"{bin_path.name} -- nothing to redact"
-        )
-
-    occ_values = {occ.value for occ in occurrences}
-    external = _find_external_occurrence(original_structure, record=record, field=field, values=occ_values)
-    if external is not None:
-        ext_record, ext_field, ext_value = external
-        raise SanitizeError(
-            f"refusing to sanitize: the addressed {record}.{field} value also "
-            f"appears at {ext_record}.{ext_field}; redact that field too -- the "
-            "capture cannot be emitted safely from a single addressed-field "
-            "redaction"
-        )
-
-    resolved_token = token if token is not None else f"{TOKEN_CLASSES[cls]}{ordinal}"
-    _validate_token(resolved_token)
-    token_bytes = resolved_token.encode("ascii")
-
-    if length_preserving:
-        for occ in occurrences:
-            original_len = occ.end - occ.start
-            if original_len != len(token_bytes):
-                raise SanitizeError(
-                    "length-preserving redaction requires a token of exactly "
-                    f"{original_len} byte(s) to match the original {record}.{field} "
-                    f"value (got token length {len(token_bytes)}); supply an "
-                    "exact-length --token"
-                )
-
-    new_raw = _apply_redactions(raw, occurrences, token_bytes)
-
-    candidate_structure = _parse_structure(new_raw)
-    _verify_structure(original_structure, candidate_structure, length_preserving=length_preserving)
-
-    distinct_values = sorted({occ.value for occ in occurrences})
-
-    new_log_text: str | None = None
-    if log_path is not None:
-        if not log_path.is_file():
-            raise SanitizeError(f"annotated log file not found: {log_path}")
-        log_text = log_path.read_text(encoding="utf-8")
-        new_log_text = _rewrite_log(
-            log_text,
-            raw=raw,
-            new_raw=new_raw,
-            occurrences=occurrences,
-            token=resolved_token,
-            distinct_values=distinct_values,
-        )
-
-    ledger = _build_ledger(
-        input_name=bin_path.name,
-        input_bytes=raw,
-        output_name=bin_path.name,
-        output_bytes=new_raw,
-        record=record,
-        field=field,
-        cls=cls,
-        token=resolved_token,
-        length_preserving=length_preserving,
-        occurrences=len(occurrences),
-    )
-
-    _assert_no_pristine_leak(
-        distinct_values=distinct_values,
-        resolved_token=resolved_token,
-        new_raw=new_raw,
-        new_log_text=new_log_text,
-        ledger=ledger,
-    )
-
-    # All verification passed -- now, and only now, write outputs. Staged
-    # publish: write every output to a sibling ``.tmp`` file first, then
-    # ``os.replace`` each temp onto its final name only after ALL temps are
-    # fully written -- so bin, log, and ledger are never left as a partial or
-    # mismatched set if a mid-sequence failure (e.g. disk full) strikes while
-    # writing the second or third file. Temp files are cleaned up (best
-    # effort) if anything fails before every replace has happened.
-    #
-    # Every temp is created via _write_staged_bytes/_write_staged_text, which
-    # open it with O_EXCL | O_NOFOLLOW (see _open_staging_fd): this refuses,
-    # race-free, ANY pre-existing entry at the staging name -- a symlink
-    # planted there is never followed (so it can never redirect this write
-    # onto e.g. the pristine input), and a bystander regular file there is
-    # never silently overwritten. _check_output_paths already refuses the
-    # common case (a staging name that already exists) up front, with a
-    # precise message; this is the guarantee that also holds under a race.
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    tmp_bin_path = out_bin_path.with_name(out_bin_path.name + ".tmp")
-    tmp_log_path = out_log_path.with_name(out_log_path.name + ".tmp") if out_log_path is not None else None
-    tmp_ledger_path = ledger_path.with_name(ledger_path.name + ".tmp")
-
-    tmp_written: list[Path] = []
+    # Pin out_dir's parent EARLY -- before any of the slower parsing,
+    # redaction, or ledger-building work below -- specifically so that a
+    # parent-directory swap performed by an attacker (or a buggy caller)
+    # AFTER this point cannot redirect the eventual write: every subsequent
+    # filesystem operation for output goes through this fd (or the staging
+    # fd derived from it), never through out_dir's pathname again. See the
+    # module and function docstrings for the full threat model and the
+    # documented residual.
+    parent_resolved = _resolve_parent_strict(out_dir)
+    parent_fd = _open_parent_dir_fd(parent_resolved)
+    staging_name = out_dir.name + ".staging"
+    staging_fd: int | None = None
     published = False
     try:
-        _write_staged_bytes(tmp_bin_path, new_raw)
-        tmp_written.append(tmp_bin_path)
+        _assert_absent_fd(
+            parent_fd,
+            out_dir.name,
+            message=(
+                f"refusing to write: --out directory {out_dir} already "
+                "exists (fd-relative check) -- the --out directory must not "
+                "exist; choose a fresh --out path"
+            ),
+        )
+        _assert_absent_fd(
+            parent_fd,
+            staging_name,
+            message=(
+                f"refusing to write: a staging entry already exists at "
+                f"{staging_name!r} next to the requested --out directory -- "
+                f"a prior run may have crashed before completing publish; "
+                f"inspect and delete {staging_name} before retrying"
+            ),
+        )
+        staging_fd = _make_staging_dir(parent_fd, staging_name)
+
+        if cls not in TOKEN_CLASSES:
+            raise SanitizeError(
+                f"unknown token class {cls!r}; choose one of {sorted(TOKEN_CLASSES)}"
+            )
+        if field < 1:
+            raise SanitizeError("field must be a 1-based ASTM field number (>= 1)")
+
+        if not bin_path.is_file():
+            raise SanitizeError(f"capture file not found: {bin_path}")
+        raw = bin_path.read_bytes()
+
+        original_structure = _parse_structure(raw)
+        if not original_structure.envelopes:
+            raise SanitizeError(
+                f"{bin_path.name} contains no ASTM envelopes (no ENQ..EOT session found)"
+            )
+
+        occurrences = _find_occurrences(original_structure, record=record, field=field)
+        if not occurrences:
+            raise SanitizeError(
+                f"{record}.{field} is absent or empty in every envelope of "
+                f"{bin_path.name} -- nothing to redact"
+            )
+
+        occ_values = {occ.value for occ in occurrences}
+        external = _find_external_occurrence(original_structure, record=record, field=field, values=occ_values)
+        if external is not None:
+            ext_record, ext_field, ext_value = external
+            raise SanitizeError(
+                f"refusing to sanitize: the addressed {record}.{field} value also "
+                f"appears at {ext_record}.{ext_field}; redact that field too -- the "
+                "capture cannot be emitted safely from a single addressed-field "
+                "redaction"
+            )
+
+        resolved_token = token if token is not None else f"{TOKEN_CLASSES[cls]}{ordinal}"
+        _validate_token(resolved_token)
+        token_bytes = resolved_token.encode("ascii")
+
+        if length_preserving:
+            for occ in occurrences:
+                original_len = occ.end - occ.start
+                if original_len != len(token_bytes):
+                    raise SanitizeError(
+                        "length-preserving redaction requires a token of exactly "
+                        f"{original_len} byte(s) to match the original {record}.{field} "
+                        f"value (got token length {len(token_bytes)}); supply an "
+                        "exact-length --token"
+                    )
+
+        new_raw = _apply_redactions(raw, occurrences, token_bytes)
+
+        candidate_structure = _parse_structure(new_raw)
+        _verify_structure(original_structure, candidate_structure, length_preserving=length_preserving)
+
+        distinct_values = sorted({occ.value for occ in occurrences})
+
+        new_log_text: str | None = None
+        if log_path is not None:
+            if not log_path.is_file():
+                raise SanitizeError(f"annotated log file not found: {log_path}")
+            log_text = log_path.read_text(encoding="utf-8")
+            new_log_text = _rewrite_log(
+                log_text,
+                raw=raw,
+                new_raw=new_raw,
+                occurrences=occurrences,
+                token=resolved_token,
+                distinct_values=distinct_values,
+            )
+
+        ledger = _build_ledger(
+            input_name=bin_path.name,
+            input_bytes=raw,
+            output_name=bin_path.name,
+            output_bytes=new_raw,
+            record=record,
+            field=field,
+            cls=cls,
+            token=resolved_token,
+            length_preserving=length_preserving,
+            occurrences=len(occurrences),
+        )
+
+        _assert_no_pristine_leak(
+            distinct_values=distinct_values,
+            resolved_token=resolved_token,
+            new_raw=new_raw,
+            new_log_text=new_log_text,
+            ledger=ledger,
+        )
+
+        # All verification passed -- now, and only now, write outputs, all
+        # inside the staging directory pinned above. Every file is created
+        # via _write_staged_bytes/_write_staged_text, which open it with
+        # O_EXCL | O_NOFOLLOW (see _open_staging_fd): this refuses, race-
+        # free, ANY pre-existing entry at that basename inside staging.
+        _write_staged_bytes(staging_fd, out_bin_path.name, new_raw)
 
         if out_log_path is not None:
-            _write_staged_text(tmp_log_path, new_log_text)
-            tmp_written.append(tmp_log_path)
+            _write_staged_text(staging_fd, out_log_path.name, new_log_text)
 
-        _write_staged_text(tmp_ledger_path, json.dumps(ledger, indent=2) + "\n")
-        tmp_written.append(tmp_ledger_path)
+        _write_staged_text(staging_fd, "sanitization.json", json.dumps(ledger, indent=2) + "\n")
 
-        # All temps fully written -- publish: rename each onto its final name.
-        os.replace(tmp_bin_path, out_bin_path)
-        if out_log_path is not None:
-            os.replace(tmp_log_path, out_log_path)
-        os.replace(tmp_ledger_path, ledger_path)
+        # All three staged files are fully written -- best-effort narrowing
+        # re-check that the final --out name is still absent, then publish
+        # the whole staging directory as --out in a single atomic rename.
+        # This is not a full close of the TOCTOU window (see the residual
+        # documented on this function) but it does shrink it right up to
+        # the rename itself.
+        _assert_absent_fd(
+            parent_fd,
+            out_dir.name,
+            message=(
+                f"refusing to write: --out directory {out_dir} already "
+                "exists (fd-relative re-check right before publish) -- the "
+                "--out directory must not exist; choose a fresh --out path"
+            ),
+        )
+        _publish_staging_dir(parent_fd, staging_name, out_dir.name)
         published = True
     finally:
         if not published:
-            for tmp_path_ in tmp_written:
-                tmp_path_.unlink(missing_ok=True)
+            # Best-effort cleanup: remove EVERY entry actually present inside
+            # staging (enumerated via os.scandir on the fd itself, not a
+            # fixed list of names this function meant to write) -- this
+            # covers both the normal case (our own partially-written files)
+            # and a planted/unexpected entry (e.g. a test seam, or a race)
+            # that appeared inside staging before or during this run --
+            # then the (now-empty) staging directory itself, so <out> never
+            # exists after a failure and <out>.staging is not left behind
+            # for any failure this process can itself detect and unwind (a
+            # truly pathological failure -- e.g. the process being killed --
+            # can still leave it; that is the documented crashed-prior-run
+            # posture a subsequent run's up-front check surfaces).
+            if staging_fd is not None:
+                try:
+                    entries = list(os.scandir(staging_fd))
+                except OSError:
+                    entries = []
+                for entry in entries:
+                    try:
+                        os.unlink(entry.name, dir_fd=staging_fd)
+                    except OSError:
+                        try:
+                            os.rmdir(entry.name, dir_fd=staging_fd)
+                        except OSError:
+                            pass  # best effort -- leave it for manual inspection
+                os.close(staging_fd)
+                try:
+                    os.rmdir(staging_name, dir_fd=parent_fd)
+                except OSError:
+                    pass
+        elif staging_fd is not None:
+            os.close(staging_fd)
+        os.close(parent_fd)
 
     return SanitizeResult(
         bin_path=out_bin_path,
