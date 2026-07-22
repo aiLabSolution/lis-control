@@ -40,6 +40,8 @@ Codex discovers the project skills under `.agents/skills/`:
 - `$bench-capture` - route analyzer bench sessions to the correct capture tool and runbook.
 - `$core-verify` - run OpenELIS core and analyzer-bridge Java verification through Docker Maven.
 - `$pin-bump` - land component changes through the component-to-umbrella pin chain.
+- `$plane-axi` - drive the Plane.so tracker (projects, work items, comments, states,
+  labels, members) through the agent-friendly `plane-axi` CLI.
 - `$work-slice` - execute a Plane slice from claim through review, teardown, and release.
 
 Codex custom agents live under `.codex/agents/`:
@@ -64,8 +66,9 @@ the agent use the model and reasoning settings in its TOML definition.
   `python3 scripts/slice.py claim LIS-NN --task "..." [--start]`; use `heartbeat`
   for long work and `release` on handoff, done, or blocked.
 - Use `scripts/slice.py next` for ready work and `scripts/slice.py show LIS-NN`
-  to read a ticket. Do not use a raw `plane issues list` dump as the front
-  door; the repo docs call out API filtering issues.
+  to read a ticket. Do not use a raw `plane-axi wi list` dump as the front
+  door; it lacks the stage grouping, readiness pre-filter, and claim-ledger
+  view the repo docs require.
 - Issue bodies and markdown progress comments go through
   `scripts/plane_issue.py` (`create` / `update` / `comment`) — state names and
   `LIS-NN` keys are accepted; priorities are the API's string enum.
@@ -162,5 +165,6 @@ available.
 - Keep edits scoped to the repo layer being worked on: umbrella docs/config at
   root, component code inside the relevant submodule, and context docs under
   `contexts/`.
-- If Plane credentials or the bundled Plane CLI are unavailable, report the
+- If Plane credentials or the `plane-axi` CLI are unavailable (`npx -y
+  github:ailabsolution/plane-axi` is the portable fallback), report the
   missing requirement and continue with local code/docs work when possible.

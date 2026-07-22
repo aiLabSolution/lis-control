@@ -35,8 +35,8 @@ python3 scripts/slice.py next          # ready-for-agent ∧ unassigned, stage-o
 python3 scripts/slice.py show LIS-NN   # read the ticket (--comments N, --json)
 ```
 
-Never a raw `plane issues list` dump — the API ignores server-side filters and costs
-~28k tokens (`docs/agents/issue-tracker.md`).
+Never a raw `plane-axi wi list` dump — it has no stage grouping, no ready ∧ unassigned
+pre-filter, and no claim-ledger view (`docs/agents/issue-tracker.md`).
 
 ## 2. Claim
 

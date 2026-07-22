@@ -3,6 +3,9 @@
 .claude/settings.local.json
 .claude/slice-cache.json
 
+# plane-axi per-checkout default project (`plane-axi use LIS`)
+.plane-axi.json
+
 # Local secrets — the .mcp.json openelis-db server reads $OPENELIS_DB_URL.
 # Keep the real connection string (with its password) out of version control;
 # .env.example documents the variable, actual values stay local.

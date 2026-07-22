@@ -4,11 +4,13 @@
 Why this exists
 ---------------
 Agents kept burning ~28k tokens per loop iteration just to answer "what do I work on
-next?": the bundled `plane` CLI's `issues list -f json` returns all ~30 fields on every
-work item (incl. three description variants + timestamps + UUIDs), the `state` comes back
-as a bare UUID that forces a *second* `states` fetch to decode, and the server-side
-`--state`/`--assignee` filters are silently ignored by the Plane API — so the agent pulls
-the whole backlog and filters it in-context. See `docs/agents/issue-tracker.md`.
+next?": the retired bundled `plane` CLI's `issues list -f json` returned all ~30 fields
+on every work item (incl. three description variants + timestamps + UUIDs), the `state`
+came back as a bare UUID that forced a *second* `states` fetch to decode, and the
+server-side `--state`/`--assignee` filters are silently ignored by the Plane API — so
+the agent pulled the whole backlog and filtered it in-context. Today's `plane-axi wi
+list` is compact, but it still has no stage grouping, no ready-for-agent ∧ unassigned
+pre-filter, and no claim-ledger view. See `docs/agents/issue-tracker.md`.
 
 This helper does all of that **inside the subprocess** using the Plane REST API's
 `?fields=` (trim) and `?expand=state` (inline the name) — so only a tiny, already-filtered,

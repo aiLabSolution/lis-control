@@ -19,14 +19,15 @@ context); this is the detail.
 ## The loop
 
 Run with `/loop` self-paced (no interval) so each iteration re-reads the issue before
-acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plane` CLI per
-`docs/agents/issue-tracker.md`. One iteration:
+acting. The Python scripts resolve the project from `.claude/plane-context.json`;
+ad-hoc tracker ops go through the `plane-axi` CLI per `docs/agents/issue-tracker.md`.
+One iteration:
 
 1. **Select** — the slice is the current `.claude/plane-context.json` issue, or pick one from
    `python3 scripts/slice.py next` (ready-for-agent ∧ unassigned, grouped by stage and
    priority-sorted — prefer the **earliest open stage**, that's the startable work). Don't use
-   raw `plane issues list --state <…>`: the API ignores that filter and returns everything
-   (`docs/agents/issue-tracker.md`).
+   a raw `plane-axi wi list` dump: it has no stage grouping, no ready ∧ unassigned
+   pre-filter, and no claim-ledger view (`docs/agents/issue-tracker.md`).
 2. **Set up the workspace** (first iteration) — ensure the slice worktree + branch exist;
    create them from an up-to-date `main` if not:
    ```bash
@@ -46,7 +47,7 @@ acting. Resolve `PROJECT_ID` from `.claude/plane-context.json` and run the `plan
    landed earlier the command withdraws and exits non-zero. If another agent already
    holds a live claim, `claim` refuses (cooperative lock) — take a different sub-task, or
    `--force` to share the slice and partition by sub-item. For full history,
-   `plane comments list --all` still works.
+   `plane-axi comment list LIS-NN --all` still works.
 4. **Work one increment** toward the acceptance criteria. For code, follow `/tdd`
    (red→green→refactor) and the relevant `CONTEXT.md` glossary (`docs/agents/domain.md`).
    Keep the increment small enough to commit cleanly.
@@ -75,7 +76,7 @@ or in separate worktrees on the same branch. The Plane issue is the coordination
   cooperative lock: `claim` refuses without `--force`. Claims carry a **TTL**, so an expired
   claim is automatically reclaimable.
 - **Partition by sub-item.** Split a slice into Plane sub-items
-  (`plane issues create -p PROJECT_ID --name "…" --parent <key>`); each session owns disjoint
+  (`plane-axi wi create --title "…" --parent <key>`); each session owns disjoint
   sub-items → disjoint files. This is the unit of parallelism.
 - **Same worktree = one working tree and index.** Only one session runs mutating git ops
   (commit / rebase) at a time, and never edit the same file concurrently. Announce long

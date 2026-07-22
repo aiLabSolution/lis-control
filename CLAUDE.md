@@ -12,7 +12,7 @@ Context index: `CONTEXT-MAP.md`.
 
 ### Issue tracker
 
-Issues and PRDs are tracked in Plane.so, driven via the bundled `plane` CLI (the `/plane` skill). See `docs/agents/issue-tracker.md`.
+Issues and PRDs are tracked in Plane.so, driven via the `plane-axi` CLI (the `/plane-axi` skill, tracked in-repo). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -22,7 +22,7 @@ Five canonical triage roles, mapped onto Plane workflow states. See `docs/agents
 
 Work each Plane slice (`LIS-NN`) as a self-paced `/loop`: find, read & claim the next slice
 with `scripts/slice.py next` / `show` / `claim` (the cheap, structured front door — **not**
-a raw `plane issues list` dump) → work increments in a **dedicated worktree** → push to the
+a raw `plane-axi wi list` dump) → work increments in a **dedicated worktree** → push to the
 slice branch → log progress on the issue (`scripts/plane_issue.py comment` for markdown) →
 open a PR. Non-negotiables:
 
