@@ -39,6 +39,18 @@ class ComposeRecipeTests(unittest.TestCase):
         self.assertIn("/var/lib/openelis-global/programs", isolation)
         self.assertIn("lis-local-ci-openelis-programs", isolation)
 
+    def test_final_overlay_redirects_configuration_bind_from_checkout(self):
+        # docker-compose.yml binds ./configuration into the webapp; the source
+        # directory is absent at current pins, so Docker would create it as a
+        # root-owned directory inside the core checkout (caught live by the
+        # ownership guard on the first local Stage-4 run).
+        isolation = (REPO_ROOT / "deploy/ci/compose.local-ci-openelis.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("/var/lib/openelis-global/configuration", isolation)
+        self.assertIn("lis-local-ci-openelis-configuration", isolation)
+        self.assertIn("lis-local-ci-openelis-configuration", stacks.PROOF_VOLUMES)
+
     def test_site_bridge_isolation_overlay_replaces_dev_resources(self):
         overlay = (REPO_ROOT / "deploy/ci/compose.local-ci-bridge.yml").read_text(
             encoding="utf-8"

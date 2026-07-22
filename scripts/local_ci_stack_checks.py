@@ -63,6 +63,7 @@ PROOF_VOLUMES = (
     "lis-proof-openelis-branding",
     "lis-proof-openelis-analyzer-imports",
     "lis-local-ci-openelis-programs",
+    "lis-local-ci-openelis-configuration",
 )
 PROOF_NETWORK = "lis-proof-openelis-default"
 
