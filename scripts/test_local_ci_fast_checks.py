@@ -86,6 +86,38 @@ class ProfileDriftTests(unittest.TestCase):
         (self.control / "deploy/ci").mkdir(parents=True)
         self.allowlist = self.control / "deploy/ci/profile-drift-allowlist.txt"
         self.allowlist.write_text("", encoding="utf-8")
+        self.core_x3 = (
+            self.core / "projects/analyzer-profiles/astm/snibe-maglumi-x3.json"
+        )
+        self.kit_x3 = self.kit / "configs/analyzer-profiles/astm/snibe-maglumi-x3.json"
+        self.core_x3.parent.mkdir(parents=True)
+        self.kit_x3.parent.mkdir(parents=True)
+        valid_x3 = {
+            "profileMeta": {"version": "0.2.0"},
+            "default_test_mappings": [
+                {
+                    "test_code": "FT3",
+                    "unit": "pmol/L",
+                    "loinc": "14928-6",
+                    "ucum": "pmol/L",
+                },
+                {
+                    "test_code": "FT4 II",
+                    "unit": "ng/dL",
+                    "loinc": "3024-7",
+                    "ucum": "ng/dL",
+                },
+                {
+                    "test_code": "TSH II",
+                    "unit": "uIU/mL",
+                    "loinc": "3016-3",
+                    "ucum": "u[IU]/mL",
+                },
+            ],
+        }
+        encoded_x3 = json.dumps(valid_x3)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
 
     def test_equal_profiles_pass_and_core_only_is_informational(self):
         (self.core_profiles / "same.json").write_text("{}", encoding="utf-8")
@@ -102,11 +134,75 @@ class ProfileDriftTests(unittest.TestCase):
         self.assertIn("profile drift", str(caught.exception))
         self.assertIn("kit-only", str(caught.exception))
 
-    def test_allowlist_accepts_drift_with_reason(self):
+    def test_self_consistent_stale_x3_dictionary_is_rejected(self):
+        stale_x3 = {
+            "profileMeta": {"version": "0.2.0"},
+            "default_test_mappings": [
+                {
+                    "test_code": "FT4",
+                    "unit": "pmol/L",
+                    "loinc": "14920-3",
+                    "ucum": "pmol/L",
+                }
+            ],
+        }
+        encoded_x3 = json.dumps(stale_x3)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
+
+        with self.assertRaisesRegex(fast.FastCheckError, "LIS-75.*FT4 II"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_stale_x3_profile_version_is_rejected_independently(self):
+        stale_version = json.loads(self.core_x3.read_text(encoding="utf-8"))
+        stale_version["profileMeta"]["version"] = "0.1.0"
+        encoded_x3 = json.dumps(stale_version)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
+
+        with self.assertRaisesRegex(fast.FastCheckError, "required version 0.2.0"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_missing_x3_profile_is_rejected(self):
+        self.core_x3.unlink()
+        self.kit_x3.unlink()
+        with self.assertRaisesRegex(fast.FastCheckError, "required X3 profile"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_notes_only_allowlist_accepts_notes_drift(self):
+        (self.core_profiles / "drift.json").write_text(
+            '{"v": 1, "notes": "core provenance"}', encoding="utf-8"
+        )
+        (self.kit_profiles / "drift.json").write_text(
+            '{"v": 1, "notes": "kit provenance"}', encoding="utf-8"
+        )
+        self.allowlist.write_text(
+            "hl7/drift.json notes-only LIS-99 provenance wording\n", encoding="utf-8"
+        )
+        fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_notes_only_allowlist_rejects_runtime_drift(self):
         (self.core_profiles / "drift.json").write_text('{"v": 1}', encoding="utf-8")
         (self.kit_profiles / "drift.json").write_text('{"v": 2}', encoding="utf-8")
-        self.allowlist.write_text("hl7/drift.json LIS-99 intentional\n", encoding="utf-8")
+        self.allowlist.write_text(
+            "hl7/drift.json notes-only LIS-99 provenance wording\n", encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(fast.FastCheckError, "outside notes-only scope"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_full_file_allowlist_requires_explicit_scope(self):
+        (self.core_profiles / "drift.json").write_text('{"v": 1}', encoding="utf-8")
+        (self.kit_profiles / "drift.json").write_text('{"v": 2}', encoding="utf-8")
+        self.allowlist.write_text(
+            "hl7/drift.json full-file LIS-99 intentional\n", encoding="utf-8"
+        )
         fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_allowlist_rejects_unknown_scope(self):
+        self.allowlist.write_text("hl7/drift.json everything nope\n", encoding="utf-8")
+        with self.assertRaisesRegex(fast.FastCheckError, "scope must be"):
+            fast.read_allowlist(self.allowlist)
 
     def test_allowlist_rejects_parent_traversal(self):
         self.allowlist.write_text("../escape.json nope\n", encoding="utf-8")
@@ -273,6 +369,16 @@ class ComposeRenderTests(unittest.TestCase):
 
 
 class DeployKitConfigTests(unittest.TestCase):
+    def test_hosted_workflow_uses_shared_profile_drift_check(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github/workflows/deploy-kit-config.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 scripts/local_ci_fast_checks.py profile-drift", workflow
+        )
+        self.assertIn("- scripts/local_ci_fast_checks.py", workflow)
+
     @mock.patch("local_ci_fast_checks.render_compose_models")
     @mock.patch("local_ci_fast_checks.run_wrapper_harnesses")
     @mock.patch("local_ci_fast_checks.shellcheck")
@@ -348,6 +454,16 @@ class BridgeTests(unittest.TestCase):
 
 
 class MainTests(unittest.TestCase):
+    @mock.patch("local_ci_fast_checks.check_profile_drift")
+    def test_profile_drift_uses_explicit_component_paths(self, drift):
+        self.assertEqual(
+            fast.main(["profile-drift", "--checkout", "/exact-umbrella"]), 0
+        )
+        control = Path("/exact-umbrella")
+        drift.assert_called_once_with(
+            control, control / "core/openelis", control / "deploy/kit"
+        )
+
     @mock.patch("local_ci_fast_checks.run_checked")
     def test_edge_sim_uses_frozen_python_312_uv_command(self, run):
         with tempfile.TemporaryDirectory() as tmp:

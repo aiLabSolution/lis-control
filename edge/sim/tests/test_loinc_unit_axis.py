@@ -19,9 +19,31 @@ keeps the X3 panel from silently dropping out of that coverage.
 """
 
 import json
+import os
 from pathlib import Path
 
+import pytest
+
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
+UMBRELLA_ROOT = Path(__file__).resolve().parents[3]
+SHIPPED_X3_PROFILES = (
+    UMBRELLA_ROOT
+    / "core/openelis/projects/analyzer-profiles/astm/snibe-maglumi-x3.json",
+    UMBRELLA_ROOT
+    / "deploy/kit/configs/analyzer-profiles/astm/snibe-maglumi-x3.json",
+)
+PROFILE_COVERAGE_MODE = "LIS_X3_PROFILE_COVERAGE"
+
+LIS_75_X3_BENCH_DICTIONARY = [
+    ("FT3", "pmol/L", "14928-6"),
+    ("FT4 II", "ng/dL", "3024-7"),
+    ("TSH II", "uIU/mL", "3016-3"),
+]
+EXPECTED_X3_UCUM = [
+    ("FT3", "pmol/L"),
+    ("FT4 II", "ng/dL"),
+    ("TSH II", "u[IU]/mL"),
+]
 
 # LOINC code -> (property axis, long name). Verified against loinc.org, not recall.
 # The mass/molar pairs below are the LIS-299 trap: within a pair the codes differ
@@ -62,20 +84,68 @@ def _observations():
                 yield manifest_path.parent.name, obs.get("raw_code"), unit, loinc
 
 
-def test_every_known_loinc_matches_the_axis_of_its_reported_unit():
-    """No fixture pairs a LOINC with a unit of a different property axis."""
+def _load_shipped_x3_profile(profile_path):
+    """Read a pinned profile, making absence fatal in the deploy-kit job."""
+    if not profile_path.is_file():
+        if os.environ.get(PROFILE_COVERAGE_MODE) == "required":
+            pytest.fail(f"required shipped X3 profile is missing: {profile_path}")
+        pytest.skip(f"pinned component is not checked out: {profile_path}")
+    return json.loads(profile_path.read_text())
+
+
+def test_missing_shipped_profile_skips_unless_coverage_is_required(
+    tmp_path, monkeypatch
+):
+    """The no-submodule job may skip; deploy-kit CI must fail on a missing pin."""
+    missing_profile = tmp_path / "snibe-maglumi-x3.json"
+    monkeypatch.delenv(PROFILE_COVERAGE_MODE, raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        _load_shipped_x3_profile(missing_profile)
+
+    monkeypatch.setenv(PROFILE_COVERAGE_MODE, "required")
+    with pytest.raises(pytest.fail.Exception, match="required shipped X3 profile"):
+        _load_shipped_x3_profile(missing_profile)
+
+
+def _axis_mismatches(observations):
     mismatches = []
-    for fixture, code, unit, loinc in _observations():
+    for source, code, unit, loinc in observations:
         if loinc not in LOINC_AXIS or unit not in UNIT_AXIS:
             continue
         loinc_axis = LOINC_AXIS[loinc][0]
         unit_axis = UNIT_AXIS[unit]
         if loinc_axis != unit_axis:
             mismatches.append(
-                f"{fixture}: {code} reports {unit} ({unit_axis}) but is mapped to "
+                f"{source}: {code} reports {unit} ({unit_axis}) but is mapped to "
                 f"{loinc} which is {loinc_axis} — {LOINC_AXIS[loinc][1]}"
             )
-    assert mismatches == []
+    return mismatches
+
+
+def test_every_known_loinc_matches_the_axis_of_its_reported_unit():
+    """No fixture pairs a LOINC with a unit of a different property axis."""
+    assert _axis_mismatches(_observations()) == []
+
+
+@pytest.mark.parametrize("profile_path", SHIPPED_X3_PROFILES)
+def test_shipped_x3_profile_matches_lis_75_bench_dictionary(profile_path):
+    """Both shipped profiles carry the exact bench dictionary on the right axes."""
+    profile = _load_shipped_x3_profile(profile_path)
+    mappings = profile["default_test_mappings"]
+    observed = [
+        (mapping.get("test_code"), mapping.get("unit"), mapping.get("loinc"))
+        for mapping in mappings
+    ]
+
+    assert observed == LIS_75_X3_BENCH_DICTIONARY
+    assert _axis_mismatches(
+        (profile_path.as_posix(), code, unit, loinc)
+        for code, unit, loinc in observed
+    ) == []
+    assert [
+        (mapping.get("test_code"), mapping.get("ucum")) for mapping in mappings
+    ] == EXPECTED_X3_UCUM
+    assert profile["profileMeta"]["version"] == "0.2.0"
 
 
 def test_x3_thyroid_panel_is_covered():
@@ -102,11 +172,7 @@ def test_x3_thyroid_panel_is_covered():
         "X3 analytes are not covered by the axis check -- add each code's "
         "loinc.org property (and any new unit) to the tables above"
     )
-    assert panel == {
-        ("FT3", "pmol/L", "14928-6"),
-        ("FT4 II", "ng/dL", "3024-7"),
-        ("TSH II", "uIU/mL", "3016-3"),
-    }
+    assert panel == set(LIS_75_X3_BENCH_DICTIONARY)
 
 
 def test_mass_molar_counterparts_are_distinguishable():

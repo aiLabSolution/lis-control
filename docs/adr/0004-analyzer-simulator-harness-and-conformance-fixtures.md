@@ -1,11 +1,16 @@
 # ADR-0004 — Analyzer simulator harness + conformance-fixture skeleton
 
-- **Status:** Accepted
+- **Status:** Accepted — **§1 (placement) superseded by ADR-0024 (2026-07-22)**; all other
+  decisions remain in force
 - **Date:** 2026-06-25
 - **Deciders:** Marloe Uy (aiLabSolution)
 - **Slice:** LIS-9 / S0.7 (Stage 0 — Foundations & compliance scaffold)
 - **Relates to:** ADR-0001 (submodule-umbrella topology); `LIS_IMPLEMENTATION_PLAN.md`
   §1 (verification pyramid, level 2) and §0 Stage 0 deliverables.
+- **Superseded in part by:** ADR-0024 — §1 placed `edge/sim` umbrella-side *"until the
+  `edge/drivers` submodule exists"*. That submodule now exists and is pinned, so the clause has
+  expired; ADR-0024 records the placement unconditionally and states the reasoning. §§2–5 (fixtures
+  as the contract, Python, transport scope, provenance) are **unchanged and still binding**.
 
 ## Context
 

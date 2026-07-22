@@ -2,8 +2,11 @@
 # core/openelis/projects/analyzer-profiles/ at the pinned submodule SHAs
 # (checked by .github/workflows/deploy-kit-config.yml — LIS-116).
 #
-# One entry per line: <path relative to the profile roots> <reason / issue ref>
+# One entry per line: <path relative to roots> <scope> <reason / issue ref>
+# Scope is `notes-only` (only top-level JSON notes may differ) or `full-file`
+# (all content, including a kit-only file, may differ).
 # Example:
-#   hl7/seamaty-sd1.json LIS-1234 kit intentionally ahead pending core PR
+#   hl7/seamaty-sd1.json full-file LIS-1234 kit intentionally ahead pending core PR
 #
 # Empty = kit and core mirrors must be identical for every file the kit carries.
+astm/snibe-maglumi-x3.json notes-only LIS-307/LIS-272 capture-provenance wording; v0.2.0 runtime map and QC configuration are identical
