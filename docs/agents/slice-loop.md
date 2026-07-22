@@ -76,7 +76,7 @@ or in separate worktrees on the same branch. The Plane issue is the coordination
   cooperative lock: `claim` refuses without `--force`. Claims carry a **TTL**, so an expired
   claim is automatically reclaimable.
 - **Partition by sub-item.** Split a slice into Plane sub-items
-  (`plane-axi wi create --title "…" --parent <key>`); each session owns disjoint
+  (`plane-axi wi create --project LIS --title "…" --parent <key>`); each session owns disjoint
   sub-items → disjoint files. This is the unit of parallelism.
 - **Same worktree = one working tree and index.** Only one session runs mutating git ops
   (commit / rebase) at a time, and never edit the same file concurrently. Announce long

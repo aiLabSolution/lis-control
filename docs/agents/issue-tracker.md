@@ -2,8 +2,8 @@
 
 Issues and PRDs for this repo live in **Plane.so**. Drive Plane with the **`plane-axi`**
 CLI (https://github.com/aiLabSolution/plane-axi — the `/plane-axi` Claude skill /
-`$plane-axi` Codex skill, tracked in-repo under `.claude/skills/` and `.agents/skills/`)
-— **not** `gh`, and not the retired bundled `plane` skill CLI.
+`$plane-axi` Codex skill, tracked in-repo under `.claude/skills/`, `.agents/skills/`,
+and `.opencode/skills/`) — **not** `gh`, and not the retired bundled `plane` skill CLI.
 
 ## CLI
 
@@ -101,7 +101,9 @@ coordination protocol — there is no `plane-axi` equivalent.
   for a quick one-liner, `plane-axi comment add LIS-NN --body "..."` (plain text in one
   `<p>` — markdown does not render).
 - **Sub-items**: `python3 scripts/plane_issue.py create --name "..." --parent LIS-NN`
-  (or `plane-axi wi create --title "..." --parent LIS-NN`).
+  (or `plane-axi wi create --project LIS --title "..." --parent LIS-NN` — `--parent`
+  does not select the project, so pass `--project` unless `plane-axi use` has run in
+  this checkout).
 - **Transition triage state**: `plane-axi wi update LIS-NN --state ready-for-agent` —
   state *names* resolve automatically. See `triage-labels.md` for the role → state mapping.
 - **Search**: `plane-axi wi search "query" [--limit N | --all]` — workspace-wide,
