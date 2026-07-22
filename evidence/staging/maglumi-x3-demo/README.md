@@ -7,9 +7,9 @@ the X3 speaks ASTM E1394-97 directly to the bridge, which forwards FHIR to OpenE
 
 **Status: DEMONSTRATED WITH GAPS.** The transport path is proven end to end on a live
 stack — wire → bridge → `/analyzer/fhir` → staged → **technician-accepted final Result**.
-Two acceptance criteria are not met and are not closable from this slice: the LOINC
-dictionary exercised is the harness's proxy, not the bench dictionary (AC2), and QC routing
-is not bench-proven (AC3). Per-AC verdicts are in the table below.
+Two acceptance criteria remain open in the recorded run: AC2 needs a fresh run on the
+current versioned X3 dictionary (the captured run used the older proxy map), while AC3
+still depends on a bench-proven QC marker (LIS-266). Per-AC verdicts are below.
 
 ## AC verdict summary
 
@@ -22,11 +22,11 @@ is not bench-proven (AC3). Per-AC verdicts are in the table below.
 | 5 — raw archive + replay reproduce the result | **MET** | sha256-anchored fixture, `run/prove-site-x3-e2e.log` |
 | 6 — reverse-mapping notes versioned + linked | **MET** | this document; git-pin versioning |
 
-## Pinned versions under demonstration
+## Captured-run and current reproducible pins
 
 The "mapping profile version" this demo records is the git pin — there is no separate
-`profileVersion` key in the X3 profile. Each artifact below is pinned by SHA in the
-umbrella at the commit that carries this record.
+`profileVersion` key in the X3 profile. The files in `run/` were captured against these
+historical pins:
 
 | Component | Path | Pin |
 |---|---|---|
@@ -34,7 +34,17 @@ umbrella at the commit that carries this record.
 | Analyzer bridge | `edge/drivers` | `46e57b9fc631d727eb977b2740de119b9343c04f` |
 | Deploy kit | `deploy/kit` | `579aacb415635c74034a87245f3597f733a096a8` |
 
-Mapping-profile sources at those pins:
+The umbrella commit carrying this record now reproduces the approved successor stack:
+
+| Component | Path | Current pin |
+|---|---|---|
+| OpenELIS core | `core/openelis` | `810bf24b34ac688b8cc187527bc46ac5dd3996aa` |
+| Analyzer bridge | `edge/drivers` | `356bdb289000697c6a647e5dfab5d98879502eee` |
+| Deploy kit | `deploy/kit` | `377f0403fe1fea06d11a09f4fb45f740cc01a2f6` |
+
+The current stack retains the captured evidence as historical proof; it does not relabel
+the old logs as a run against the successor pins. Mapping-profile sources at the current
+pins are:
 
 - `deploy/kit/configs/analyzer-profiles/astm/snibe-maglumi-x3.json` — **authoritative**,
   mounted read-only into OpenELIS at `/data/analyzer-profiles`.
@@ -203,15 +213,18 @@ Two gaps keep this from MET:
    and distinct display names — a deliberate choice to dodge the staged-results dedup
    collapse, but it means the run exercises `1742-6` / `1920-8` / `2345-7` (GPT/ALAT,
    GOT/ASAT, Glucose) rather than the bench dictionary's `14928-6` / `3024-7` / `3016-3`.
-   **No run to date demonstrates the real X3 dictionary reaching OpenELIS.** Closing this
-   needs either an OE catalog seeded with the three real LOINC-bearing tests, or a proof
-   variant that seeds them.
-2. **`ng/dL` yields a blank UCUM.** `FhirBundleBuilder.toUcum` consults the per-analyzer
-   resolver first and falls back to a hardcoded backstop; LIS-119 populated that backstop
-   with `uIU/mL` and `pmol/L` but not `ng/dL`, FT4 II's bench-confirmed unit. The bridge's
-   `configuration.yml` does map it, so a deployment whose per-analyzer map is pushed by
-   registry sync is unaffected — but any deployment relying on the backstop silently emits
-   FT4 II with no coded UCUM. Filed separately rather than widening this slice.
+   **No accepted-result run in this record demonstrates the real X3 dictionary reaching
+   OpenELIS.** Current core and deploy-kit pins now provide the versioned analyzer, tests,
+   mappings, UOM/UCUM values, and an e2e proof that refuses proxy catalog mappings. Closing
+   this gap requires a fresh `prove-site-x3-e2e.sh` → `prove-site-x3-accept.sh` run on those
+   pins, not another implementation change.
+2. **The historical run recorded blank UCUM for `ng/dL`.**
+   `FhirBundleBuilder.toUcum` consults the per-analyzer resolver first and falls back to a
+   hardcoded backstop; LIS-119 populated that backstop with `uIU/mL` and `pmol/L` but not
+   `ng/dL`, FT4 II's bench-confirmed unit. The bridge's `configuration.yml` maps it, and the
+   current versioned analyzer registry/seed supplies `ng/dL` at both raw-unit and
+   canonical-UCUM axes. The fresh current-pin run above must replace this historical blank
+   with the exact value before AC2 moves to MET.
 
 ## AC3 — QC routing — NOT MET
 
@@ -277,11 +290,12 @@ Operational notes learned running it:
   state binds point at a checkout that worktrees treat as disposable. Override with
   `LIS_DEPLOY_ALLOW_WORKTREE=true` for a proof stack, and **`down` the stack before removing
   the worktree**.
-- The demo is **not idempotent across acceptance**. `CLEAN=true` resets staged state only;
-  once results have been accepted, the accept transaction has minted a sample/analysis graph
-  and `analysis` pins the proof analyzer, so it can no longer be dropped. Unwinding that
-  graph means cascading ~30 FK dependents of `sample` alone, which would rot the next time
-  OE adds a table — so `CLEAN` fails closed and tells you to recreate the stack instead.
+- The acceptance proof is **not idempotent across acceptance**. In the current proof,
+  `CLEAN=true` on `prove-site-x3-e2e.sh` deletes only proof-accession staged rows and
+  preserves the migration-owned analyzer/Test/map/UOM/QC seed. If the accession already has
+  accepted finals, `prove-site-x3-accept.sh` detects them before POST and fails closed because
+  it cannot distinguish a new result from stale evidence. Recreate the proof stack before
+  rerunning the acceptance leg.
 - Do not delete that graph by hand in psql. Deleting `sample_human` without its `sample`
   leaves an orphaned sample, and the analyzer-results worklist then throws an NPE
   (`StatusService.setRecordStatus`, `sampleHuman` null) which the REST controller swallows
