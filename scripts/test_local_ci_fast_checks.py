@@ -136,7 +136,7 @@ class ProfileDriftTests(unittest.TestCase):
 
     def test_self_consistent_stale_x3_dictionary_is_rejected(self):
         stale_x3 = {
-            "profileMeta": {"version": "0.1.0"},
+            "profileMeta": {"version": "0.2.0"},
             "default_test_mappings": [
                 {
                     "test_code": "FT4",
@@ -151,6 +151,16 @@ class ProfileDriftTests(unittest.TestCase):
         self.kit_x3.write_text(encoded_x3, encoding="utf-8")
 
         with self.assertRaisesRegex(fast.FastCheckError, "LIS-75.*FT4 II"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_stale_x3_profile_version_is_rejected_independently(self):
+        stale_version = json.loads(self.core_x3.read_text(encoding="utf-8"))
+        stale_version["profileMeta"]["version"] = "0.1.0"
+        encoded_x3 = json.dumps(stale_version)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
+
+        with self.assertRaisesRegex(fast.FastCheckError, "required version 0.2.0"):
             fast.check_profile_drift(self.control, self.core, self.kit)
 
     def test_missing_x3_profile_is_rejected(self):
