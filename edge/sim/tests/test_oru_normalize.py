@@ -12,7 +12,7 @@ import pytest
 
 from edge_sim.fixtures import load_fixture
 from edge_sim.normalize import NormalizedObservation, Normalizer, TerminologyMap
-from edge_sim.oru import OruParseError, parse_oru_r01
+from edge_sim.oru import OruParseError, RawObservation, parse_oru_r01
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RAC050 = FIXTURES_ROOT / "rayto-rac050-oru-r01"
@@ -74,6 +74,33 @@ def test_normalize_transforms_vendor_unit_to_ucum():
     assert wbc.ucum_value == "10*3/uL"
     assert wbc.loinc == "6690-2"
     assert wbc.status == "NORMALIZED"
+
+
+def test_default_normalizer_resolves_bench_confirmed_x3_units_and_preserves_raw_units():
+    rows = [
+        Normalizer().normalize_observation(
+            RawObservation(
+                set_id=str(index),
+                value_type="NM",
+                raw_code="",
+                raw_text="",
+                raw_system="",
+                sub_id="",
+                value="1",
+                raw_unit=raw_unit,
+                reference_range="",
+                abnormal_flags="",
+                status="F",
+            )
+        )
+        for index, raw_unit in enumerate(("uIU/mL", "pmol/L", "ng/dL"), start=1)
+    ]
+
+    assert [(row.raw_unit, row.ucum_value) for row in rows] == [
+        ("uIU/mL", "u[IU]/mL"),
+        ("pmol/L", "pmol/L"),
+        ("ng/dL", "ng/dL"),
+    ]
 
 
 # --- tolerant-parse negatives (plan §1 exit gate) --------------------------
@@ -145,4 +172,3 @@ def test_cli_normalize(capsys):
     assert "LOINC 718-7" in out  # HGB normalized
     assert "UCUM 10*3/uL" in out  # WBC/PLT unit normalized
     assert "[NORMALIZED]" in out
-

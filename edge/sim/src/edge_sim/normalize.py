@@ -114,6 +114,10 @@ _DEFAULT_UNITS: dict[str, str] = {
     "mg/dL": "mg/dL",
     "mmol/L": "mmol/L",
     "U/L": "U/L",  # enzyme catalytic activity (Seamaty SD1 AST/ALT); UCUM unit "U" per litre (LIS-86)
+    # MAGLUMI X3 raw units bench-confirmed under LIS-75; no-config parity for LIS-315.
+    "uIU/mL": "u[IU]/mL",
+    "pmol/L": "pmol/L",
+    "ng/dL": "ng/dL",
 }
 
 

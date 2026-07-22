@@ -17,7 +17,18 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`356bdb2`** — LIS-273 outbound HIS queue privacy
+- **Pin:** untagged **`74bb31d`** — LIS-315 MAGLUMI X3 no-config UCUM fallback
+  (bridge PR `openelis-analyzer-bridge#55`): `FhirBundleBuilder` now maps the
+  LIS-75 bench-confirmed FT4 II unit `ng/dL` to UCUM `ng/dL` when no
+  per-analyzer `unitToUcum` resolver is available, alongside the existing
+  `uIU/mL` and `pmol/L` X3 backstops. The production-path regression asserts
+  all three units, raw-unit preservation, and a non-blank UCUM system; the
+  routed X3 integration test separately proves registry mappings still outrank
+  the fallback. The `edge/sim` mirror carries the same three default mappings
+  and a public-path regression. Adversarial review: APPROVE. Exact-head bridge
+  CI: 2/2 `Run Tests / test` checks green; local bridge suite **1107/0/0/7**,
+  simulator suite **426/0/0/2**.
+- **Prior pin:** untagged **`356bdb2`** — LIS-273 outbound HIS queue privacy
   disposition (PR `openelis-analyzer-bridge#54`). A PENDING ORU remains
   byte-identical and retryable until a matching `MSA-1=AA`; after AA the full
   body is redacted immediately by default (`delivered-retention-ms=0`) or by a
