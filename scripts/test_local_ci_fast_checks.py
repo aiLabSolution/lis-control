@@ -86,6 +86,38 @@ class ProfileDriftTests(unittest.TestCase):
         (self.control / "deploy/ci").mkdir(parents=True)
         self.allowlist = self.control / "deploy/ci/profile-drift-allowlist.txt"
         self.allowlist.write_text("", encoding="utf-8")
+        self.core_x3 = (
+            self.core / "projects/analyzer-profiles/astm/snibe-maglumi-x3.json"
+        )
+        self.kit_x3 = self.kit / "configs/analyzer-profiles/astm/snibe-maglumi-x3.json"
+        self.core_x3.parent.mkdir(parents=True)
+        self.kit_x3.parent.mkdir(parents=True)
+        valid_x3 = {
+            "profileMeta": {"version": "0.2.0"},
+            "default_test_mappings": [
+                {
+                    "test_code": "FT3",
+                    "unit": "pmol/L",
+                    "loinc": "14928-6",
+                    "ucum": "pmol/L",
+                },
+                {
+                    "test_code": "FT4 II",
+                    "unit": "ng/dL",
+                    "loinc": "3024-7",
+                    "ucum": "ng/dL",
+                },
+                {
+                    "test_code": "TSH II",
+                    "unit": "uIU/mL",
+                    "loinc": "3016-3",
+                    "ucum": "u[IU]/mL",
+                },
+            ],
+        }
+        encoded_x3 = json.dumps(valid_x3)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
 
     def test_equal_profiles_pass_and_core_only_is_informational(self):
         (self.core_profiles / "same.json").write_text("{}", encoding="utf-8")
@@ -101,6 +133,41 @@ class ProfileDriftTests(unittest.TestCase):
             fast.check_profile_drift(self.control, self.core, self.kit)
         self.assertIn("profile drift", str(caught.exception))
         self.assertIn("kit-only", str(caught.exception))
+
+    def test_self_consistent_stale_x3_dictionary_is_rejected(self):
+        stale_x3 = {
+            "profileMeta": {"version": "0.2.0"},
+            "default_test_mappings": [
+                {
+                    "test_code": "FT4",
+                    "unit": "pmol/L",
+                    "loinc": "14920-3",
+                    "ucum": "pmol/L",
+                }
+            ],
+        }
+        encoded_x3 = json.dumps(stale_x3)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
+
+        with self.assertRaisesRegex(fast.FastCheckError, "LIS-75.*FT4 II"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_stale_x3_profile_version_is_rejected_independently(self):
+        stale_version = json.loads(self.core_x3.read_text(encoding="utf-8"))
+        stale_version["profileMeta"]["version"] = "0.1.0"
+        encoded_x3 = json.dumps(stale_version)
+        self.core_x3.write_text(encoded_x3, encoding="utf-8")
+        self.kit_x3.write_text(encoded_x3, encoding="utf-8")
+
+        with self.assertRaisesRegex(fast.FastCheckError, "required version 0.2.0"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
+
+    def test_missing_x3_profile_is_rejected(self):
+        self.core_x3.unlink()
+        self.kit_x3.unlink()
+        with self.assertRaisesRegex(fast.FastCheckError, "required X3 profile"):
+            fast.check_profile_drift(self.control, self.core, self.kit)
 
     def test_notes_only_allowlist_accepts_notes_drift(self):
         (self.core_profiles / "drift.json").write_text(
