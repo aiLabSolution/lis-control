@@ -26,13 +26,14 @@ still depends on a bench-proven QC marker (LIS-266). Per-AC verdicts are below.
 
 The "mapping profile version" this demo records is the git pin — there is no separate
 `profileVersion` key in the X3 profile. The files in `run/` were captured against these
-historical pins:
+historical revisions. The deploy-kit entry is the proof-branch head actually executed,
+not the older umbrella gitlink that preceded the acceptance script:
 
 | Component | Path | Pin |
 |---|---|---|
 | OpenELIS core | `core/openelis` | `25e06ea4a1f7ba25896e176b87b546ff87e4bbcc` |
 | Analyzer bridge | `edge/drivers` | `46e57b9fc631d727eb977b2740de119b9343c04f` |
-| Deploy kit | `deploy/kit` | `579aacb415635c74034a87245f3597f733a096a8` |
+| Deploy kit proof branch | `deploy/kit` | `fc5977899c88285548e969eaddcfae8a120d617d` |
 
 The umbrella commit carrying this record now reproduces the approved successor stack:
 
