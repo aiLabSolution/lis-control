@@ -199,8 +199,8 @@
         },
         "source_kind": {
           "type": "string",
-          "enum": ["bench-capture", "bench-derived"],
-          "description": "'bench-capture' = verbatim (redacted) real bytes with the raw artifact stored in-repo, digest-verified on every load. 'bench-derived' = a structurally re-synthesized artifact whose pristine original lives ONLY in the offline evidence store -- CI cannot verify its digest."
+          "enum": ["bench-capture", "bench-derived", "bench-recombined"],
+          "description": "'bench-capture' = verbatim (redacted) real bytes with the raw artifact stored in-repo, digest-verified on every load. 'bench-derived' = a structurally re-synthesized artifact whose pristine original lives ONLY in the offline evidence store -- CI cannot verify its digest. 'bench-recombined' = records drawn verbatim from the cited in-repo raw capture but re-framed/re-sequenced (e.g. multi-envelope flattened to one transmission); the record-level containment relationship is loader-verified; raw_path is required and digest-verified like 'bench-capture'."
         },
         "raw_digest": {
           "type": "string",
@@ -209,7 +209,7 @@
         },
         "raw_path": {
           "type": "string",
-          "description": "Repo-root-relative path to the raw capture artifact. Required for source_kind 'bench-capture'; forbidden for 'bench-derived' -- enforced by the loader."
+          "description": "Repo-root-relative path to the raw capture artifact. Required for source_kind 'bench-capture' and 'bench-recombined'; forbidden for 'bench-derived' -- enforced by the loader."
         },
         "captured_at": {
           "type": "string",
@@ -303,6 +303,33 @@
             }
           },
           "description": "Required for source_kind 'bench-derived'; forbidden for 'bench-capture' -- enforced by the loader."
+        },
+        "recombination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["normalized_fields"],
+          "properties": {
+            "normalized_fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Maps an ASTM record-type letter to the 1-based field indices that the recombination legitimately rewrote (e.g. {\"O\": [2]}). Field 1 is always the record-type letter itself and must never be declared here -- enforced by the loader. Note: this repo's hand-rolled schema validator (edge_sim/_schema.py) does not propagate constraints through an open-ended \"additionalProperties\" map, so the record-type keys are enumerated explicitly (the ASTM E1394 record types) rather than left as an arbitrary-key map, to keep the array/integer typing here actually schema-enforced.",
+              "properties": {
+                "H": { "type": "array", "items": { "type": "integer" } },
+                "P": { "type": "array", "items": { "type": "integer" } },
+                "O": { "type": "array", "items": { "type": "integer" } },
+                "R": { "type": "array", "items": { "type": "integer" } },
+                "C": { "type": "array", "items": { "type": "integer" } },
+                "Q": { "type": "array", "items": { "type": "integer" } },
+                "M": { "type": "array", "items": { "type": "integer" } },
+                "L": { "type": "array", "items": { "type": "integer" } }
+              }
+            },
+            "note": {
+              "type": "string",
+              "description": "Human-readable account of the recombination transformation."
+            }
+          },
+          "description": "Required for source_kind 'bench-recombined'; forbidden otherwise -- enforced by the loader."
         }
       }
     }

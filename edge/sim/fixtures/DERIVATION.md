@@ -37,6 +37,10 @@ nothing here upgrades what simulator-derived artifacts can prove (plan §17.3.2)
 - **Derived artifact** — the committable re-synthesis of a pristine artifact produced under
   this spec. Its manifest `capture` block declares `source_kind: "bench-derived"` and cites
   the pristine artifact's digest (`raw_digest`), which only the offline store can verify.
+  Distinct from `source_kind: "bench-recombined"` (records byte-verbatim from a cited in-repo
+  capture, only re-framed/re-sequenced, loader-verified by record containment): a recombined
+  artifact carries **real** measurement content and is NOT governed by this spec — no value
+  substitution occurs; a derived artifact carries **synthetic** content produced under it.
 - **Derivation** — the deterministic transformation pristine → derived: identity fields,
   measurement values, ranges, and result timestamps are substituted; everything else is
   preserved under the invariants below.

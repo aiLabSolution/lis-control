@@ -38,7 +38,7 @@
   },
   "capture": {
     "session_id": "20260717-0101010034012301113",
-    "source_kind": "bench-capture",
+    "source_kind": "bench-recombined",
     "raw_path": "evidence/bench/maglumi-x3/20260717-0101010034012301113/raw-20260717-144818-005.bin",
     "raw_digest": "sha256:2c50acec48e69f8e24f1abadde11820e284c656a856e74e9a4fca01679900076",
     "captured_at": "2026-07-17",
@@ -74,7 +74,11 @@
       "length_preserving": true,
       "class": "patient-name"
     },
-    "unconfirmed_channel_settings": ["tcp"]
+    "unconfirmed_channel_settings": ["tcp"],
+    "recombination": {
+      "normalized_fields": { "O": [2] },
+      "note": "Three single-assay wire envelopes combined into one multi-order transmission; the O-record sequence field is renumbered 1/2/3. Every other record byte is verbatim from the cited capture (loader-verified record containment). See source.note for the full transformation account."
+    }
   },
   "expected": {
     "message_type": "ASTM^E1394",

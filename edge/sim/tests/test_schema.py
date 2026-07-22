@@ -130,6 +130,79 @@ def test_capture_type_union_rejects_integer_firmware(schema):
         validate(d, schema)
 
 
+# -- capture.source_kind "bench-recombined" + capture.recombination (LIS-319) --
+
+
+def test_source_kind_bench_recombined_accepted_by_enum(schema):
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"O": [2]}}
+    validate(d, schema)  # must not raise
+
+
+def test_recombination_block_validates(schema):
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {
+        "normalized_fields": {"O": [2]},
+        "note": "O-record sequence renumbered across flattened envelopes",
+    }
+    validate(d, schema)  # must not raise
+
+
+def test_recombination_requires_normalized_fields(schema):
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"note": "missing the required field"}
+    with pytest.raises(SchemaError, match="normalized_fields"):
+        validate(d, schema)
+
+
+def test_recombination_rejects_additional_property(schema):
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"O": [2]}, "surprise": 1}
+    with pytest.raises(SchemaError, match="surprise"):
+        validate(d, schema)
+
+
+def test_normalized_fields_rejects_non_array_value_via_items_type(schema):
+    """normalized_fields' record-type properties (e.g. "O") are declared
+    ``{"type": "array", "items": {"type": "integer"}}`` -- a non-array value
+    must be rejected."""
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"O": "not-an-array"}}
+    with pytest.raises(SchemaError, match="O"):
+        validate(d, schema)
+
+
+def test_normalized_fields_rejects_non_integer_array_items(schema):
+    d = _valid()
+    d["synthetic"] = False
+    d["capture"] = _valid_capture()
+    d["capture"]["source_kind"] = "bench-recombined"
+    d["capture"]["raw_path"] = "evidence/tmp/raw.bin"
+    d["capture"]["recombination"] = {"normalized_fields": {"O": ["two"]}}
+    with pytest.raises(SchemaError):
+        validate(d, schema)
+
+
 def test_if_then_else_without_then_or_else_passes():
     # A bare "if" with no matching "then"/"else" branch is a no-op — the schema
     # itself only declares "then", but the validator must support both being

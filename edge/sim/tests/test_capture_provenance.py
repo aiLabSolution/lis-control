@@ -1,13 +1,16 @@
 """Graduated-fixture provenance rules (schema v2, LIS-319): loader-enforced
 checks that sit on top of plain schema validation for any ``synthetic: false``
 manifest -- channel-identity provenance, exact unconfirmed-channel-setting
-declarations, and digest-verified (bench-capture) or explicitly-offline
-(bench-derived) raw artifacts.
+declarations, digest-verified (bench-capture/bench-recombined) or
+explicitly-offline (bench-derived) raw artifacts, and (bench-capture /
+bench-recombined) record-level containment tying the message bytes to the
+digest-verified raw capture.
 
 All manifests built here use synthetic placeholder values only (never the real
 bench measurement numbers/timestamps) -- the one exception is the final test,
 which loads the real graduated fixture directory as-is to prove the real
-evidence-bin digest verifies (the slice's AC2 proof).
+evidence-bin digest AND record containment verify (the slice's AC2 proof, and
+now the LIS-319 provenance-classification fix's live proof).
 """
 
 import hashlib
@@ -21,8 +24,20 @@ from edge_sim.fixtures import FixtureError, load_fixture
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 SNIBELIS_MAGLUMI_X3_RESULT_UPLOAD = FIXTURES_ROOT / "snibelis-maglumi-x3-result-upload"
 
-_MESSAGE_BYTES = b"MSH|^~\\&|SIM|SIM|SIM|SIM|20200101000000||ORU^R01|1|P|2.5\r"
-_RAW_BYTES = b"synthetic-bench-capture-bytes-0001"
+# A tiny synthetic ASTM E1394-shaped session: the raw artifact is the same
+# records, session-control-framed (ENQ STX ... CR-joined ... CR ETX EOT); the
+# message is the same records LF-joined with no framing. This lets the
+# "happy path" bench-capture/bench-recombined builders below satisfy the new
+# record-containment check by construction.
+_SYNTHETIC_RECORDS = [
+    b"H|\\^&|||SIM^SIM-1|||||||P|E1394-97|20200101000000",
+    b"P|1",
+    b"O|1|SPEC-0001||^^^GLU",
+    b"R|1|^^^GLU|100|mg/dL|70-110|N||||||20200101000000",
+    b"L|1|N",
+]
+_MESSAGE_BYTES = b"\n".join(_SYNTHETIC_RECORDS) + b"\n"
+_RAW_BYTES = b"\x05\x02" + b"\r".join(_SYNTHETIC_RECORDS) + b"\r\x03\x04"
 
 
 def _make_repo(tmp_path: Path) -> tuple[Path, Path]:
@@ -47,10 +62,10 @@ def _base_manifest(**overrides) -> dict:
     manifest = {
         "id": "tmp-fixture",
         "analyzer": {"vendor": "ACME", "model": "SIM-1"},
-        "protocol": "hl7v2",
+        "protocol": "astm-e1394",
         "transport": "loopback",
         "direction": "analyzer-to-host",
-        "message": {"path": "m.hl7", "encoding": "ascii", "framing": "raw"},
+        "message": {"path": "message.astm", "encoding": "ascii", "framing": "raw"},
         "source": {"reference": "synthetic test fixture"},
         "synthetic": False,
         "channel": {
@@ -63,8 +78,8 @@ def _base_manifest(**overrides) -> dict:
     return manifest
 
 
-def _bench_capture_manifest(repo_root: Path, **capture_overrides) -> dict:
-    digest = _write_raw(repo_root, "evidence/tmp/raw.bin", _RAW_BYTES)
+def _bench_capture_manifest(repo_root: Path, raw_bytes: bytes = _RAW_BYTES, **capture_overrides) -> dict:
+    digest = _write_raw(repo_root, "evidence/tmp/raw.bin", raw_bytes)
     capture = {
         "session_id": "synthetic-test-session-0001",
         "source_kind": "bench-capture",
@@ -75,6 +90,24 @@ def _bench_capture_manifest(repo_root: Path, **capture_overrides) -> dict:
         "chassis_connected": False,
         "upload_trigger": "manual-lis-online",
         "tool": {"name": "sim-capture-tool"},
+    }
+    capture.update(capture_overrides)
+    return _base_manifest(capture=capture)
+
+
+def _bench_recombined_manifest(repo_root: Path, raw_bytes: bytes = _RAW_BYTES, **capture_overrides) -> dict:
+    digest = _write_raw(repo_root, "evidence/tmp/raw.bin", raw_bytes)
+    capture = {
+        "session_id": "synthetic-test-session-0003",
+        "source_kind": "bench-recombined",
+        "raw_path": "evidence/tmp/raw.bin",
+        "raw_digest": digest,
+        "captured_at": "2020-01-01",
+        "instrument": {"model": "SIM-1", "serial": "SIM-SERIAL-0003"},
+        "chassis_connected": False,
+        "upload_trigger": "manual-lis-online",
+        "tool": {"name": "sim-capture-tool"},
+        "recombination": {"normalized_fields": {"O": [2]}, "note": "synthetic recombination for test"},
     }
     capture.update(capture_overrides)
     return _base_manifest(capture=capture)
@@ -96,8 +129,8 @@ def _bench_derived_manifest(**capture_overrides) -> dict:
     return _base_manifest(capture=capture)
 
 
-def _write_fixture(fixture_dir: Path, manifest: dict) -> None:
-    (fixture_dir / "m.hl7").write_bytes(_MESSAGE_BYTES)
+def _write_fixture(fixture_dir: Path, manifest: dict, message_bytes: bytes = _MESSAGE_BYTES) -> None:
+    (fixture_dir / manifest["message"]["path"]).write_bytes(message_bytes)
     (fixture_dir / "manifest.json").write_text(json.dumps(manifest))
 
 
@@ -257,16 +290,158 @@ def test_raw_path_traversal_rejected(tmp_path):
         load_fixture(fixture_dir, repo_root=repo_root)
 
 
-# -- (6) the real graduated fixture --------------------------------------------
+# -- (6) record-level containment (LIS-319: provenance-classification fix) ----
+
+
+def test_bench_capture_message_record_absent_from_raw_rejected(tmp_path):
+    """The provenance-inheritance attack: a bench-capture manifest whose
+    message bytes include a record the raw capture never produced must be
+    refused, not silently accepted because the digest happens to verify."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    attack_records = _SYNTHETIC_RECORDS + [b"C|1|1|ATTACKER-INJECTED-RECORD|G"]
+    message_bytes = b"\n".join(attack_records) + b"\n"
+    _write_fixture(fixture_dir, manifest, message_bytes=message_bytes)
+
+    with pytest.raises(FixtureError, match="not found in raw capture"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_non_astm_protocol_bench_capture_containment_not_implemented(tmp_path):
+    """Containment verification is only implemented for astm-e1394; any other
+    protocol must fail closed rather than silently skip the check."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    manifest["protocol"] = "hl7v2"
+    manifest["message"] = {"path": "m.hl7", "encoding": "ascii", "framing": "raw"}
+    _write_fixture(fixture_dir, manifest, message_bytes=b"MSH|^~\\&|SIM|SIM|SIM|SIM|20200101000000||ORU^R01|1|P|2.5\r")
+
+    with pytest.raises(FixtureError, match="containment verification is not implemented"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+# Two synthetic single-assay ASTM envelopes captured back-to-back on a bench,
+# mirroring the real snibelis-maglumi-x3-result-upload transformation: the
+# real wire sends each assay as its own envelope; the message flattens them
+# into one multi-order transmission with the O-record sequence field
+# renumbered.
+_ENVELOPE_1 = [
+    b"H|\\^&|||SIM^SIM-1|||||||P|E1394-97|20200101000000",
+    b"P|1",
+    b"O|1|SPEC-A||^^^TEST1",
+    b"R|1|^^^TEST1|10|U|1-20|N||||||20200101000001",
+    b"L|1|N",
+]
+_ENVELOPE_2 = [
+    b"H|\\^&|||SIM^SIM-1|||||||P|E1394-97|20200101000000",
+    b"P|1",
+    b"O|1|SPEC-B||^^^TEST2",
+    b"R|1|^^^TEST2|20|U|1-30|N||||||20200101000002",
+    b"L|1|N",
+]
+_RECOMBINED_RAW_BYTES = (
+    b"\x05\x02" + b"\r".join(_ENVELOPE_1) + b"\r\x03\x04" + b"\x05\x02" + b"\r".join(_ENVELOPE_2) + b"\r\x03\x04"
+)
+_RECOMBINED_MESSAGE_RECORDS = [
+    b"H|\\^&|||SIM^SIM-1|||||||P|E1394-97|20200101000000",
+    b"P|1",
+    b"O|1|SPEC-A||^^^TEST1",  # verbatim from envelope 1 -- sequence already "1"
+    b"R|1|^^^TEST1|10|U|1-20|N||||||20200101000001",
+    b"O|2|SPEC-B||^^^TEST2",  # renumbered from envelope 2's O|1|... -- field 2 masked
+    b"R|1|^^^TEST2|20|U|1-30|N||||||20200101000002",
+    b"L|1|N",
+]
+_RECOMBINED_MESSAGE_BYTES = b"\n".join(_RECOMBINED_MESSAGE_RECORDS) + b"\n"
+
+
+def test_bench_recombined_masked_match_loads(tmp_path):
+    """The positive case: a message that flattens two raw envelopes into one
+    transmission, with the O-record sequence field renumbered, loads when
+    normalized_fields declares that rewrite."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(repo_root, raw_bytes=_RECOMBINED_RAW_BYTES)
+    _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
+
+    fx = load_fixture(fixture_dir, repo_root=repo_root)
+    assert fx.manifest["capture"]["source_kind"] == "bench-recombined"
+    assert fx.manifest["capture"]["recombination"]["normalized_fields"] == {"O": [2]}
+
+
+def test_bench_recombined_without_recombination_rejected(tmp_path):
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(repo_root, raw_bytes=_RECOMBINED_RAW_BYTES)
+    del manifest["capture"]["recombination"]
+    _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
+
+    with pytest.raises(FixtureError, match="recombination"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_recombination_on_bench_capture_rejected(tmp_path):
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_capture_manifest(repo_root)
+    manifest["capture"]["recombination"] = {"normalized_fields": {"O": [2]}}
+    _write_fixture(fixture_dir, manifest)
+
+    with pytest.raises(FixtureError, match="recombination"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_recombination_on_bench_derived_rejected(tmp_path):
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_derived_manifest()
+    manifest["capture"]["recombination"] = {"normalized_fields": {"O": [2]}}
+    _write_fixture(fixture_dir, manifest)
+
+    with pytest.raises(FixtureError, match="recombination"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_bench_recombined_record_absent_even_after_masking_rejected(tmp_path):
+    """A record that matches neither verbatim nor after masking the declared
+    normalized_fields must still be refused -- normalized_fields is not a
+    blanket license to accept any record of that type."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(repo_root, raw_bytes=_RECOMBINED_RAW_BYTES)
+    bogus_records = _RECOMBINED_MESSAGE_RECORDS + [b"O|3|SPEC-C||^^^TEST3"]
+    message_bytes = b"\n".join(bogus_records) + b"\n"
+    _write_fixture(fixture_dir, manifest, message_bytes=message_bytes)
+
+    with pytest.raises(FixtureError, match="not found in raw capture"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+def test_normalized_fields_declaring_field_one_rejected(tmp_path):
+    """Field 1 is the record-type letter itself; declaring it as a
+    'normalized' field would let the recombination silently swap record
+    types, which is never legitimate."""
+    repo_root, fixture_dir = _make_repo(tmp_path)
+    manifest = _bench_recombined_manifest(
+        repo_root, raw_bytes=_RECOMBINED_RAW_BYTES, recombination={"normalized_fields": {"O": [1]}}
+    )
+    _write_fixture(fixture_dir, manifest, message_bytes=_RECOMBINED_MESSAGE_BYTES)
+
+    with pytest.raises(FixtureError, match="field 1"):
+        load_fixture(fixture_dir, repo_root=repo_root)
+
+
+# -- (7) the real graduated fixture --------------------------------------------
 
 
 def test_real_graduated_fixture_loads_and_verifies_digest():
-    """AC2 proof: the actual snibelis-maglumi-x3-result-upload fixture, loaded
-    with the default repo_root, must digest-verify against the real evidence
-    capture bin in-repo."""
+    """AC2 proof, updated for LIS-319: the actual
+    snibelis-maglumi-x3-result-upload fixture now graduates as
+    'bench-recombined' (it is a recombination of three real single-assay wire
+    envelopes, not verbatim single-envelope bytes). Loaded with the default
+    repo_root, it must digest-verify against the real evidence capture bin
+    in-repo AND its message records must record-verifiably be contained in
+    that raw capture (masking only the declared O.2 recombination field) --
+    the live proof that the mechanical containment check accepts the real,
+    legitimately-recombined fixture."""
     fx = load_fixture(SNIBELIS_MAGLUMI_X3_RESULT_UPLOAD)
 
-    assert fx.manifest["capture"]["source_kind"] == "bench-capture"
+    assert fx.manifest["capture"]["source_kind"] == "bench-recombined"
     assert fx.manifest["capture"]["session_id"] == "20260717-0101010034012301113"
     assert fx.manifest["capture"]["raw_digest"].startswith("sha256:")
     assert fx.manifest["capture"]["unconfirmed_channel_settings"] == ["tcp"]
+    assert fx.manifest["capture"]["recombination"]["normalized_fields"] == {"O": [2]}
