@@ -17,7 +17,20 @@ cleared under HOLD-001 / LIS-71).
 - **Mount:** `edge/drivers/` (git submodule, pinned in `lis-control`).
 - **origin:** `https://github.com/aiLabSolution/openelis-analyzer-bridge.git` — standalone
   (not a GitHub fork); default & tracked branch `develop`.
-- **Pin:** untagged **`74bb31d`** — LIS-315 MAGLUMI X3 no-config UCUM fallback
+- **Pin:** untagged **`1370c6c`** — LIS-275 byte-transparent General ASTM transport
+  (bridge PR `openelis-analyzer-bridge#56`). General ASTM now uses ISO-8859-1 as
+  its one-byte wire carrier for both reader and writer, and E1381 checksums sum
+  unsigned ISO-8859-1 octets modulo 256. Real-socket regressions cover a raw
+  `0xB5` payload without `U+FFFD`, exact outbound bytes, corrupted-checksum NAK
+  followed by corrected-frame ACK, and ETB/ETX multi-frame reassembly. The
+  SNIBE checksum-on regression enters through the production servlet factory
+  and proves the exact persisted and handled bytes. Adversarial review:
+  APPROVE. Exact-head bridge CI: 2/2 `Run Tests / test` checks green; local
+  bridge suite **1112/0/0/7**; focused simulator mirror **31 passed**. This
+  removes the software byte-fidelity blocker but does not itself authorize the
+  production X3 checksum-on profile: deployment remains `checksum: false`
+  until a bench capture proves the analyzer's checksum/framing behavior.
+- **Prior pin:** untagged **`74bb31d`** — LIS-315 MAGLUMI X3 no-config UCUM fallback
   (bridge PR `openelis-analyzer-bridge#55`): `FhirBundleBuilder` now maps the
   LIS-75 bench-confirmed FT4 II unit `ng/dL` to UCUM `ng/dL` when no
   per-analyzer `unitToUcum` resolver is available, alongside the existing
