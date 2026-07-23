@@ -93,22 +93,25 @@ edge ingestion slices land in BOTH `edge/drivers` and the `edge/sim` mirror.
 
 ## 7. Gate
 
-Run the **adversarial-reviewer** agent on the PR. Before merging every component PR,
-inspect the expected checks and failure logs on the exact reviewed head and require them
-to be green. A checkout/authentication/submodule failure is a red gate even when tests
-never start; GitHub allowing the merge does not waive it. Targeted local tests supplement
-but never replace component CI. Umbrella CI is repository-local and non-transitive, so
-never report an umbrella pass as proof that a component PR passed. Record component and
-umbrella conclusions separately on the Plane issue/PR. If component CI is red or cannot
-run, repair and rerun it or stop as blocked; do not merge or pin. Run **ac-verifier**
-before moving the issue to Done.
+Run the **adversarial-reviewer** agent on the PR. Read `local_ci.json` and
+`docs/agents/ci-map.md` before deciding what is expected. In hosted mode, every
+path/event-selected hosted check must be green on the exact reviewed head. In local mode,
+every `gate_required` repository requires a successful `local-ci/summary` on that exact
+head, plus any deliberately retained hosted check; an absent summary is an unrun expected
+check and is red. Partial, subset, superset, and exact-commit local evidence do not
+substitute. A checkout/authentication/submodule failure is a red gate even when tests never
+start; GitHub allowing the merge does not waive it. CI is repository-local and
+non-transitive, so never report an umbrella pass as proof that a component PR passed.
+Record component and umbrella conclusions separately on the Plane issue/PR. If expected
+evidence is red or cannot run, repair and rerun it or stop as blocked; do not merge or pin.
+Run **ac-verifier** before moving the issue to Done.
 
 ## 8. Merge + teardown (one-liners — detail in pin-bump)
 
-- Merge only with the §7 gate fully green (expected CI on the exact head + APPROVE
-  verdict). An empty or missing check list is NOT green for a repo that has CI
-  configured — an expected check that never ran (workflow not triggered on the head)
-  is red, exactly like a checkout failure before tests start.
+- Merge only with the §7 gate fully green (mode-aware expected checks on the exact head +
+  APPROVE verdict). An empty or missing list is NOT green when the map/mode expects
+  evidence. In local mode specifically, missing `local-ci/summary` is red, exactly like a
+  hosted workflow or checkout failure that never reached its tests.
 - `gh pr merge` from a linked worktree errors on its LOCAL post-step while the server
   merge succeeded — verify via REST `.merged`, then clean up by hand.
 - Root-owned `target/` from Docker builds blocks worktree removal:

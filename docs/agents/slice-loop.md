@@ -11,7 +11,7 @@ context); this is the detail.
 | Question | Decision |
 |---|---|
 | Where does the work happen? | A **dedicated git worktree per slice**: `../lis-control-<key>` on branch `<key>-<slug>` (matches the existing `lis-control-lis-10` / `lis-10-compliance-scaffold`). **Never switch the primary `main` checkout's branch** — sessions share it. |
-| How does it reach `main`? | **Slice branch → Pull Request → `main`. Always.** Never commit on `main`, never `git push origin main`. Merge the PR once reviewed and CI is green. |
+| How does it reach `main`? | **Slice branch → Pull Request → `main`. Always.** Never commit on `main`, never `git push origin main`. Merge only after review and the mode-aware expected checks are green on the exact PR head; see [`ci-map.md`](ci-map.md). |
 | Why PRs, not a direct merge? | It's the established practice (every change so far is a PR) and it serves the ISO 15189 / IQ‑OQ‑PQ traceability story (ADR‑0001): a reviewed PR is the auditable link from a `main` commit back to its `LIS-NN`. |
 | Submodule changes (`core/openelis`, …)? | **Two-level**: PR the component repo first and require its own expected CI to be green on the reviewed head, then bump the pin in the umbrella slice branch + umbrella PR. Umbrella CI is not transitive proof of component CI. See below. |
 | How do sessions coordinate? | The **Plane issue is the shared ledger** (state + comments). The slice branch is the shared artifact: fetch+rebase before every commit, push right after, never force-push. |
@@ -97,9 +97,11 @@ umbrella only pins a component SHA (ADR‑0001):
 
 1. **Component PR.** Inside the submodule, branch and commit
    (`git -C core/openelis switch -c lis-NN-<slug>`), push to the component repo
-   (`aiLabSolution/OpenELIS-Global-2`), and open a PR there. Let the component's own CI run
-   (OpenELIS has backend / frontend / e2e workflows). Before merge, inspect the expected
-   checks and failure logs on the exact reviewed head and require them to be green. A
+   (`aiLabSolution/OpenELIS-Global-2`), and open a PR there. Determine the registry mode and
+   expected checks from [`ci-map.md`](ci-map.md): hosted mode requires every path/event-selected
+   hosted check; local mode requires a successful `local-ci/summary` on the exact head plus
+   any deliberately retained hosted check. Before merge, inspect those expected checks and
+   failure logs on the exact reviewed head and require them to be green. A
    checkout, authentication, or submodule failure is still a failed gate even when no tests
    ran. Targeted local tests may supplement component CI but cannot replace it, and a green
    umbrella workflow says nothing about the component PR's check conclusions. If component
@@ -121,7 +123,10 @@ umbrella PR.
   the Plane issue and lists the acceptance criteria met.
 - Keep `.claude/plane-context.json` churn out of the substantive diff — it's per-checkout
   bookkeeping, not slice content.
-- Merge each PR only once reviewed and that repository's expected CI is green on the reviewed
-  head. Record component and umbrella results separately; never report downstream/umbrella
-  green as proof of component green. After merge, `git worktree remove` the slice worktree,
-  delete the branch, and move the issue to done.
+- Merge each PR only once reviewed and that repository's mode-aware expected checks are green
+  on the exact reviewed head. In hosted mode, an expected hosted workflow that never ran is
+  red. In local mode, an absent `local-ci/summary` is an unrun expected check and is red;
+  partial or exact-commit statuses do not substitute. Record component and umbrella results
+  separately; never report downstream/umbrella green as proof of component green. After
+  merge, `git worktree remove` the slice worktree, delete the branch, and move the issue to
+  done.

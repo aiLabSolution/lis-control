@@ -4,6 +4,9 @@ Index of contexts for the LIS programme. `lis-control` is the **umbrella** repo
 (see `README.md`); each code component is a **git submodule** pinned at a known
 SHA (see `docs/adr/0001-repository-topology-submodule-umbrella.md`).
 
+Operational CI context: [`docs/agents/ci-map.md`](docs/agents/ci-map.md) maps hosted
+workflows, local checks, evidence modes, and the Stage-4 integration gate.
+
 Read the `CONTEXT.md` for any context relevant to your task before exploring it.
 These files are created lazily — some may not exist yet (see `docs/agents/domain.md`).
 

@@ -13,7 +13,7 @@ ISO 15189 / IQ-OQ-PQ traceability story in `LIS_IMPLEMENTATION_PLAN.md`.
 | `LIS_BUILD_AND_INTEGRATION_RESEARCH.md` | Research / architecture report | this repo |
 | `LIS_IMPLEMENTATION_PLAN.md` | Phased, verifiable delivery plan | this repo |
 | `diagrams/` | Excalidraw reference architecture + roadmap views | this repo |
-| `docs/agents/` | Agent skills: issue tracker, triage, domain docs | this repo |
+| `docs/agents/` | Agent workflow docs, including the [mode-aware CI map](docs/agents/ci-map.md) | this repo |
 | `core/openelis/` | OpenELIS Global 2 — clinical core (submodule) | `aiLabSolution/OpenELIS-Global-2` |
 | `edge/drivers/` | Analyzer bridge / interface engine (submodule) | `aiLabSolution/openelis-analyzer-bridge` |
 | `deploy/kit/` | On-prem deploy kit + authoritative deployed config (submodule) | `aiLabSolution/lis-deploy-kit` |
