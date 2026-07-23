@@ -1,0 +1,93 @@
+2026-07-23_19:42:08-027 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:45:40-053 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:47:06-319 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:47:08-295 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:47:10-393 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:49:10-517 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:49:12-553 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:51:12-710 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:51:14-852 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:53:14-995 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:53:17-037 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:55:17-203 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:55:19-256 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:57:19-418 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:57:21-474 | Maglumi User | --- Lis Is Ready.
+2026-07-23_19:59:21-630 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_19:59:23-678 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:01:23-761 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:01:25-862 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:03:26-017 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:03:28-072 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:05:28-172 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:05:30-227 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:07:30-286 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:07:32-351 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:09:32-504 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:09:34-597 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:11:34-658 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:11:36-698 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:13:36-854 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:13:38-914 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:15:39-026 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:15:41-068 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:17:41-206 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:17:43-273 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:19:43-433 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:19:45-522 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:21:45-657 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:21:47-788 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:23:47-849 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:23:50-021 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:25:50-135 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:25:52-191 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:27:52-347 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:27:54-522 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:29:54-671 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:29:56-771 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:31:40-811 | Maglumi User | --- Start Send Smp Result,SmpID:PATIENT-REDACTED-1
+2026-07-23_20:31:40-836 | Maglumi User | --> <ENQ>
+2026-07-23_20:31:40-926 | Maglumi User | <-- <ACK>
+2026-07-23_20:31:40-948 | Maglumi User | --> <STX>
+2026-07-23_20:31:40-968 | Maglumi User | --> H|\^&||PSWD|Maglumi X3|||||Lis||P|E1394-97|20260723
+2026-07-23_20:31:40-980 | Maglumi User | --> P|1
+2026-07-23_20:31:40-990 | Maglumi User | --> O|1|PATIENT-REDACTED-1||^^^T4
+2026-07-23_20:31:41-001 | Maglumi User | --> R|1|^^^T4|119|nmol/L|52 - 127|N||||||20260422111529
+2026-07-23_20:31:41-008 | Maglumi User | <-- <ACK>
+2026-07-23_20:31:41-014 | Maglumi User | --> L|1|N
+2026-07-23_20:31:41-026 | Maglumi User | --> <ETX>
+2026-07-23_20:31:41-047 | Maglumi User | --> <EOT>
+2026-07-23_20:31:41-068 | Maglumi User | <-- <ACK>
+2026-07-23_20:31:41-123 | Maglumi User | <-- <ACK>
+2026-07-23_20:33:41-222 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:33:43-417 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:35:43-553 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:35:45-598 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:37:45-714 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:37:47-832 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:39:47-994 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:39:50-055 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:41:50-215 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:41:52-273 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:43:52-405 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:43:54-478 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:45:54-573 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:45:56-725 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:47:56-789 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:47:58-863 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:49:58-926 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:50:01-003 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:52:01-150 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:52:03-207 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:54:03-318 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:54:05-413 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:56:05-508 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:56:07-571 | Maglumi User | --- Lis Is Ready.
+2026-07-23_20:58:07-735 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_20:58:09-772 | Maglumi User | --- Lis Is Ready.
+2026-07-23_21:00:09-915 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_21:00:11-959 | Maglumi User | --- Lis Is Ready.
+2026-07-23_21:02:12-119 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_21:02:14-258 | Maglumi User | --- Lis Is Ready.
+2026-07-23_21:04:14-419 | Maglumi User | --- Lis Is Blocked.
+2026-07-23_21:04:16-478 | Maglumi User | --- Lis Is Ready.

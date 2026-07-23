@@ -1,0 +1,9 @@
+# Windows-side netstat on capture host, 2026-07-23 ~19:50 local, after Restart-Service iphlpsvc
+# Proves analyzer operation-PC (192.168.1.100) is the TCP client to 192.168.1.50:2003
+# (WSL-side listener sees portproxy-rewritten source 172.21.208.1 - this is the true-peer record)
+  TCP    10.1.52.78:2003        0.0.0.0:0              LISTENING       7664
+  TCP    127.0.0.1:2003         0.0.0.0:0              LISTENING       13460
+  TCP    172.21.208.1:58631     172.21.220.103:2003    TIME_WAIT       0
+  TCP    172.21.208.1:58632     172.21.220.103:2003    ESTABLISHED     7664
+  TCP    192.168.1.50:2003      0.0.0.0:0              LISTENING       7664
+  TCP    192.168.1.50:2003      192.168.1.100:51046    ESTABLISHED     7664
