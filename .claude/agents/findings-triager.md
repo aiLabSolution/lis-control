@@ -31,10 +31,10 @@ a. **ALREADY-FIXED?** Inspect current `origin/main` (fetch first) and, for compo
    finding names; if the defect is gone, locate the fixing commit (`git log -S`,
    `git log --oneline -- <file>`) and cite its SHA — "looks fixed" without a SHA is
    not a disposition.
-b. **TRACKED?** Search Plane via the bundled CLI with client-side filters
-   (`python3 "$(readlink -f ~/.claude/skills/plane)/scripts/plane" issues search
-   "<keywords>" -f json`); see `docs/agents/issue-tracker.md`. Raw full `issues list`
-   dumps cost ~28k tokens — always search/filter, never pull the whole backlog.
+b. **TRACKED?** Search Plane with `plane-axi wi search "<keywords>"` (workspace-wide,
+   compact TOON output; `npx -y github:ailabsolution/plane-axi` if not on PATH); see
+   `docs/agents/issue-tracker.md`. Never pull the whole backlog
+   (`plane-axi wi list --all`) — always search or filter.
 c. **Else NEW.** Draft a title, a 2-line body naming the defect and its file/component,
    and a priority suggestion.
 

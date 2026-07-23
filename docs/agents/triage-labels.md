@@ -17,9 +17,13 @@ issue into.
 
 The triage skill transitions an issue by **setting its state**, not by adding a label:
 
-1. Resolve the state ID: `plane states -p PROJECT_ID -f json`, match by the "Plane state
-   name" column above.
-2. Transition: `plane issues update -p PROJECT_ID ISSUE_ID --state STATE_ID`.
+```bash
+plane-axi wi update LIS-NN --state ready-for-agent
+```
+
+State *names* from the "Plane state name" column resolve automatically — no manual
+ID lookup. (`python3 scripts/plane_issue.py update LIS-NN --state ready-for-agent`
+resolves names too, if you're already in the script flow.)
 
 ## Setup required
 
@@ -31,4 +35,4 @@ These five states must **exist** in your Plane project. Either:
   `ready-for-human` → your existing `Todo` state).
 
 Until the states exist, transitions will fail to resolve. Run
-`plane states -p PROJECT_ID -f json` to see what's currently defined.
+`plane-axi state list` to see what's currently defined.

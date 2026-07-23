@@ -16,7 +16,7 @@ what an auditor catches. Your job is to stop that at the source.
 - First check the API key: `[ -n "${PLANE_API_KEY:+set}" ]`. If unset, STOP and report
   that the caller must supply `PLANE_API_KEY` — do not grep the environment for it.
 - Read the issue cheaply: `python3 scripts/slice.py show LIS-NN` (from the umbrella repo
-  root). Do NOT use raw `plane issues list` (28k-token dump).
+  root). Do NOT pull a full backlog dump (`plane-axi wi list --all`).
 - Extract every acceptance criterion: numbered ACs in the body, AC-like bullets
   ("must", "shall", quoted behaviors in the title), and scope statements in comments
   that amend the ACs. List them verbatim before verifying anything.

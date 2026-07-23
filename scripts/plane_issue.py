@@ -3,12 +3,13 @@
 
 Why this exists
 ---------------
-Plane work items have a rich-text *description*. The bundled `plane` CLI's
-`issues create --description` wraps whatever you pass in a single
-`<p>{escaped}</p>` (and a single shell arg is awkward for a multi-line markdown
-PRD), so the repo convention used to route bodies into the *first comment*
-instead — leaving every issue with an empty description (see
-`docs/agents/issue-tracker.md`). That's backwards: the body is the description.
+Plane work items have a rich-text *description*. Generic CLI body flags (the retired
+bundled `plane` CLI's `issues create --description` then, `plane-axi wi create
+--body` now) wrap whatever you pass in a single `<p>{escaped}</p>` (and a single
+shell arg is awkward for a multi-line markdown PRD), so the repo convention used to
+route bodies into the *first comment* instead — leaving every issue with an empty
+description (see `docs/agents/issue-tracker.md`). That's backwards: the body is the
+description.
 
 This helper renders a markdown body into clean HTML and sends it where it
 belongs: `create`/`update` write `description_html`, `comment` writes
