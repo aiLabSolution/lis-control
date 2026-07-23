@@ -1,0 +1,16 @@
+# Local-CI-only isolation overlay for the LIS-251 site-stack proof.
+#
+# The pinned bridge compose file deliberately uses the development container
+# name and host ports.  Local CI must be able to prove the site stack without
+# stopping or colliding with that development stack, so this final overlay
+# replaces every published site port and the durable-data volume name.
+services:
+  openelis-analyzer-bridge:
+    container_name: lis-local-ci-site-bridge
+    ports: !override
+      - "28442:8443"
+      - "22021:12021"
+
+volumes:
+  analyzer-bridge-data:
+    name: lis-local-ci-site-bridge-data

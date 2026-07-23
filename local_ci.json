@@ -172,6 +172,70 @@
         "scripts/local_ci_heavy_checks.py",
         "core-frontend"
       ]
+    },
+    {
+      "name": "stage0-bootstrap",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        "core/openelis",
+        "deploy/kit",
+        "deploy/ci/**",
+        "scripts/local_ci_docker_shim.py",
+        "scripts/local_ci_stack_checks.py",
+        ".github/workflows/core-bootstrap-health.yml"
+      ],
+      "class": "heavy",
+      "timeout_seconds": 3600,
+      "min_memory_mib": 10240,
+      "command": [
+        "python3",
+        "scripts/local_ci_stack_checks.py",
+        "stage0-bootstrap"
+      ]
+    },
+    {
+      "name": "stage4-smoke",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        "core/openelis",
+        "deploy/kit",
+        "deploy/ci/**",
+        "scripts/local_ci_docker_shim.py",
+        "scripts/local_ci_stack_checks.py",
+        "scripts/test_deploy_smoke.py",
+        ".github/workflows/deploy-kit-smoke.yml"
+      ],
+      "class": "heavy",
+      "timeout_seconds": 3600,
+      "min_memory_mib": 8192,
+      "command": [
+        "python3",
+        "scripts/local_ci_stack_checks.py",
+        "stage4-smoke"
+      ]
+    },
+    {
+      "name": "site-stack-smoke",
+      "repository": "aiLabSolution/lis-control",
+      "paths": [
+        "core/openelis",
+        "deploy/kit",
+        "edge/drivers",
+        "edge/sim/fixtures/snibelis-maglumi-x3-result-upload/**",
+        "deploy/ci/compose.local-ci-openelis.yml",
+        "deploy/ci/compose.local-ci-bridge.yml",
+        "scripts/local_ci_docker_shim.py",
+        "scripts/local_ci_stack_checks.py",
+        ".github/workflows/site-stack-smoke.yml"
+      ],
+      "class": "heavy",
+      "timeout_seconds": 7200,
+      "min_memory_mib": 10240,
+      "command": [
+        "python3",
+        "scripts/local_ci_stack_checks.py",
+        "site-stack-smoke"
+      ]
     }
   ]
 }

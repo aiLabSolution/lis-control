@@ -156,7 +156,7 @@ class RegistryTests(unittest.TestCase):
 
 
 class CommittedRegistryTests(unittest.TestCase):
-    def test_committed_registry_is_hosted_and_wires_fast_plus_core_heavy_checks(self):
+    def test_committed_registry_is_hosted_and_wires_all_registered_checks(self):
         parsed = local_ci.load_registry(REPO_ROOT / "local_ci.json")
         self.assertEqual(parsed.mode, "hosted")
         self.assertEqual(
@@ -170,6 +170,9 @@ class CommittedRegistryTests(unittest.TestCase):
                 "bridge-tests",
                 "core-backend",
                 "core-frontend",
+                "stage0-bootstrap",
+                "stage4-smoke",
+                "site-stack-smoke",
             ],
         )
         self.assertEqual(
@@ -186,7 +189,9 @@ class CommittedRegistryTests(unittest.TestCase):
                 "-v",
             ),
         )
-        backend, frontend = parsed.checks[-2:]
+        checks = {item.name: item for item in parsed.checks}
+        backend = checks["core-backend"]
+        frontend = checks["core-frontend"]
         self.assertEqual(
             (backend.check_class, backend.min_memory_mib), ("heavy", 2048)
         )
@@ -206,14 +211,29 @@ class CommittedRegistryTests(unittest.TestCase):
             (
                 "aiLabSolution/lis-control",
                 "core/openelis",
-                {"deploy-kit-config"},
+                {
+                    "deploy-kit-config",
+                    "stage0-bootstrap",
+                    "stage4-smoke",
+                    "site-stack-smoke",
+                },
             ),
             (
                 "aiLabSolution/lis-control",
                 "deploy/kit",
-                {"deploy-kit-config", "kit-lint"},
+                {
+                    "deploy-kit-config",
+                    "kit-lint",
+                    "stage0-bootstrap",
+                    "stage4-smoke",
+                    "site-stack-smoke",
+                },
             ),
-            ("aiLabSolution/lis-control", "edge/drivers", {"bridge-tests"}),
+            (
+                "aiLabSolution/lis-control",
+                "edge/drivers",
+                {"bridge-tests", "site-stack-smoke"},
+            ),
             (
                 "aiLabSolution/OpenELIS-Global-2",
                 "frontend/src/languages/en.json",
@@ -405,10 +425,16 @@ class MemoryPreflightTests(unittest.TestCase):
     def test_heavy_refusal_is_actionable_and_never_stops_containers(self):
         heavy = check("core-backend", check_class="heavy", memory=8192)
         with self.assertRaises(local_ci.LocalCIError) as caught:
-            local_ci.preflight_memory([heavy], available_mib=4096)
+            local_ci.preflight_memory(
+                [heavy],
+                available_mib=4096,
+                running_containers=("oe-dev-webapp", "site-bridge"),
+            )
         message = str(caught.exception)
         self.assertIn("8192 MiB", message)
         self.assertIn("OpenELIS dev/site/proof stacks", message)
+        self.assertIn("oe-dev-webapp", message)
+        self.assertIn("site-bridge", message)
         self.assertIn("never stops containers", message)
 
 
@@ -476,6 +502,7 @@ class CheckExecutionTests(unittest.TestCase):
         self.assertEqual(environment["LIS_LOCAL_CI_REPOSITORY"], PR.repository)
         self.assertEqual(environment["LIS_LOCAL_CI_CONTROL_ROOT"], "/checkout")
         self.assertEqual(environment["LIS_LOCAL_CI_CHECKOUT"], "/checkout")
+        self.assertEqual(environment["LIS_LOCAL_CI_TIMEOUT_SECONDS"], "300")
         self.assertEqual(post.call_args_list[0].args[4], "pending")
         final = post.call_args_list[1]
         self.assertEqual(final.args[3], "local-ci/scripts-tests")

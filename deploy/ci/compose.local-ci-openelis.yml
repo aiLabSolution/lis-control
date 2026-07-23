@@ -1,0 +1,19 @@
+# Final local-CI isolation overlay for every OpenELIS source-build stack.
+#
+# The deploy-kit local-proof overlay replaces the other writable checkout
+# binds, but the core compose files also bind ./volume/programs
+# (build.docker-compose.yml) and ./configuration (docker-compose.yml).  Both
+# source directories are absent at current pins, so Docker would create them
+# as root-owned directories inside the core checkout.  Keep that state in
+# proof-scoped named volumes instead.
+services:
+  oe.openelis.org:
+    volumes:
+      - programs-local-ci:/var/lib/openelis-global/programs
+      - configuration-local-ci:/var/lib/openelis-global/configuration
+
+volumes:
+  programs-local-ci:
+    name: lis-local-ci-openelis-programs
+  configuration-local-ci:
+    name: lis-local-ci-openelis-configuration
